@@ -52,6 +52,12 @@ vi.mock("@/lib/moderation/check", () => ({
   checkGenerationInput: mockCheckGenerationInput,
 }));
 
+const rateLimit = vi.hoisted(() => ({ limited: false }));
+
+vi.mock("@/lib/server/rate-limit", () => ({
+  createRateLimiter: () => ({ isLimited: () => rateLimit.limited, record: () => undefined }),
+}));
+
 const env = vi.hoisted(() => ({ VIDEO_ENABLED: true }));
 
 vi.mock("@/lib/env", () => ({
@@ -192,6 +198,7 @@ describe("生成接口安全校验顺序", () => {
     mockRequireTurnstile.mockResolvedValue(undefined);
     mockCheckGenerationInput.mockResolvedValue({ allowed: true });
     env.VIDEO_ENABLED = true;
+    rateLimit.limited = false;
   });
 
   it("站内渠道只接受本站图片作参考图，外部链接在上传前拒绝", async () => {
@@ -303,6 +310,17 @@ describe("生成接口安全校验顺序", () => {
     expect(mockConversationFindFirst).toHaveBeenCalled();
     expect(mockPersistGeneratedImage).not.toHaveBeenCalled();
     expect(mockDbTransaction).not.toHaveBeenCalled();
+  });
+
+  it("每分钟请求超过上限时直接拒绝，不解析、不送审", async () => {
+    rateLimit.limited = true;
+
+    const response = await POST(new Request("https://example.com/api/generate", { method: "POST" }));
+
+    expect(response.status).toBe(429);
+    await expect(response.json()).resolves.toMatchObject({ error: expect.stringContaining("每分钟最多生成 5 次") });
+    expect(mockParseGenerateRequest).not.toHaveBeenCalled();
+    expect(mockCheckGenerationInput).not.toHaveBeenCalled();
   });
 
   it("视频功能关闭时拒绝视频请求，不送审、不建 job", async () => {

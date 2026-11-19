@@ -3,6 +3,9 @@
 import type { Canvas, CanvasImportAsset } from "@prisma/client";
 import { S3Client } from "@aws-sdk/client-s3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// 这个文件同一个用户连着调几十次接口，限流换成不拦的假版本（限流本身另有测试）
+vi.mock("@/lib/server/rate-limit", () => ({ createRateLimiter: () => ({ isLimited: () => false, record: () => undefined }) }));
 import type { ImageQueryer } from "@/lib/storage/image-repository";
 
 const mocks = vi.hoisted(() => ({

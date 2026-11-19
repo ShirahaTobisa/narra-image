@@ -38,6 +38,7 @@ import {
 import { decryptProviderSecret, encryptProviderSecret } from "@/lib/providers/provider-secret";
 import { requireTurnstile } from "@/lib/auth/turnstile";
 import { getCurrentUserRecord, requireCurrentUserRecord } from "@/lib/server/current-user";
+import { createRateLimiter } from "@/lib/server/rate-limit";
 import { checkGenerationInput } from "@/lib/moderation/check";
 import { getErrorMessage, jsonError, jsonOk } from "@/lib/server/http";
 import { assertPublicHttpUrl } from "@/lib/server/safe-remote-url";
@@ -58,6 +59,9 @@ class GenerationCreditError extends Error {}
 
 // 每人同时最多这么多个没跑完的任务：并发一次塞一堆，会绕过"被拦 3 次就暂停"，也会占满全站队列
 const MAX_ACTIVE_JOBS_PER_USER = 2;
+// 每个用户每分钟最多发 5 次生成请求（被这条拦下的不算次数），护住上游渠道和审核接口
+const MAX_GENERATE_REQUESTS_PER_MINUTE = 5;
+const generateRequests = createRateLimiter({ limit: MAX_GENERATE_REQUESTS_PER_MINUTE, windowMs: 60_000 });
 
 async function assertGenerationImageUrl(url: string, siteImagesOnly: boolean) {
   const managed = await resolveManagedImageUrl(url);
@@ -102,6 +106,10 @@ export async function POST(request: Request) {
     const user = canvasTransport ? await getCurrentUserRecord() : await requireCurrentUserRecord();
     if (canvasTransport) await requireCanvasOwner({ getUser: async () => user });
     if (!user) throw new CanvasContractError("CANVAS_UNAUTHENTICATED");
+    if (generateRequests.isLimited(user.id)) {
+      return jsonError(`请求太频繁：每分钟最多生成 ${MAX_GENERATE_REQUESTS_PER_MINUTE} 次，请稍后再试`, 429);
+    }
+    generateRequests.record(user.id);
     const body = await parseGenerateRequest(request);
     if (body.canvasRun) {
       canvasAttempt = createCanvasRunAttempt(user.id, body.canvasRun, body.customProvider);
