@@ -4,3 +4,12 @@ onlyBuiltDependencies:
   - prisma
   - sharp
   - unrs-resolver
+
+# 下面这些只在构建和命令行工具里用到，线上运行不经过；统一升到已修复漏洞的版本
+overrides:
+  '@babel/core': ^7.29.6
+  baseline-browser-mapping: ^2.11.0
+  browserslist: ^4.28.7
+  fast-uri: ^3.1.9
+  fast-xml-builder: ^1.1.7
+  source-map-js: ^1.2.2

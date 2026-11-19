@@ -176,7 +176,8 @@ describe("bounded canvas transactions", () => {
       const error = await client.canvas.create({ data: {
         id: "aaaaaaaa-0000-4000-8000-000000000001", ownerId: "owner", userId: "owner", title: "Draft",
       } }).catch((failure: unknown) => failure);
-      expect(error).toMatchObject({ name: "DriverAdapterError", cause: { originalCode: code, originalMessage: "CANVAS_QUOTA_EXCEEDED" } });
+      // Prisma 7.10 起模型写操作的驱动错误包在 PrismaClientKnownRequestError.meta.driverAdapterError 里
+      expect(error).toMatchObject({ meta: { driverAdapterError: { cause: { originalCode: code, originalMessage: "CANVAS_QUOTA_EXCEEDED" } } } });
       expect(connect).not.toHaveBeenCalled();
       if (code === canvasGuardSqlState || code === "P0001") expect(canvasDatabaseError(error)?.code).toBe("CANVAS_QUOTA_EXCEEDED");
       else expect(isCanvasTransactionRetryable(error)).toBe(true);
