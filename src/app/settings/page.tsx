@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 import { SiteHeader } from "@/components/marketing/site-header";
 import { ProfileForm } from "@/components/settings/profile-form";
 import { db } from "@/lib/db";
-import { getOAuthProvider } from "@/lib/auth/oauth-config";
+import { getEnabledOAuthProviders } from "@/lib/auth/oauth-config";
+import { OAUTH_PROVIDER_LABELS } from "@/lib/constants";
 import { serializeUser } from "@/lib/prisma-mappers";
 import { getCurrentUserRecord } from "@/lib/server/current-user";
 
@@ -25,10 +26,12 @@ export default async function SettingsPage({
   }
 
   const params = await searchParams;
-  const linuxdoEnabled = (await getOAuthProvider("linuxdo"))?.isEnabled ?? false;
+  const oauthProviders = await getEnabledOAuthProviders();
+  const linkedLabel =
+    typeof params.linked === "string" ? OAUTH_PROVIDER_LABELS[params.linked] : undefined;
   const queryNotice: { hint: "linked" | "error"; message: string } | null =
-    params.linked === "linuxdo"
-      ? { hint: "linked", message: "已成功绑定 LinuxDo 账号" }
+    linkedLabel
+      ? { hint: "linked", message: `已成功绑定 ${linkedLabel} 账号` }
       : typeof params.error === "string" && params.error.length > 0
         ? { hint: "error", message: params.error }
         : null;
@@ -58,7 +61,7 @@ export default async function SettingsPage({
           user={currentUser}
           oauthProvider={user.oauthProvider}
           hasPassword={hasPassword}
-          linuxdoEnabled={linuxdoEnabled}
+          oauthProviders={oauthProviders}
           queryNotice={queryNotice}
         />
       </section>

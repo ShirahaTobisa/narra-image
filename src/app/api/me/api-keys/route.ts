@@ -1,3 +1,4 @@
+import { isApiEnabled } from "@/lib/api-config";
 import { db } from "@/lib/db";
 import {
   createApiKeySecret,
@@ -28,6 +29,9 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const user = await requireCurrentUserRecord();
+    if (!(await isApiEnabled())) {
+      return jsonError("站点暂未开放 API", 403);
+    }
     const body = apiKeyCreateSchema.parse(await parseJsonBody(request));
     const secret = createApiKeySecret();
     const apiKey = await db.apiKey.create({

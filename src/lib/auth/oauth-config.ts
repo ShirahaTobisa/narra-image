@@ -7,6 +7,7 @@ export type OAuthProviderInfo = {
   displayName: string;
   clientId: string;
   clientSecret: string;
+  allowedGuildId: string | null;
   isEnabled: boolean;
 };
 
@@ -27,6 +28,7 @@ export async function getOAuthProvider(type: string): Promise<OAuthProviderInfo 
   const provider = await db.oAuthProvider.findUnique({
     where: { type },
     select: {
+      allowedGuildId: true,
       clientId: true,
       clientSecret: true,
       displayName: true,
@@ -41,6 +43,7 @@ export async function getOAuthProvider(type: string): Promise<OAuthProviderInfo 
 export async function getAllOAuthProviders() {
   return db.oAuthProvider.findMany({
     select: {
+      allowedGuildId: true,
       clientId: true,
       createdAt: true,
       displayName: true,
@@ -59,7 +62,11 @@ export async function upsertOAuthProvider(data: {
   clientId: string;
   clientSecret: string;
   isEnabled: boolean;
+  /** undefined = 不改；空字符串 = 清除 */
+  allowedGuildId?: string;
 }) {
+  const { allowedGuildId, ...rest } = data;
+  const guild = allowedGuildId === undefined ? {} : { allowedGuildId: allowedGuildId || null };
   return db.oAuthProvider.upsert({
     where: { type: data.type },
     update: {
@@ -67,8 +74,9 @@ export async function upsertOAuthProvider(data: {
       ...(data.clientSecret ? { clientSecret: data.clientSecret } : {}),
       displayName: data.displayName,
       isEnabled: data.isEnabled,
+      ...guild,
     },
-    create: data,
+    create: { ...rest, ...guild },
   });
 }
 

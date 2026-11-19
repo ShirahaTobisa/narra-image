@@ -8,6 +8,9 @@ import { providerConfigSchema } from "@/lib/validators";
 export async function POST(request: Request) {
   try {
     const user = await requireCurrentUserRecord();
+    if (!getEnv().CUSTOM_PROVIDER_ENABLED) {
+      return jsonError("本站暂不支持自填 API", 403);
+    }
     const body = providerConfigSchema.parse(await parseJsonBody(request));
     const encryptedKey = await encryptProviderSecret(
       body.apiKey,

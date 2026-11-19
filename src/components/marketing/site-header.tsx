@@ -1,6 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 import Link from "next/link";
 
+import { isApiEnabled } from "@/lib/api-config";
 import { getCheckInSummary } from "@/lib/benefits/config";
 import { cn } from "@/lib/utils";
 import { LogoutButton } from "@/components/auth/logout-button";
@@ -9,6 +10,7 @@ import { HeaderShell } from "@/components/marketing/header-shell";
 import { PetToggle } from "@/components/pet/pet-toggle";
 import { getThumbUrl } from "@/lib/image-url";
 import { MobileNav } from "@/components/marketing/mobile-nav";
+import { GITHUB_URL } from "./homepage/constants";
 import { HomeHeader } from "./homepage/home-header";
 import type { HeaderVariant } from "./homepage/types";
 
@@ -33,13 +35,15 @@ export async function SiteHeader({
   showCheckIn = true,
   variant = "default",
 }: SiteHeaderProps) {
+  // 站点 API 关着时不显示 API 入口（只开放网页出图）
+  const apiEnabled = currentUser ? await isApiEnabled() : false;
   const links = [
     { href: "/", label: "首页" },
     { href: "/create", label: "创作台" },
     { href: "/prompts", label: "提示词库" },
     { href: "/video", label: "视频" },
     { href: "/works", label: "作品" },
-    ...(currentUser ? [{ href: "/api-keys", label: "API" }] : []),
+    ...(currentUser && apiEnabled ? [{ href: "/api-keys", label: "API" }] : []),
     ...(currentUser?.role === "admin"
       ? [{ href: "/admin", label: "管理后台" }]
       : []),
@@ -83,7 +87,7 @@ export async function SiteHeader({
             </span>
           </Link>
           <a
-            href="https://github.com/0401lucky/narra-image"
+            href={GITHUB_URL}
             target="_blank"
             rel="noopener noreferrer"
             aria-label="GitHub 仓库"

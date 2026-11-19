@@ -17,6 +17,7 @@ import { useEffect, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { getThumbUrl } from "@/lib/image-url";
+import { formatUserUid } from "@/lib/user-uid";
 import { cn } from "@/lib/utils";
 import { AdminDrawer } from "../ui/admin-drawer";
 
@@ -77,6 +78,8 @@ type UserDetailPayload = {
     rewardCredits: number;
   }>;
   role: "admin" | "user";
+  safetyIdentifier: string;
+  uid: number;
 };
 
 type UserDetailDrawerProps = {
@@ -149,7 +152,7 @@ export function UserDetailDrawer({
       width="lg"
       eyebrow="USER 360° PROFILE"
       title={detail?.nickname?.trim() || detail?.email || userEmail || "用户详情档案"}
-      description={detail ? `账号 ID：${detail.id} · ${detail.email}` : undefined}
+      description={detail ? `${formatUserUid(detail.uid)} · 账号 ID：${detail.id} · ${detail.email}` : undefined}
       footer={
         detail ? (
           <>
@@ -157,7 +160,7 @@ export function UserDetailDrawer({
               注册于 {new Date(detail.createdAt).toLocaleString("zh-CN")}
             </span>
             <Link
-              href={`/admin/generations?q=${encodeURIComponent(detail.email)}`}
+              href={`/admin/generations?q=${encodeURIComponent(formatUserUid(detail.uid))}&status=ALL`}
               onClick={onClose}
               className="inline-flex items-center gap-1.5 rounded-full bg-[#c25934] px-4 py-1.5 text-xs font-semibold text-white shadow-2xs transition hover:bg-[#ad4c2a]"
             >
@@ -238,6 +241,12 @@ export function UserDetailDrawer({
                   {detail.inviteUsed
                     ? `${detail.inviteUsed.code}${detail.inviteUsed.batchTitle ? ` (${detail.inviteUsed.batchTitle})` : ""}`
                     : "无（OAuth 免邀或初始种子）"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 sm:col-span-2">
+                <span className="shrink-0 text-[var(--ink-soft)]">OpenAI 用户标识</span>
+                <span className="break-all text-right font-mono font-medium text-[var(--ink)]">
+                  {detail.safetyIdentifier}
                 </span>
               </div>
             </div>
@@ -375,7 +384,7 @@ export function UserDetailDrawer({
 
           {detail.counts.contentReviews > 0 ? (
             <Link
-              href={`/admin/moderation?q=${encodeURIComponent(detail.email)}`}
+              href={`/admin/moderation?q=${encodeURIComponent(formatUserUid(detail.uid))}`}
               onClick={onClose}
               className="flex items-center justify-between rounded-xl border border-rose-200 bg-rose-50/70 px-4 py-3 text-xs font-medium text-rose-700 transition hover:bg-rose-100/70"
             >

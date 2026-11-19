@@ -186,6 +186,8 @@ const envSchema = z.object({
   BUILTIN_PROVIDER_VIDEO_CREDIT_COST: integerEnv(20),
   BUILTIN_PROVIDER_VIDEO_MODEL: z.string().trim().min(1).default("sora-2"),
   CANVAS_ENABLED: booleanEnv(false),
+  // 用户自填第三方渠道：公开站默认关（自填渠道出的图不经审核，还不花积分、能占满队列）
+  CUSTOM_PROVIDER_ENABLED: booleanEnv(false),
   CANVAS_ASSET_GC_INTERVAL_SECONDS: integerEnv(60, 60),
   CANVAS_ASSET_GC_BATCH_SIZE: integerEnv(20, 1, 100),
   DATABASE_READY_ATTEMPTS: integerEnv(180, 1, 10_000),

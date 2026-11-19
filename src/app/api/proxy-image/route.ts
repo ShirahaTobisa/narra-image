@@ -1,6 +1,5 @@
 import { getCurrentUserRecord } from "@/lib/server/current-user";
 import { getErrorMessage } from "@/lib/server/http";
-import { fetchPublicHttpUrl } from "@/lib/server/safe-remote-url";
 
 const PROXY_FETCH_TIMEOUT_MS = 15_000;
 const PROXY_IMAGE_MAX_BYTES = 20 * 1024 * 1024;
@@ -90,7 +89,11 @@ export async function GET(request: Request) {
     if (managed) managedResponse = new Response(new Uint8Array(await readManagedImage(managed, AbortSignal.timeout(PROXY_FETCH_TIMEOUT_MS))), {
       headers: { "Content-Type": managed.asset.mimeType, "Content-Length": managed.asset.byteLength },
     });
-    const upstream = managedResponse ?? await fetchPublicHttpUrl(imageUrl, { signal: AbortSignal.timeout(PROXY_FETCH_TIMEOUT_MS) });
+    // 只代理本站图片：不替任何外站地址下载，防止被当成通用下载器
+    if (!managedResponse) {
+      return new Response("只能下载本站图片", { status: 403 });
+    }
+    const upstream = managedResponse;
 
     if (!upstream.ok || !upstream.body) {
       return new Response("Failed to fetch image", { status: upstream.status });

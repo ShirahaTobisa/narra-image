@@ -9,7 +9,7 @@ import { getCurrentUserRecord } from "@/lib/server/current-user";
 import { jsonError, jsonOk, getErrorMessage } from "@/lib/server/http";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
-const MAX_SIZE = 2 * 1024 * 1024; // 2MB
+const MAX_SIZE = 200 * 1024; // 200KB：头像按 data URL 存进数据库，每次随页面一起下发
 
 function createS3Client() {
   const env = getEnv();
@@ -51,7 +51,7 @@ export async function POST(request: Request) {
     }
 
     if (file.size > MAX_SIZE) {
-      return jsonError("头像文件大小不能超过 2MB");
+      return jsonError("头像文件大小不能超过 200KB");
     }
 
     const env = getEnv();
@@ -94,6 +94,7 @@ export async function POST(request: Request) {
         id: true,
         nickname: true,
         role: true,
+        uid: true,
       },
     });
 

@@ -8,6 +8,7 @@ import { calculateGenerationCost } from "@/lib/credits";
 import { db } from "@/lib/db";
 import { getEnv } from "@/lib/env";
 import { assertApiRateLimit } from "@/lib/api-config";
+import { assertExternalGenerationAllowed } from "@/lib/moderation/check";
 import { persistGeneratedImage } from "@/lib/storage/persist-generated-image";
 import {
   generationChannelModelSnapshot,
@@ -240,6 +241,7 @@ export async function runExternalGenerationViaGateway(input: {
   tools?: unknown;
 }): Promise<Response> {
   await assertApiRateLimit(input.apiKeyId);
+  await assertExternalGenerationAllowed(input.user.id, input.input);
 
   const env = getEnv();
   const requestedModel = input.input.model?.trim() || env.BUILTIN_PROVIDER_MODEL;

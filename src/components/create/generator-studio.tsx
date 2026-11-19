@@ -70,6 +70,8 @@ const ImageZoomModal = dynamic(
 type GeneratorStudioProps = {
   ownerId: string;
   canvasEnabled?: boolean;
+  /** 站点是否允许用户自填第三方渠道 */
+  customProviderEnabled?: boolean;
   compact?: boolean;
   checkInSummary: {
     checkInReward: number;
@@ -118,6 +120,7 @@ export function GeneratorStudio(props: GeneratorStudioProps) {
 function StudioWorkspace({
   ownerId,
   canvasEnabled = false,
+  customProviderEnabled = true,
   currentUser,
   initialGenerations = EMPTY_GENERATIONS,
   initialGenerationPage = null,
@@ -187,7 +190,9 @@ function StudioWorkspace({
     [channels, selectedChannelId],
   );
   const [model, setModel] = useState(selectedChannel?.defaultModel || "gpt-image-2");
-  const [providerMode, setProviderMode] = useState<ProviderSelectionMode>("built_in");
+  const [selectedProviderMode, setProviderMode] = useState<ProviderSelectionMode>("built_in");
+  // 站点关了自填渠道时一律按平台渠道走，旧草稿里存的自填也不恢复
+  const providerMode: ProviderSelectionMode = customProviderEnabled ? selectedProviderMode : "built_in";
   const [customProvider, setCustomProvider] = useState<CustomProviderDraft>(() => ({
     apiKey: "",
     baseUrl: savedProvider?.baseUrl ?? "https://api.openai.com/v1",
@@ -1321,6 +1326,7 @@ function StudioWorkspace({
             onChangeModel={setModel}
             providerMode={providerMode}
             onChangeProviderMode={setProviderMode}
+            allowCustomProvider={customProviderEnabled}
             customProvider={customProvider}
             onChangeCustomProvider={handleChangeCustomProvider}
             customModelOptions={customModelOptions}
@@ -1406,6 +1412,7 @@ function StudioWorkspace({
                     onChangeModel={setModel}
                     providerMode={providerMode}
                     onChangeProviderMode={setProviderMode}
+                    allowCustomProvider={customProviderEnabled}
                     customProvider={customProvider}
                     onChangeCustomProvider={handleChangeCustomProvider}
                     customModelOptions={customModelOptions}

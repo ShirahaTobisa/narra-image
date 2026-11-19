@@ -15,6 +15,15 @@ export async function getApiConfig() {
   });
 }
 
+/** 站点 API 开没开：只读（getApiConfig 每次都会写库），给导航和页脚判断要不要显示入口 */
+export async function isApiEnabled() {
+  const config = await db.apiConfig.findUnique({
+    where: { scope: API_CONFIG_SCOPE },
+    select: { isEnabled: true },
+  });
+  return config?.isEnabled ?? true;
+}
+
 export function serializeApiConfig(config: Awaited<ReturnType<typeof getApiConfig>>) {
   return {
     isEnabled: config.isEnabled,

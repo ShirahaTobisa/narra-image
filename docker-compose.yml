@@ -131,8 +131,9 @@ services:
       BOOTSTRAP_INVITE_CODE: "${BOOTSTRAP_INVITE_CODE:-}"
       BOOTSTRAP_ADMIN_PASSWORD_HASH: "${BOOTSTRAP_ADMIN_PASSWORD_HASH:-}"
     command: ["node", "node_modules/next/dist/bin/next", "start"]
+    # 默认只开给本机的反向代理（Caddy 等），防止绕过它直连；确实要直连再把 APP_BIND 设成 0.0.0.0
     ports:
-      - "${APP_PORT:-3000}:3000"
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-3000}:3000"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/readyz >/dev/null"]
       interval: 5s

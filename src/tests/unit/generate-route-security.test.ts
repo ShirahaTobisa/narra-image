@@ -42,6 +42,12 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
+// 站内渠道会把引用的本站图读出来送审；这里只关心绑定流程，读图直接给假数据
+vi.mock("@/lib/storage/managed-image-storage", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/storage/managed-image-storage")>()),
+  readManagedImage: vi.fn(async () => Buffer.from("reference-image")),
+}));
+
 vi.mock("@/lib/moderation/check", () => ({
   checkGenerationInput: mockCheckGenerationInput,
 }));
@@ -53,6 +59,7 @@ vi.mock("@/lib/env", () => ({
     IMAGE_STORAGE_MANAGED_ENABLED: false,
     BUILTIN_PROVIDER_CREDIT_COST: 5,
     BUILTIN_PROVIDER_VIDEO_CREDIT_COST: 20,
+    CUSTOM_PROVIDER_ENABLED: true,
     WORKER_CONTRACTS_V1_ENABLED: false,
   }),
 }));
@@ -183,9 +190,34 @@ describe("生成接口安全校验顺序", () => {
     mockCheckGenerationInput.mockResolvedValue({ allowed: true });
   });
 
-  it("参考图 URL 指向内网时在上传前拒绝", async () => {
+  it("站内渠道只接受本站图片作参考图，外部链接在上传前拒绝", async () => {
     mockParseGenerateRequest.mockResolvedValue(buildRequestBody({
+      imageUrls: ["https://8.8.8.8/reference.png"],
+    }));
+
+    const response = await POST(new Request("https://example.com/api/generate", { method: "POST" }));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "使用站内渠道时参考图请直接上传，不支持外部图片链接",
+    });
+    expect(mockPersistGeneratedImage).not.toHaveBeenCalled();
+    expect(mockDbTransaction).not.toHaveBeenCalled();
+  });
+
+  it("自填渠道的参考图 URL 指向内网时在上传前拒绝", async () => {
+    mockParseGenerateRequest.mockResolvedValue(buildRequestBody({
+      customProvider: {
+        apiKey: "custom-key",
+        baseUrl: "https://8.8.4.4/v1",
+        label: "自填渠道",
+        model: "custom-model",
+        models: ["custom-model"],
+        remember: false,
+      },
       imageUrls: ["http://127.0.0.1/private.png"],
+      model: "custom-model",
+      providerMode: "custom",
     }));
 
     const response = await POST(new Request("https://example.com/api/generate", { method: "POST" }));
@@ -254,6 +286,7 @@ describe("生成接口安全校验顺序", () => {
   it("无权访问的会话在上传参考图前拒绝", async () => {
     mockParseGenerateRequest.mockResolvedValue(buildRequestBody({
       conversationId: "conversation_other",
+      imageUrls: [],
     }));
     mockConversationFindFirst.mockResolvedValue(null);
 
@@ -283,6 +316,15 @@ describe("生成接口安全校验顺序", () => {
     await expect(response.json()).resolves.toEqual({
       error: "提交内容包含违规描述，已拒绝生成",
     });
+    // 站内渠道：上传的参考图要和提示词一起送审，并标记为站内渠道（用于上游拦截计数）
+    expect(mockCheckGenerationInput).toHaveBeenCalledWith(
+      expect.objectContaining({
+        builtIn: true,
+        images: [expect.objectContaining({ data: Buffer.from("image"), mimeType: "image/png" })],
+        prompt: "测试生成请求",
+        userId: "user_1",
+      }),
+    );
     expect(mockPersistGeneratedImage).not.toHaveBeenCalled();
     expect(mockDbTransaction).not.toHaveBeenCalled();
   });
@@ -309,7 +351,7 @@ describe("生成接口安全校验顺序", () => {
     const charge = vi.fn().mockResolvedValue({ count: 1 });
     const tx = {
       $executeRaw: vi.fn().mockResolvedValue(0), $queryRaw: mockRawQuery,
-      generationJob: { create }, user: { updateMany: charge },
+      generationJob: { count: vi.fn().mockResolvedValue(0), create }, user: { updateMany: charge },
       imageUrlAlias: { findMany: vi.fn(async () => [...aliases].map(([url]) => ({ url, asset: image.asset }))) },
     };
     mockDbTransaction.mockImplementation(async (operation: (client: typeof tx) => Promise<unknown>) => {
@@ -330,9 +372,31 @@ describe("生成接口安全校验顺序", () => {
       await expect(response.json()).resolves.toMatchObject({ data: { generation: { sourceImageUrls: [canonicalUrl] } } });
       expect(persistedInputs).toEqual([[rawUrl]]);
       expect(charge).toHaveBeenCalledOnce();
+      // 引用的本站图也要读出来和提示词一起送审
+      expect(mockCheckGenerationInput).toHaveBeenCalledWith(expect.objectContaining({
+        builtIn: true,
+        images: [expect.objectContaining({ data: Buffer.from("reference-image") })],
+      }));
     }
     expect(sourceUrls).toEqual([rawUrl]);
     expect(mockPersistGeneratedImage).not.toHaveBeenCalled();
     expect(mockFailGenerationJobAndRefund).not.toHaveBeenCalled();
+  });
+
+  it("每人同时最多 2 个任务在生成，再交就拒绝，不建任务也不扣分", async () => {
+    const create = vi.fn();
+    const charge = vi.fn();
+    const executeRaw = vi.fn().mockResolvedValue(1);
+    const tx = { $executeRaw: executeRaw, generationJob: { count: vi.fn().mockResolvedValue(2), create }, user: { updateMany: charge } };
+    mockDbTransaction.mockImplementation(async (operation: (client: typeof tx) => Promise<unknown>) => operation(tx));
+    mockParseGenerateRequest.mockResolvedValue(buildRequestBody({ generationType: "text_to_image", image: null, imageUrls: [], images: [] }));
+
+    const response = await POST(new Request("https://app.unit.invalid/api/generate", { method: "POST" }));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ error: expect.stringContaining("同时最多 2 个任务") });
+    expect(String(executeRaw.mock.calls[0][0].join("?"))).toContain("FOR UPDATE");
+    expect(create).not.toHaveBeenCalled();
+    expect(charge).not.toHaveBeenCalled();
   });
 });

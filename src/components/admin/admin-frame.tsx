@@ -19,6 +19,7 @@ import { createPortal } from "react-dom";
 
 import { LogoutButton } from "@/components/auth/logout-button";
 import { getThumbUrl } from "@/lib/image-url";
+import { formatUserUid } from "@/lib/user-uid";
 import { cn } from "@/lib/utils";
 import { AdminNav } from "./admin-nav";
 import {
@@ -41,6 +42,7 @@ type AdminFrameProps = {
     avatarUrl?: string | null;
     id: string;
     nickname?: string | null;
+    uid?: number | null;
   };
   shellSummary?: AdminShellSummary;
 };
@@ -100,7 +102,7 @@ export function AdminFrame({
   }
 
   const displayName = currentUser.nickname?.trim() || "管理员";
-  const shortId = currentUser.id.slice(0, 8);
+  const shortId = formatUserUid(currentUser.uid) || currentUser.id.slice(0, 8);
   const breadcrumb = resolveAdminBreadcrumb(pathname);
   const statusTone = shellSummary?.statusTone ?? "healthy";
   const statusLabel = shellSummary?.statusLabel ?? "系统就绪";

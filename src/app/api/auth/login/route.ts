@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { db } from "@/lib/db";
 import { verifyPassword } from "@/lib/auth/password";
+import { isLoginLocked, recordLoginFailure } from "@/lib/auth/login-throttle";
 import { attachSessionCookie } from "@/lib/auth/session";
 import { requireTurnstile } from "@/lib/auth/turnstile";
 import { serializeUser } from "@/lib/prisma-mappers";
@@ -11,9 +12,13 @@ import { loginSchema } from "@/lib/validators";
 export async function POST(request: Request) {
   try {
     const body = loginSchema.parse(await parseJsonBody(request));
+    const email = body.email.toLowerCase();
+    if (isLoginLocked(email)) {
+      return jsonError("密码错误次数太多，请 15 分钟后再试", 429);
+    }
     await requireTurnstile("login", body.turnstileToken);
     const user = await db.user.findUnique({
-      where: { email: body.email.toLowerCase() },
+      where: { email },
       select: {
         avatarUrl: true,
         bannedAt: true,
@@ -23,10 +28,12 @@ export async function POST(request: Request) {
         nickname: true,
         passwordHash: true,
         role: true,
+        uid: true,
       },
     });
 
     if (!user) {
+      recordLoginFailure(email);
       return jsonError("邮箱或密码错误", 401);
     }
 
@@ -40,6 +47,7 @@ export async function POST(request: Request) {
 
     const isValid = await verifyPassword(body.password, user.passwordHash);
     if (!isValid) {
+      recordLoginFailure(email);
       return jsonError("邮箱或密码错误", 401);
     }
 

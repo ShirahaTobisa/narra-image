@@ -4,6 +4,7 @@ import type { ComponentProps, ReactNode } from "react";
 const mocks = vi.hoisted(() => ({ currentUser: vi.fn(), feed: vi.fn(), gallery: vi.fn(), header: vi.fn(), cache: vi.fn() }));
 vi.mock("next/cache", () => ({ unstable_cache: <T extends (...args: never[]) => unknown>(callback: T, keys: string[], options: unknown) => { mocks.cache(keys, options); return callback; } }));
 vi.mock("@/lib/server/current-user", () => ({ getCurrentUserRecord: mocks.currentUser }));
+vi.mock("@/lib/api-config", () => ({ isApiEnabled: async () => true }));
 vi.mock("@/lib/server/works", () => ({ listFeaturedWorksPage: mocks.feed }));
 vi.mock("@/components/marketing/site-header", () => ({ SiteHeader: mocks.header }));
 vi.mock("@/components/marketing/featured-gallery", () => ({ FeaturedGallery: mocks.gallery }));

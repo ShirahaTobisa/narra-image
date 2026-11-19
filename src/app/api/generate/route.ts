@@ -44,7 +44,7 @@ import { assertPublicHttpUrl } from "@/lib/server/safe-remote-url";
 import { persistGeneratedImage } from "@/lib/storage/persist-generated-image";
 import { failGenerationJobAndRefund } from "@/lib/generation/job-refund";
 import { ImageStorageError, type ImageReservation } from "@/lib/storage/image-contract";
-import { bindManagedImageOutputs, closeManagedImageReservation, reserveManagedImageOutputs, resolveManagedImageUrl } from "@/lib/storage/managed-image-storage";
+import { bindManagedImageOutputs, closeManagedImageReservation, readManagedImage, reserveManagedImageOutputs, resolveManagedImageUrl } from "@/lib/storage/managed-image-storage";
 
 async function assertGenerationPublicHttpUrl(url: string, fieldName: string) {
   try {
@@ -56,13 +56,27 @@ async function assertGenerationPublicHttpUrl(url: string, fieldName: string) {
 
 class GenerationCreditError extends Error {}
 
-async function assertGenerationImageUrl(url: string) {
+// 每人同时最多这么多个没跑完的任务：并发一次塞一堆，会绕过"被拦 3 次就暂停"，也会占满全站队列
+const MAX_ACTIVE_JOBS_PER_USER = 2;
+
+async function assertGenerationImageUrl(url: string, siteImagesOnly: boolean) {
   const managed = await resolveManagedImageUrl(url);
   if (managed) {
     if (managed.asset.state !== "AVAILABLE" || managed.object?.state !== "READY") throw new ImageStorageError("IMAGE_UNAVAILABLE");
     return;
   }
+  // 用站内渠道（站长的 key）时只认本站图片：外部链接没法保证送审的和出图时下载的是同一张
+  if (siteImagesOnly) throw new Error("使用站内渠道时参考图请直接上传，不支持外部图片链接");
   await assertGenerationPublicHttpUrl(url, "参考图 URL");
+}
+
+// 站内渠道引用的本站图片也要读出来送审：可能是别人的图或旧图，不一定审过（外站链接后面会被直接拒绝）
+async function readSiteReferenceImages(urls: string[]) {
+  const images = await Promise.all(urls.map(async (url) => {
+    const managed = await resolveManagedImageUrl(url);
+    return managed ? { data: await readManagedImage(managed), fileName: "reference", mimeType: managed.asset.mimeType } : null;
+  }));
+  return images.filter((image) => image !== null);
 }
 
 export async function POST(request: Request) {
@@ -95,13 +109,30 @@ export async function POST(request: Request) {
       if (reservation.kind === "replay") return canvasRunResponse(reservation.lookup);
       canvasPreparation = reservation.preparation;
     }
+    if (body.providerMode === "custom" && !getEnv().CUSTOM_PROVIDER_ENABLED) {
+      return rejectPreparationResponse(jsonError("本站暂不支持自填 API，请使用平台渠道", 403));
+    }
     await requireTurnstile("generate", body.turnstileToken);
 
-    // 内容审核：敏感词 / AI 命中则阻断本次生成（不扣积分、不建 job）
+    const fileSourceImages = await Promise.all(
+      body.images.map(async (image: File) => ({
+        data: Buffer.from(await image.arrayBuffer()),
+        fileName: image.name || "source.png",
+        mimeType: image.type || "image/png",
+      })),
+    );
+
+    const siteReferenceImages = body.providerMode === "built_in" && !canvasPreparation
+      ? await readSiteReferenceImages(body.imageUrls)
+      : [];
+
+    // 内容审核：敏感词 / AI 命中则阻断本次生成（不扣积分、不建 job）；上传的和引用的参考图一起审
     const moderation = await checkGenerationInput({
-      userId: user.id,
-      prompt: body.prompt,
+      builtIn: body.providerMode === "built_in",
+      images: [...fileSourceImages, ...siteReferenceImages],
       negativePrompt: body.negativePrompt,
+      prompt: body.prompt,
+      userId: user.id,
     });
     if (!moderation.allowed) {
       return rejectPreparationResponse(jsonError(moderation.message, 400));
@@ -177,7 +208,9 @@ export async function POST(request: Request) {
     // 此处做入队前校验；Worker 仍需对实际请求和重定向目标重复校验。
     const canvasInputs = canvasPreparation ? await readCanvasRunInputs(user.id, canvasPreparation.run) : null;
     const referenceUrls = canvasInputs?.sourceImageUrls ?? body.imageUrls;
-    const urlChecks = referenceUrls.filter((url) => !canvasInputs || !isCanvasCanonicalDataUrl(url)).map(assertGenerationImageUrl);
+    const urlChecks = referenceUrls
+      .filter((url) => !canvasInputs || !isCanvasCanonicalDataUrl(url))
+      .map((url) => assertGenerationImageUrl(url, body.providerMode === "built_in" && !canvasInputs));
     if (body.providerMode === "custom" && customProvider) {
       urlChecks.push(
         assertGenerationPublicHttpUrl(customProvider.baseUrl, "自填渠道 Base URL"),
@@ -210,13 +243,6 @@ export async function POST(request: Request) {
       });
     }
 
-    const fileSourceImages = await Promise.all(
-      body.images.map(async (image: File) => ({
-        data: Buffer.from(await image.arrayBuffer()),
-        fileName: image.name || "source.png",
-        mimeType: image.type || "image/png",
-      })),
-    );
     const uploadedUrls = await Promise.all(
       fileSourceImages.map((sourceImage) =>
         persistGeneratedImage({
@@ -236,7 +262,17 @@ export async function POST(request: Request) {
     // 让请求链路保持短平快，也避免 Next 进程重启导致后台生成丢失。
     const preparation = canvasPreparation;
     const createJob = async (tx: Prisma.TransactionClient) => {
-      if (!preparation) await lockImageReferenceEpoch(tx);
+      if (!preparation) {
+        // 先锁住这个用户再数他没跑完的任务，并发提交也只能排进 MAX_ACTIVE_JOBS_PER_USER 个（画布另有同节点限制）
+        await tx.$executeRaw`SELECT 1 FROM "User" WHERE id = ${user.id} FOR UPDATE`;
+        const activeJobs = await tx.generationJob.count({
+          where: { status: { in: [GenerationStatus.PENDING, GenerationStatus.PROCESSING] }, userId: user.id },
+        });
+        if (activeJobs >= MAX_ACTIVE_JOBS_PER_USER) {
+          throw new Error(`同时最多 ${MAX_ACTIVE_JOBS_PER_USER} 个任务在生成，请等前面的完成后再提交`);
+        }
+        await lockImageReferenceEpoch(tx);
+      }
       let currentInputs: CanvasResolvedRunInputs | null = null;
       if (preparation && canvasInputs) currentInputs = await prepareCanvasRunCommit(tx, preparation, canvasInputs);
       const committedSourceUrls = currentInputs?.sourceImageUrls ?? sourceImageUrls;

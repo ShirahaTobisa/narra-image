@@ -55,6 +55,20 @@ describe("后台生成记录页面", () => {
     });
   });
 
+  it("搜 #编号 只看这个人的记录", async () => {
+    await AdminGenerationsPage({
+      searchParams: Promise.resolve({ q: "#12" }),
+    });
+
+    expect(mockFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([{ user: { is: { uid: 12 } } }]),
+        }),
+      }),
+    );
+  });
+
   it("按关键词过滤用户昵称、邮箱和生成任务字段", async () => {
     await AdminGenerationsPage({
       searchParams: Promise.resolve({
@@ -71,6 +85,7 @@ describe("后台生成记录页面", () => {
             select: {
               email: true,
               nickname: true,
+              uid: true,
             },
           },
         }),

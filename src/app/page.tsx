@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { unstable_cache } from "next/cache";
 
+import { isApiEnabled } from "@/lib/api-config";
 import { serializeUser } from "@/lib/prisma-mappers";
 import { SiteHeader } from "@/components/marketing/site-header";
 import { FeaturedGallery } from "@/components/marketing/featured-gallery";
@@ -64,6 +65,7 @@ export default async function Home() {
   const user = await getHomeUserRecord();
   const currentUser = user ? serializeUser(user) : null;
   const { page: featuredPage, failed } = await getHomeFeaturedPage(user?.id);
+  const apiEnabled = user ? await isApiEnabled().catch(() => true) : true;
 
   return (
     <HomeMotionProvider>
@@ -92,7 +94,7 @@ export default async function Home() {
           </div>
         </HomeReveal>
       </main>
-      <HomeFooter isAuthenticated={Boolean(currentUser)} />
+      <HomeFooter apiEnabled={apiEnabled} isAuthenticated={Boolean(currentUser)} />
     </HomeMotionProvider>
   );
 }

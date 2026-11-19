@@ -39,7 +39,6 @@ const workBaseInclude = Prisma.validator<Prisma.GenerationImageInclude>()({
   },
   reviewedBy: {
     select: {
-      email: true,
       id: true,
     },
   },

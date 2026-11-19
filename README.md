@@ -2,6 +2,16 @@
 
 一个面向普通用户的高颜值生图网站。
 
+> **这是 [0401lucky/narra-image](https://github.com/0401lucky/narra-image) 的修改版**，用于公益生图站 [draw.aliya.moe](https://draw.aliya.moe)，同样以 AGPL-3.0 发布。
+> 2026-11-19 起的主要改动：
+> - Discord 登录，可限定只许某个服务器的成员。
+> - 内容审核加固：所有出图入口先审，审核出错就拒绝，参考图一起送审。
+> - 只开放网页出图。
+> - 用户数字编号，可按 OpenAI 用户标识查人。
+> - 上线前安全加固：防账号接管、每人排队上限、跨站提交拦截、安全响应头、依赖升级等。
+>
+> 下面是原项目的说明。
+
 > 在线站点：[narralucky.c0ffee.space](https://narralucky.c0ffee.space) ｜ 仓库：<https://github.com/0401lucky/narra-image> ｜ 协议：[AGPL-3.0](#开源协议)
 
 核心特性：

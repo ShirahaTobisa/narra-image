@@ -9,6 +9,7 @@ import { useAdminToast } from "./hooks/use-admin-toast";
 import { AdminSwitch } from "./ui/admin-switch";
 
 type OAuthProviderData = {
+  allowedGuildId?: string | null;
   clientId: string;
   createdAt: string;
   displayName: string;
@@ -25,10 +26,21 @@ type OAuthProviderManagerProps = {
 const SUPPORTED_PROVIDERS = [
   {
     authorizeUrl: "https://connect.linux.do/oauth2/authorize",
+    credentialHint: "从 connect.linux.do 获取",
     description: "接入 LinuxDo 社区 OAuth2 登录，用户可使用社区账号一键登录，无需邀请码与密码。",
+    guildGate: false,
     helpUrl: "https://connect.linux.do",
     label: "LinuxDo",
     type: "linuxdo",
+  },
+  {
+    authorizeUrl: "https://discord.com/oauth2/authorize",
+    credentialHint: "从 Discord 开发者后台的 OAuth2 页面获取",
+    description: "接入 Discord 登录。可限定只有指定服务器的成员能登录，限定后不需要邀请码。",
+    guildGate: true,
+    helpUrl: "https://discord.com/developers/applications",
+    label: "Discord",
+    type: "discord",
   },
 ];
 
@@ -44,22 +56,25 @@ export function OAuthProviderManager({
   const [formClientId, setFormClientId] = useState("");
   const [formClientSecret, setFormClientSecret] = useState("");
   const [formEnabled, setFormEnabled] = useState(false);
+  const [formGuildId, setFormGuildId] = useState("");
 
   function startEdit(type: string) {
     const existing = providers.find((p) => p.type === type);
     setFormClientId(existing?.clientId ?? "");
     setFormClientSecret("");
+    setFormGuildId(existing?.allowedGuildId ?? "");
     setFormEnabled(existing?.isEnabled ?? false);
     setEditingType(type);
     setMessage(null);
   }
 
-  async function handleSave(type: string, displayName: string) {
+  async function handleSave(type: string, displayName: string, guildGate: boolean) {
     setSaving(true);
     setMessage(null);
     try {
       const res = await fetch("/api/admin/oauth", {
         body: JSON.stringify({
+          ...(guildGate ? { allowedGuildId: formGuildId.trim() } : {}),
           clientId: formClientId,
           clientSecret: formClientSecret,
           displayName,
@@ -154,6 +169,11 @@ export function OAuthProviderManager({
                     <h2 className="text-base font-semibold text-[var(--ink)]">
                       {sp.label}
                     </h2>
+                    {existing?.allowedGuildId ? (
+                      <span className="rounded-full bg-[#c85a32]/10 px-2.5 py-0.5 text-xs font-medium text-[#b54722]">
+                        仅限服务器成员
+                      </span>
+                    ) : null}
                     {existing ? (
                       <span
                         className={
@@ -210,7 +230,7 @@ export function OAuthProviderManager({
                     type="text"
                     value={formClientId}
                     onChange={(e) => setFormClientId(e.target.value)}
-                    placeholder="从 connect.linux.do 获取"
+                    placeholder={sp.credentialHint}
                     className="w-full rounded-xl border border-[var(--line)] bg-white px-4 py-2.5 font-mono text-sm outline-none"
                   />
                 </label>
@@ -223,10 +243,30 @@ export function OAuthProviderManager({
                     type="password"
                     value={formClientSecret}
                     onChange={(e) => setFormClientSecret(e.target.value)}
-                    placeholder={existing ? "留空则保留当前密钥不修改" : "从 connect.linux.do 获取"}
+                    placeholder={existing ? "留空则保留当前密钥不修改" : sp.credentialHint}
                     className="w-full rounded-xl border border-[var(--line)] bg-white px-4 py-2.5 font-mono text-sm outline-none"
                   />
                 </label>
+
+                {sp.guildGate ? (
+                  <label className="grid gap-1.5">
+                    <span className="text-xs font-medium text-[var(--ink-soft)]">
+                      限定服务器 ID（可选）
+                    </span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={formGuildId}
+                      onChange={(e) => setFormGuildId(e.target.value)}
+                      placeholder="留空 = 不限定，新用户需要邀请码"
+                      className="w-full rounded-xl border border-[var(--line)] bg-white px-4 py-2.5 font-mono text-sm outline-none"
+                    />
+                    <span className="text-xs leading-relaxed text-[var(--ink-soft)]">
+                      填了就只放这个服务器的成员登录，每次登录都检查，被移出服务器就登不进来，也不需要邀请码。
+                      服务器 ID 在 Discord 开发者模式下右键服务器名复制。
+                    </span>
+                  </label>
+                ) : null}
 
                 <div className="flex items-center justify-between rounded-xl border border-[var(--line)] bg-[#faf7f1] px-4 py-3">
                   <div className="flex items-center gap-2 text-sm text-[var(--ink)]">
@@ -244,7 +284,7 @@ export function OAuthProviderManager({
                   <button
                     type="button"
                     disabled={saving || !formClientId}
-                    onClick={() => void handleSave(sp.type, sp.label)}
+                    onClick={() => void handleSave(sp.type, sp.label, sp.guildGate)}
                     className="inline-flex items-center gap-2 rounded-full bg-[#c25934] px-5 py-2.5 text-sm font-semibold text-white shadow-2xs transition hover:bg-[#ad4c2a] disabled:opacity-60"
                   >
                     {saving ? (

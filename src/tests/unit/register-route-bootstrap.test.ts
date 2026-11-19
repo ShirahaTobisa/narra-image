@@ -22,7 +22,8 @@ const {
 
 vi.mock("@/lib/db", () => ({
   db: {
-    inviteCode: { upsert: mockInviteUpsert },
+    inviteCode: { findUnique: vi.fn(async () => ({ usedAt: null })), upsert: mockInviteUpsert },
+    user: { count: vi.fn(async () => 0) },
     $transaction: mockTransaction,
   },
 }));

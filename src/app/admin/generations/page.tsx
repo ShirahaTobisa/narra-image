@@ -24,6 +24,7 @@ import { AdminPageHeader } from "@/components/admin/ui/admin-page-header";
 import { db } from "@/lib/db";
 import { failStalePendingGenerationJobs } from "@/lib/generation/job-refund";
 import { requireAdminRecord } from "@/lib/server/current-user";
+import { exactUserWhere } from "@/lib/server/user-lookup";
 import { imageAvailabilityInclude } from "@/lib/storage/image-availability";
 import { presentGenerationImage } from "@/lib/storage/image-presentation";
 import { projectGenerationSourceUrls } from "@/lib/storage/image-source-presentation";
@@ -176,8 +177,11 @@ export default async function AdminGenerationsPage({
 
   await failStalePendingGenerationJobs();
 
-  const searchWhere: Prisma.GenerationJobWhereInput = search
-    ? {
+  // 只在 search 非空时使用；能定位到某个人（#12 / OpenAI 用户标识）就只看他的记录
+  const exactUser = search ? await exactUserWhere(search) : null;
+  const searchWhere: Prisma.GenerationJobWhereInput = exactUser
+    ? { user: { is: exactUser } }
+    : {
         OR: [
           { id: { contains: search, mode: "insensitive" } },
           { model: { contains: search, mode: "insensitive" } },
@@ -194,8 +198,7 @@ export default async function AdminGenerationsPage({
             },
           },
         ],
-      }
-    : {};
+      };
 
   const withSearch = (
     where: Prisma.GenerationJobWhereInput,
@@ -290,6 +293,7 @@ export default async function AdminGenerationsPage({
             select: {
               email: true,
               nickname: true,
+              uid: true,
             },
           },
           videos: {

@@ -27,11 +27,14 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
+const mockEnv = vi.hoisted(() => ({
+  AUTH_SECRET: "unit-test-secret",
+  BUILTIN_PROVIDER_API_KEY: "site-secret-key",
+  CUSTOM_PROVIDER_ENABLED: true,
+}));
+
 vi.mock("@/lib/env", () => ({
-  getEnv: () => ({
-    AUTH_SECRET: "unit-test-secret",
-    BUILTIN_PROVIDER_API_KEY: "site-secret-key",
-  }),
+  getEnv: () => mockEnv,
 }));
 
 vi.mock("@/lib/providers/model-catalog", () => ({
@@ -112,5 +115,21 @@ describe("模型探测接口", () => {
     expect(response.status).toBe(400);
     expect(payload.error).toContain("自己的 API Key");
     expect(mockFetchOpenAICompatibleModelIds).not.toHaveBeenCalled();
+  });
+
+  it("站点关了自填渠道时普通用户不能探测任何地址", async () => {
+    mockEnv.CUSTOM_PROVIDER_ENABLED = false;
+    try {
+      const response = await POST(
+        new Request("http://localhost/api/provider-models/probe", {
+          method: "POST",
+          body: JSON.stringify({ apiKey: "sk-user", baseUrl: "https://example.com/v1" }),
+        }),
+      );
+      expect(response.status).toBe(403);
+      expect(mockFetchOpenAICompatibleModelIds).not.toHaveBeenCalled();
+    } finally {
+      mockEnv.CUSTOM_PROVIDER_ENABLED = true;
+    }
   });
 });

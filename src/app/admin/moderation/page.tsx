@@ -8,6 +8,7 @@ import { ModerationNavTabs } from "@/components/admin/moderation/moderation-nav-
 import { AdminPageHeader } from "@/components/admin/ui/admin-page-header";
 import { db } from "@/lib/db";
 import { requireAdminRecord } from "@/lib/server/current-user";
+import { exactUserWhere } from "@/lib/server/user-lookup";
 
 export const dynamic = "force-dynamic";
 
@@ -34,9 +35,11 @@ export default async function AdminModerationPage({
       : "";
   const search = typeof params.q === "string" ? params.q.trim() : "";
 
+  const exactUser = search ? await exactUserWhere(search) : null;
   const where: Prisma.ContentReviewWhereInput = {
     ...(kind ? { kind } : {}),
-    ...(search
+    ...(exactUser ? { user: { is: exactUser } } : {}),
+    ...(search && !exactUser
       ? {
           OR: [
             { prompt: { contains: search, mode: "insensitive" } },
@@ -71,7 +74,7 @@ export default async function AdminModerationPage({
         negativePrompt: true,
         prompt: true,
         user: {
-          select: { bannedAt: true, email: true, id: true, nickname: true },
+          select: { bannedAt: true, email: true, id: true, nickname: true, uid: true },
         },
       },
       skip: (page - 1) * PAGE_SIZE,
@@ -92,7 +95,7 @@ export default async function AdminModerationPage({
   const userIds = grouped.map((group) => group.userId);
   const users = userIds.length
     ? await db.user.findMany({
-        select: { bannedAt: true, email: true, id: true, nickname: true },
+        select: { bannedAt: true, email: true, id: true, nickname: true, uid: true },
         where: { id: { in: userIds } },
       })
     : [];
@@ -108,6 +111,7 @@ export default async function AdminModerationPage({
         email: user.email,
         lastTriggerAt: group._max.createdAt?.toISOString() ?? null,
         nickname: user.nickname,
+        uid: user.uid,
         userId: group.userId,
       };
     });
@@ -156,6 +160,7 @@ export default async function AdminModerationPage({
               email: review.user.email,
               id: review.user.id,
               nickname: review.user.nickname,
+              uid: review.user.uid,
             },
           }))}
         />

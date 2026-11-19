@@ -4,9 +4,10 @@ import { ArrowUpRight } from "lucide-react";
 import { FOOTER_CREATION_LINKS, FOOTER_EXPLORE_LINKS } from "./constants";
 import styles from "./homepage.module.css";
 
-type HomeFooterProps = { isAuthenticated: boolean };
+/** apiEnabled：站点 API 关着时不显示「开发者 API」入口 */
+type HomeFooterProps = { apiEnabled?: boolean; isAuthenticated: boolean };
 
-export function HomeFooter({ isAuthenticated }: HomeFooterProps) {
+export function HomeFooter({ apiEnabled = true, isAuthenticated }: HomeFooterProps) {
   return (
     <footer id="footer" className={styles.footer}>
       <div className={styles.container}>
@@ -25,7 +26,11 @@ export function HomeFooter({ isAuthenticated }: HomeFooterProps) {
               <ul>
                 <li><Link href="/works" prefetch={false}>个人作品{isAuthenticated ? "" : "（需登录）"}</Link></li>
                 <li><Link href="/settings" prefetch={false}>账户设置{isAuthenticated ? "" : "（需登录）"}</Link></li>
-                <li><Link href={isAuthenticated ? "/api-keys" : "/login"} prefetch={false}>{isAuthenticated ? "开发者 API" : "登录账号"}</Link></li>
+                {!isAuthenticated ? (
+                  <li><Link href="/login" prefetch={false}>登录账号</Link></li>
+                ) : apiEnabled ? (
+                  <li><Link href="/api-keys" prefetch={false}>开发者 API</Link></li>
+                ) : null}
               </ul>
             </div>
             <div>

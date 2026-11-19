@@ -1,7 +1,8 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-const mocks = vi.hoisted(() => ({ summary: vi.fn(), refresh: vi.fn(), pathname: vi.fn(() => "/") }));
+const mocks = vi.hoisted(() => ({ apiEnabled: vi.fn(async () => true), summary: vi.fn(), refresh: vi.fn(), pathname: vi.fn(() => "/") }));
+vi.mock("@/lib/api-config", () => ({ isApiEnabled: mocks.apiEnabled }));
 vi.mock("@/lib/benefits/config", () => ({ getCheckInSummary: mocks.summary }));
 vi.mock("next/navigation", () => ({ usePathname: mocks.pathname, useRouter: () => ({ refresh: mocks.refresh, push: vi.fn() }) }));
 
@@ -52,6 +53,14 @@ describe("homepage header variant and account behavior", () => {
     } else {
       expect(screen.getByRole("link", { name: "登录开启" })).toHaveAttribute("href", "/login");
     }
+  });
+
+  it("hides the API entry when the site API is switched off", async () => {
+    mocks.apiEnabled.mockResolvedValueOnce(false);
+    render(await SiteHeader({ currentUser: user, variant: "home", activeHref: "/" }));
+    const navigation = screen.getByRole("navigation", { name: "主导航" });
+    expect(within(navigation).queryByRole("link", { name: "API" })).toBeNull();
+    expect(within(navigation).getByRole("link", { name: "创作台" })).toHaveAttribute("href", "/create");
   });
 
   it("calls the existing real check-in/logout endpoints and real pet store, not decorative actions", async () => {
@@ -162,10 +171,17 @@ describe("truthful home footer", () => {
     expect(container.querySelector("footer")).toHaveAttribute("id", "footer");
     expect(screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(["创作空间", "工具与账户", "发现 Narra"]);
     const hrefs = screen.getAllByRole("link").map((link) => link.getAttribute("href"));
-    expect(hrefs).toEqual(expect.arrayContaining(["#hero", "/create", "/prompts", "/video", "/works", "/settings", "#capabilities", "#gallery", "https://github.com/0401lucky/narra-image"]));
+    expect(hrefs).toEqual(expect.arrayContaining(["#hero", "/create", "/prompts", "/video", "/works", "/settings", "#capabilities", "#gallery", "https://github.com/ShirahaTobisa/narra-image"]));
     expect(hrefs.includes("/api-keys")).toBe(isAuthenticated);
     expect(hrefs).not.toContain("#footer");
     expect(container.textContent).not.toMatch(/服务状态|版权保护|社区精选规范|Narra Film/);
     if (!isAuthenticated) expect(screen.getByRole("link", { name: "登录账号" })).toHaveAttribute("href", "/login");
+  });
+
+  it("hides the developer API link when the site API is switched off", () => {
+    render(<HomeFooter apiEnabled={false} isAuthenticated />);
+    const hrefs = screen.getAllByRole("link").map((link) => link.getAttribute("href"));
+    expect(hrefs).not.toContain("/api-keys");
+    expect(hrefs).not.toContain("/login");
   });
 });

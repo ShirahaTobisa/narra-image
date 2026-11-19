@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -106,6 +108,26 @@ func generateImages(ctx context.Context, storage *Storage, job GenerationJob, pr
 	return records, nil
 }
 
+// 站内渠道（站长自己的 key）出图时的两条保护，用户自填渠道用的是他自己的 key，保持原样：
+//  1. 每个请求带 safety_identifier（站内用户 ID 的 SHA-256，不暴露原 ID），
+//     违规时 OpenAI 可以只封这个用户，不连累整个账号；
+//  2. 不转发用户选的宽松审核档（moderation=low），一律用上游默认。
+func usesSiteChannel(job GenerationJob) bool {
+	return job.ProviderMode != "CUSTOM"
+}
+
+func safetyIdentifier(job GenerationJob) string {
+	sum := sha256.Sum256([]byte("narra-user:" + job.UserID))
+	return hex.EncodeToString(sum[:])
+}
+
+func requestedModeration(job GenerationJob) string {
+	if usesSiteChannel(job) || job.Moderation == "auto" {
+		return ""
+	}
+	return job.Moderation
+}
+
 func generateWithImageGeneration(ctx context.Context, job GenerationJob, provider ProviderConfig) (imagePayload, error) {
 	body := map[string]any{
 		"model":  job.Model,
@@ -114,8 +136,11 @@ func generateWithImageGeneration(ctx context.Context, job GenerationJob, provide
 		"size":   job.Size,
 	}
 	addOutputOptions(body, job)
-	if job.Moderation != "" && job.Moderation != "auto" {
-		body["moderation"] = job.Moderation
+	if moderation := requestedModeration(job); moderation != "" {
+		body["moderation"] = moderation
+	}
+	if usesSiteChannel(job) {
+		body["safety_identifier"] = safetyIdentifier(job)
 	}
 	if job.NegativePrompt.Valid && strings.TrimSpace(job.NegativePrompt.String) != "" {
 		body["negative_prompt"] = job.NegativePrompt.String
@@ -153,6 +178,9 @@ func generateWithImageEdit(ctx context.Context, job GenerationJob, provider Prov
 	}
 	if job.Quality != "" && job.Quality != "auto" {
 		fields["quality"] = job.Quality
+	}
+	if usesSiteChannel(job) {
+		fields["safety_identifier"] = safetyIdentifier(job)
 	}
 	if job.OutputFormat != "" && job.OutputFormat != "png" {
 		fields["output_format"] = job.OutputFormat
@@ -232,8 +260,8 @@ func buildResponsesRequest(job GenerationJob, providerBaseURL string, sourceImag
 		"type": "image_generation",
 	}
 	addOutputOptions(tool, job)
-	if job.Moderation != "" && job.Moderation != "auto" {
-		tool["moderation"] = job.Moderation
+	if moderation := requestedModeration(job); moderation != "" {
+		tool["moderation"] = moderation
 	}
 	if useAnyrouterCompat {
 		tool["output_format"] = outputFormat(job)
@@ -246,6 +274,9 @@ func buildResponsesRequest(job GenerationJob, providerBaseURL string, sourceImag
 		"input": buildResponsesInput(job.Prompt, sourceImages, useAnyrouterCompat),
 		"model": job.Model,
 		"tools": []any{tool},
+	}
+	if usesSiteChannel(job) {
+		request["safety_identifier"] = safetyIdentifier(job)
 	}
 	if useAnyrouterCompat {
 		request["stream"] = true

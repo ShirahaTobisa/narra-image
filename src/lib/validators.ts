@@ -44,7 +44,8 @@ export const generationModerationSchema = z.enum(["auto", "low"]).default("auto"
 export const generationOutputCompressionSchema = z.number().int().min(0).max(100).optional().nullable();
 
 export const registerSchema = z.object({
-  email: z.email("请输入正确的邮箱"),
+  // .oauth 结尾是第三方登录用的占位邮箱，不许拿来注册，否则能抢注别人的 Discord 账号
+  email: z.email("请输入正确的邮箱").refine((email) => !/\.oauth$/i.test(email), "这个邮箱不能用来注册"),
   inviteCode: z.string().trim().default(""),
   password: z.string().min(8, "密码至少 8 位"),
   turnstileToken: z.string().optional(),
@@ -198,7 +199,6 @@ export const benefitConfigSchema = z.object({
 });
 
 export const profileUpdateSchema = z.object({
-  avatarUrl: z.string().url("头像地址格式不正确").optional().nullable(),
   nickname: z
     .string()
     .trim()

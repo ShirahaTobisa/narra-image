@@ -1,8 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockFetchPublicHttpUrl, mockGetCurrentUserRecord } = vi.hoisted(() => ({
+const { mockFetchPublicHttpUrl, mockFindOwnedVideo, mockGetCurrentUserRecord } = vi.hoisted(() => ({
   mockFetchPublicHttpUrl: vi.fn(),
+  mockFindOwnedVideo: vi.fn(),
   mockGetCurrentUserRecord: vi.fn(),
+}));
+
+vi.mock("@/lib/db", () => ({
+  db: { generatedVideo: { findFirst: mockFindOwnedVideo } },
 }));
 
 vi.mock("@/lib/server/current-user", () => ({
@@ -25,6 +30,17 @@ describe("视频代理接口", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetCurrentUserRecord.mockResolvedValue({ id: "user_1" });
+    mockFindOwnedVideo.mockResolvedValue({ id: "video_1" });
+  });
+
+  it("不是自己生成的视频一律不代理", async () => {
+    mockFindOwnedVideo.mockResolvedValue(null);
+    const response = await GET(proxyRequest());
+    expect(response.status).toBe(403);
+    expect(mockFindOwnedVideo).toHaveBeenCalledWith(expect.objectContaining({
+      where: { job: { userId: "user_1" }, url: "https://cdn.example.com/video.mp4" },
+    }));
+    expect(mockFetchPublicHttpUrl).not.toHaveBeenCalled();
   });
 
   it("校验 MP4 文件头并安全返回视频流", async () => {

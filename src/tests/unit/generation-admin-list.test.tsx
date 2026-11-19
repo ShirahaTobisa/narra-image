@@ -92,6 +92,7 @@ function createJob(input: Partial<GenerationAdminJob> = {}): GenerationAdminJob 
     user: {
       email: "admin-target@example.com",
       nickname: null,
+      uid: 1,
     },
     userId: "user_1",
     workerId: null,

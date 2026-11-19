@@ -6,7 +6,7 @@ import { getErrorMessage, jsonError, jsonOk, parseJsonBody } from "@/lib/server/
 import { inviteCreateSchema } from "@/lib/validators";
 
 function createInviteCode() {
-  return randomBytes(4).toString("hex").toUpperCase();
+  return randomBytes(8).toString("hex").toUpperCase();
 }
 
 export async function GET() {

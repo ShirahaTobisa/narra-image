@@ -82,7 +82,8 @@ export const PET_IDEAS = [
   "给画面留一处安静的呼吸空间。",
 ] as const;
 
-export const GITHUB_URL = "https://github.com/0401lucky/narra-image";
+// 本站运行的修改版源码（AGPL-3.0 要求向使用者公开）；原项目见仓库 README
+export const GITHUB_URL = "https://github.com/ShirahaTobisa/narra-image";
 
 export const FOOTER_CREATION_LINKS = [
   { href: "/create", label: "光影创作台" },

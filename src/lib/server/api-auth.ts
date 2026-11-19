@@ -2,6 +2,7 @@ import "server-only";
 
 import { after } from "next/server";
 
+import { isApiEnabled } from "@/lib/api-config";
 import { db } from "@/lib/db";
 import { ApiAuthError } from "@/lib/api-errors";
 import { hashApiKey } from "@/lib/api-keys";
@@ -26,6 +27,10 @@ function shouldWriteLastUsed(apiKeyId: string, now: number) {
 }
 
 export async function requireApiUser(request: Request) {
+  // 后台关了 API 就在最前面拒绝，免得关着还去下载请求里的图片
+  if (!(await isApiEnabled())) {
+    throw new ApiAuthError("站点 API 当前已关闭");
+  }
   const token = readBearerToken(request);
   if (!token) {
     throw new ApiAuthError("缺少 Authorization: Bearer API_KEY");
@@ -39,6 +44,7 @@ export async function requireApiUser(request: Request) {
       user: {
         select: {
           avatarUrl: true,
+          bannedAt: true,
           credits: true,
           email: true,
           id: true,
@@ -49,7 +55,7 @@ export async function requireApiUser(request: Request) {
     },
   });
 
-  if (!apiKey || apiKey.revokedAt) {
+  if (!apiKey || apiKey.revokedAt || apiKey.user.bannedAt) {
     throw new ApiAuthError("API Key 无效或已停用");
   }
 

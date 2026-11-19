@@ -4,6 +4,7 @@ import { AlertTriangle, Ban, Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
+import { UserUid } from "@/components/user-uid";
 import { cn } from "@/lib/utils";
 import { useAdminToast } from "./hooks/use-admin-toast";
 import { AdminConfirmDialog } from "./ui/admin-modal";
@@ -14,6 +15,7 @@ type ReviewUser = {
   email: string;
   id: string;
   nickname: string | null;
+  uid: number;
 };
 
 type ModerationReview = {
@@ -35,6 +37,7 @@ type Offender = {
   email: string;
   lastTriggerAt: string | null;
   nickname: string | null;
+  uid: number;
   userId: string;
 };
 
@@ -174,6 +177,7 @@ export function ModerationReviewsBoard({
                     <tr key={offender.userId} className="transition-colors hover:bg-[#faf6ee]/80">
                       <td className="px-4 py-3">
                         <div className="font-medium text-[var(--ink)]">
+                          <UserUid uid={offender.uid} />
                           {offender.nickname?.trim() || offender.email}
                         </div>
                         {offender.nickname?.trim() ? (
@@ -256,7 +260,7 @@ export function ModerationReviewsBoard({
                 type="text"
                 value={searchValue}
                 onChange={(event) => setSearchValue(event.target.value)}
-                placeholder="搜索提示词、命中词或用户邮箱…"
+                placeholder="搜索 #编号、提示词、命中词或用户邮箱…"
                 className="w-full rounded-xl border border-[var(--admin-line)] bg-white py-2 pr-8 pl-9 text-xs text-[var(--ink)] outline-none sm:text-sm"
               />
               {searchValue ? (
@@ -336,7 +340,8 @@ export function ModerationReviewsBoard({
 
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--ink-soft)]">
                   <span className="truncate">
-                    触发用户：{review.user.nickname?.trim() ? `${review.user.nickname} (${review.user.email})` : review.user.email}
+                    触发用户：<UserUid uid={review.user.uid} />
+                    {review.user.nickname?.trim() ? `${review.user.nickname} (${review.user.email})` : review.user.email}
                   </span>
                   {review.aiModel ? (
                     <span className="font-mono text-[11px]">审核模型：{review.aiModel}</span>

@@ -43,6 +43,8 @@ type AdvancedSettingsProps = {
   onChangeModel: (model: string) => void;
   providerMode: ProviderSelectionMode;
   onChangeProviderMode: (mode: ProviderSelectionMode) => void;
+  /** 站点关了自填渠道时不显示"渠道来源"这一块 */
+  allowCustomProvider: boolean;
   customProvider: CustomProviderDraft;
   onChangeCustomProvider: (provider: CustomProviderDraft) => void;
   customModelOptions: string[];
@@ -81,6 +83,7 @@ export function AdvancedSettings({
   onChangeModel,
   providerMode,
   onChangeProviderMode,
+  allowCustomProvider,
   customProvider,
   onChangeCustomProvider,
   customModelOptions,
@@ -109,6 +112,7 @@ export function AdvancedSettings({
           transition={{ duration: 0.2, ease: "easeOut" }}
           className="max-h-[42vh] overflow-y-auto md:max-h-[42vh] max-md:max-h-none max-md:overflow-visible rounded-b-[1.25rem] border-t border-[var(--line)]/50 bg-[var(--surface)]/50 p-3 sm:max-h-[52vh] sm:rounded-b-[2rem] sm:p-5"
         >
+          {allowCustomProvider && (
           <section className="mb-4 rounded-2xl border border-[var(--line)]/70 bg-[#fffaf2]/58 p-3 shadow-sm sm:p-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
@@ -251,6 +255,7 @@ export function AdvancedSettings({
               </div>
             )}
           </section>
+          )}
 
           <div className="grid gap-4 md:grid-cols-2 md:gap-6">
             <div className="space-y-3 sm:space-y-4">

@@ -1,3 +1,4 @@
+import { db } from "@/lib/db";
 import { getCurrentUserRecord } from "@/lib/server/current-user";
 import { getErrorMessage } from "@/lib/server/http";
 import { fetchPublicHttpUrl } from "@/lib/server/safe-remote-url";
@@ -77,6 +78,15 @@ export async function GET(request: Request) {
     const videoUrl = new URL(request.url).searchParams.get("url");
     if (!videoUrl) {
       return new Response("Missing url parameter", { status: 400 });
+    }
+
+    // 只代理自己生成的视频，防止被当成通用下载器
+    const owned = await db.generatedVideo.findFirst({
+      where: { job: { userId: user.id }, url: videoUrl },
+      select: { id: true },
+    });
+    if (!owned) {
+      return new Response("只能下载自己生成的视频", { status: 403 });
     }
 
     const upstream = await fetchPublicHttpUrl(videoUrl, {

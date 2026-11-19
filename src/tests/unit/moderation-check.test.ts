@@ -2,10 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { mockDb, mockResolveConfig, mockMatchWords } = vi.hoisted(() => {
   const contentReview = { create: vi.fn() };
+  const generationJob = { count: vi.fn() };
   const resolveConfig = vi.fn();
   const matchWords = vi.fn();
   return {
-    mockDb: { contentReview },
+    mockDb: { contentReview, generationJob },
     mockMatchWords: matchWords,
     mockResolveConfig: resolveConfig,
   };
@@ -20,7 +21,11 @@ vi.mock("@/lib/moderation/sensitive-words", () => ({
   matchSensitiveWords: mockMatchWords,
 }));
 
-import { checkGenerationInput } from "@/lib/moderation/check";
+import {
+  checkGenerationInput,
+  MODERATION_UNAVAILABLE_MESSAGE,
+  PROVIDER_COOLDOWN_MESSAGE,
+} from "@/lib/moderation/check";
 
 function baseConfig(overrides: Record<string, unknown> = {}) {
   return {
@@ -35,10 +40,25 @@ function baseConfig(overrides: Record<string, unknown> = {}) {
   };
 }
 
+const aiConfig = () =>
+  baseConfig({ aiApiKey: "key", aiBaseUrl: "https://x/v1", aiEnabled: true, aiModel: "omni-moderation-latest" });
+
+function mockModerationResponse(results: unknown[]) {
+  global.fetch = vi.fn().mockResolvedValue({ json: async () => ({ results }), ok: true });
+}
+
+function sentModerationBody() {
+  const [, init] = vi.mocked(global.fetch).mock.calls[0] as [string, RequestInit];
+  return JSON.parse(String(init.body)) as { input: unknown; model?: string };
+}
+
 describe("内容审核 checkGenerationInput", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.restoreAllMocks();
+    global.fetch = vi.fn();
+    mockMatchWords.mockReturnValue([]);
+    mockDb.generationJob.count.mockResolvedValue(0);
   });
 
   it("审核未启用时直接放行", async () => {
@@ -80,13 +100,7 @@ describe("内容审核 checkGenerationInput", () => {
     mockResolveConfig.mockResolvedValue(
       baseConfig({ aiApiKey: "key", aiBaseUrl: "https://x/v1", aiEnabled: true }),
     );
-    mockMatchWords.mockReturnValue([]);
-    global.fetch = vi.fn().mockResolvedValue({
-      json: async () => ({
-        results: [{ category_scores: { sexual: 0.9, hate: 0.1 }, flagged: false }],
-      }),
-      ok: true,
-    });
+    mockModerationResponse([{ category_scores: { sexual: 0.9, hate: 0.1 }, flagged: false }]);
 
     const result = await checkGenerationInput({ prompt: "some prompt", userId: "u1" });
 
@@ -105,16 +119,8 @@ describe("内容审核 checkGenerationInput", () => {
   });
 
   it("AI 判定通过时放行", async () => {
-    mockResolveConfig.mockResolvedValue(
-      baseConfig({ aiApiKey: "key", aiBaseUrl: "https://x/v1", aiEnabled: true }),
-    );
-    mockMatchWords.mockReturnValue([]);
-    global.fetch = vi.fn().mockResolvedValue({
-      json: async () => ({
-        results: [{ category_scores: { sexual: 0.1 }, flagged: false }],
-      }),
-      ok: true,
-    });
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    mockModerationResponse([{ category_scores: { sexual: 0.1 }, flagged: false }]);
 
     const result = await checkGenerationInput({ prompt: "a cute cat", userId: "u1" });
 
@@ -122,37 +128,120 @@ describe("内容审核 checkGenerationInput", () => {
     expect(mockDb.contentReview.create).not.toHaveBeenCalled();
   });
 
-  it("AI 审核异常时放行并记录告警（降级）", async () => {
-    mockResolveConfig.mockResolvedValue(
-      baseConfig({ aiApiKey: "key", aiBaseUrl: "https://x/v1", aiEnabled: true }),
-    );
-    mockMatchWords.mockReturnValue([]);
+  it("AI 审核异常时拒绝本次生成（不放行、不当违规记录）", async () => {
+    mockResolveConfig.mockResolvedValue(aiConfig());
     global.fetch = vi.fn().mockRejectedValue(new Error("timeout"));
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const result = await checkGenerationInput({ prompt: "ok prompt", userId: "u1" });
 
-    expect(result.allowed).toBe(true);
+    expect(result).toEqual({ allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE });
     expect(mockDb.contentReview.create).not.toHaveBeenCalled();
-    expect(warnSpy).toHaveBeenCalled();
-    warnSpy.mockRestore();
+    expect(errorSpy).toHaveBeenCalled();
   });
 
-  it("AI 未配置端点时跳过 AI（不调用 fetch）", async () => {
+  it("审核接口返回空结果时拒绝，不当成通过", async () => {
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    mockModerationResponse([]);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const result = await checkGenerationInput({ prompt: "ok prompt", userId: "u1" });
+
+    expect(result).toEqual({ allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE });
+  });
+
+  it("AI 审核已开启但没配接口地址或密钥时拒绝（不调用接口）", async () => {
     mockResolveConfig.mockResolvedValue(
       baseConfig({ aiApiKey: null, aiBaseUrl: null, aiEnabled: true }),
     );
-    mockMatchWords.mockReturnValue([]);
+    vi.spyOn(console, "error").mockImplementation(() => {});
 
     const result = await checkGenerationInput({ prompt: "ok prompt", userId: "u1" });
 
-    expect(result.allowed).toBe(true);
+    expect(result).toEqual({ allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE });
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("参考图和提示词一起送审", async () => {
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    mockModerationResponse([{ category_scores: { sexual: 0.01 }, flagged: false }]);
+
+    const result = await checkGenerationInput({
+      images: [{ data: Buffer.from("png"), mimeType: "image/png" }],
+      prompt: "make it blue",
+      userId: "u1",
+    });
+
+    expect(result.allowed).toBe(true);
+    expect(sentModerationBody()).toEqual({
+      input: [
+        { text: "make it blue", type: "text" },
+        { image_url: { url: "data:image/png;base64,cG5n" }, type: "image_url" },
+      ],
+      model: "omni-moderation-latest",
+    });
+  });
+
+  it("只有参考图、没有提示词时也会审图", async () => {
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    mockModerationResponse([{ category_scores: { sexual: 0.97 }, flagged: true }]);
+
+    const result = await checkGenerationInput({
+      images: [{ data: Buffer.from("png"), mimeType: "image/png" }],
+      prompt: "",
+      userId: "u1",
+    });
+
+    expect(result.allowed).toBe(false);
+    expect(sentModerationBody().input).toEqual([
+      { image_url: { url: "data:image/png;base64,cG5n" }, type: "image_url" },
+    ]);
+  });
+
+  it("涉及未成年人的分数超过 0.02 就拒，即使没标记、也低于通用阈值", async () => {
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    mockModerationResponse([
+      { category_scores: { sexual: 0.2, "sexual/minors": 0.03 }, flagged: false },
+    ]);
+
+    const result = await checkGenerationInput({ prompt: "borderline", userId: "u1" });
+
+    expect(result.allowed).toBe(false);
+    expect(mockDb.contentReview.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ aiScore: 0.03, category: "sexual/minors" }),
+    });
+  });
+
+  it("站内渠道 24 小时内被上游拦截达到 3 次时暂停，不再送审", async () => {
+    mockDb.generationJob.count.mockResolvedValue(3);
+
+    const result = await checkGenerationInput({ builtIn: true, prompt: "a cat", userId: "u1" });
+
+    expect(result).toEqual({ allowed: false, message: PROVIDER_COOLDOWN_MESSAGE });
+    expect(mockDb.generationJob.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({ providerMode: "BUILT_IN", status: "FAILED", userId: "u1" }),
+    });
+    expect(mockResolveConfig).not.toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("站内渠道拦截次数未到上限时照常审核；自填渠道不查拦截次数", async () => {
+    mockResolveConfig.mockResolvedValue(baseConfig({ isEnabled: false }));
+    mockDb.generationJob.count.mockResolvedValue(2);
+
+    await expect(
+      checkGenerationInput({ builtIn: true, prompt: "a cat", userId: "u1" }),
+    ).resolves.toEqual({ allowed: true });
+    expect(mockDb.generationJob.count).toHaveBeenCalledTimes(1);
+
+    await expect(
+      checkGenerationInput({ builtIn: false, prompt: "a cat", userId: "u1" }),
+    ).resolves.toEqual({ allowed: true });
+    expect(mockDb.generationJob.count).toHaveBeenCalledTimes(1);
   });
 
   it("均未命中时放行且不记录", async () => {
     mockResolveConfig.mockResolvedValue(baseConfig());
-    mockMatchWords.mockReturnValue([]);
 
     const result = await checkGenerationInput({ prompt: "a cute cat", userId: "u1" });
 

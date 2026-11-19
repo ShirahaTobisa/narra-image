@@ -102,6 +102,8 @@ enum CanvasDeleteOutcome {
 
 model User {
   id                   String               @id @default(cuid())
+  /// 给人看的数字编号（后台、个人设置里显示成 #12），按注册先后递增
+  uid                  Int                  @unique @default(autoincrement())
   email                String               @unique
   passwordHash         String?
   nickname             String?
@@ -270,12 +272,14 @@ model PromptLibraryItem {
 }
 
 model OAuthProvider {
-  id           String   @id @default(cuid())
-  type         String   @unique
-  displayName  String
-  clientId     String
-  clientSecret String
-  isEnabled    Boolean  @default(false)
+  id             String   @id @default(cuid())
+  type           String   @unique
+  displayName    String
+  clientId       String
+  clientSecret   String
+  /// 仅 Discord：填了就只放该服务器成员登录（且免邀请码），为空则新用户照常要邀请码
+  allowedGuildId String?
+  isEnabled      Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }

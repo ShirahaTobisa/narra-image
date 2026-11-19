@@ -81,7 +81,7 @@ export function GenerationSearchBar({
           <input
             value={value}
             onChange={(event) => setValue(event.target.value)}
-            placeholder="搜索用户昵称、邮箱、任务 ID、提示词或模型…"
+            placeholder="搜索 #编号、用户昵称、邮箱、任务 ID、提示词或模型…"
             className="w-full rounded-xl border border-[var(--admin-line)] bg-white py-2.5 pr-9 pl-10 text-sm outline-none"
           />
           {value ? (

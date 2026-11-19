@@ -11,6 +11,7 @@ import {
 import { db } from "@/lib/db";
 import { fromPrismaRole } from "@/lib/prisma-mappers";
 import { requireAdminRecord } from "@/lib/server/current-user";
+import { exactUserWhere } from "@/lib/server/user-lookup";
 
 export const dynamic = "force-dynamic";
 
@@ -44,8 +45,10 @@ export default async function AdminUsersPage({
   const view: UsersFilterState["view"] =
     params.view === "card" ? "card" : "table";
 
+  const exactUser = q ? await exactUserWhere(q) : null;
   const where: Prisma.UserWhereInput = {
-    ...(q
+    ...exactUser,
+    ...(q && !exactUser
       ? {
           OR: [
             { id: { contains: q, mode: "insensitive" } },
@@ -88,6 +91,7 @@ export default async function AdminUsersPage({
           nickname: true,
           oauthProvider: true,
           role: true,
+          uid: true,
         },
         skip: (page - 1) * PAGE_SIZE,
         take: PAGE_SIZE,
@@ -112,6 +116,7 @@ export default async function AdminUsersPage({
     nickname: user.nickname,
     oauthProvider: user.oauthProvider,
     role: fromPrismaRole(user.role),
+    uid: user.uid,
   }));
 
   const extraParams: Record<string, string> = {};

@@ -75,6 +75,7 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
         <GeneratorStudio
           ownerId={user.id}
           canvasEnabled={getEnv().CANVAS_ENABLED}
+          customProviderEnabled={getEnv().CUSTOM_PROVIDER_ENABLED}
           checkInSummary={checkInSummary}
           currentUser={currentUser}
           initialPrompt={initialPrompt}

@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { fromPrismaRole } from "@/lib/prisma-mappers";
 import { requireAdminRecord } from "@/lib/server/current-user";
 import { getErrorMessage, jsonError, jsonOk } from "@/lib/server/http";
+import { openAiSafetyIdentifier } from "@/lib/server/user-lookup";
 import { imageAvailabilityInclude } from "@/lib/storage/image-availability";
 import { presentGenerationImage } from "@/lib/storage/image-presentation";
 
@@ -94,6 +95,7 @@ export async function GET(
           take: 8,
         },
         role: true,
+        uid: true,
       },
       where: { id },
     });
@@ -159,6 +161,8 @@ export async function GET(
           rewardCredits: r.rewardCredits,
         })),
         role: fromPrismaRole(record.role),
+        safetyIdentifier: openAiSafetyIdentifier(record.id),
+        uid: record.uid,
       },
     });
   } catch (error) {

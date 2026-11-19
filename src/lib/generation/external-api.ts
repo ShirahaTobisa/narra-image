@@ -12,6 +12,7 @@ import { assertApiRateLimit } from "@/lib/api-config";
 import { ApiTimeoutError } from "@/lib/api-errors";
 import { persistGeneratedImage } from "@/lib/storage/persist-generated-image";
 import { failGenerationJobAndRefund } from "@/lib/generation/job-refund";
+import { assertExternalGenerationAllowed } from "@/lib/moderation/check";
 import type { ImageReservation } from "@/lib/storage/image-contract";
 import { bindManagedImageOutputs, closeManagedImageReservation, reserveManagedImageOutputs } from "@/lib/storage/managed-image-storage";
 import {
@@ -180,6 +181,7 @@ export async function runExternalGeneration({
   let outputReservation: ImageReservation | null = null;
   const reservedJobId = randomUUID();
   await assertApiRateLimit(apiKeyId);
+  await assertExternalGenerationAllowed(user.id, input);
 
   const env = getEnv();
   const requestedModel = input.model?.trim() || env.BUILTIN_PROVIDER_MODEL;

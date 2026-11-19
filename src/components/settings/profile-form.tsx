@@ -5,6 +5,8 @@ import { useState, useRef } from "react";
 import { Camera, Save, Loader2, User, Sparkles } from "lucide-react";
 
 import { RedeemCodeForm } from "@/components/settings/redeem-code-form";
+import { UserUid } from "@/components/user-uid";
+import { OAUTH_PROVIDER_LABELS } from "@/lib/constants";
 
 type ProfileFormProps = {
   user: {
@@ -14,10 +16,12 @@ type ProfileFormProps = {
     avatarUrl: string | null;
     credits: number;
     role: "user" | "admin";
+    uid: number | null;
   };
   oauthProvider: string | null;
   hasPassword: boolean;
-  linuxdoEnabled: boolean;
+  /** 已启用、可以绑定的登录源 */
+  oauthProviders: Array<{ type: string; displayName: string }>;
   queryNotice: { hint: "linked" | "error"; message: string } | null;
 };
 
@@ -25,9 +29,10 @@ export function ProfileForm({
   user,
   oauthProvider,
   hasPassword,
-  linuxdoEnabled,
+  oauthProviders,
   queryNotice,
 }: ProfileFormProps) {
+  const linkedLabel = oauthProvider ? OAUTH_PROVIDER_LABELS[oauthProvider] ?? null : null;
   const [nickname, setNickname] = useState(user.nickname ?? "");
   const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl);
   const [credits, setCredits] = useState(user.credits);
@@ -95,7 +100,7 @@ export function ProfileForm({
     setUnlinkError(null);
     setUnlinking(true);
     try {
-      const res = await fetch("/api/me/oauth/linuxdo/unlink", {
+      const res = await fetch(`/api/me/oauth/${oauthProvider}/unlink`, {
         method: "POST",
       });
       const json = (await res.json().catch(() => ({}))) as { error?: string };
@@ -165,6 +170,7 @@ export function ProfileForm({
                 {displayName}
               </p>
               <p className="mt-1 text-sm text-[var(--ink-soft)]">
+                <UserUid uid={user.uid} />
                 {user.email}
               </p>
               {user.role === "admin" && (
@@ -195,13 +201,13 @@ export function ProfileForm({
             </p>
           ) : null}
 
-          {oauthProvider === "linuxdo" ? (
+          {linkedLabel ? (
             hasPassword ? (
               <div className="mt-4 flex items-center justify-between gap-2 rounded-2xl border border-[var(--line)] bg-[var(--surface-strong)]/40 px-4 py-3">
                 <div>
-                  <p className="text-sm font-medium text-[var(--ink)]">LinuxDo</p>
+                  <p className="text-sm font-medium text-[var(--ink)]">{linkedLabel}</p>
                   <p className="mt-0.5 text-xs text-[var(--ink-soft)]">
-                    可通过 LinuxDo 直接登录
+                    可通过 {linkedLabel} 直接登录
                   </p>
                 </div>
                 <button
@@ -214,20 +220,25 @@ export function ProfileForm({
               </div>
             ) : (
               <div className="mt-4 rounded-2xl border border-[var(--line)] bg-[var(--surface-strong)]/40 px-4 py-3">
-                <p className="text-sm font-medium text-[var(--ink)]">LinuxDo</p>
+                <p className="text-sm font-medium text-[var(--ink)]">{linkedLabel}</p>
                 <p className="mt-0.5 text-xs text-[var(--ink-soft)]">
-                  该账号仅通过 LinuxDo 登录，解绑需先设置密码。
+                  该账号仅通过 {linkedLabel} 登录，解绑需先设置密码。
                 </p>
               </div>
             )
-          ) : linuxdoEnabled ? (
-            <a
-              href="/api/auth/oauth/linuxdo"
-              className="mt-4 inline-flex items-center justify-center gap-2 rounded-full bg-[var(--ink)] px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5 hover:bg-[var(--accent)]"
-            >
-              <Sparkles className="size-4" />
-              绑定 LinuxDo
-            </a>
+          ) : oauthProviders.length > 0 ? (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {oauthProviders.map((provider) => (
+                <a
+                  key={provider.type}
+                  href={`/api/auth/oauth/${provider.type}`}
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-[var(--ink)] px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5 hover:bg-[var(--accent)]"
+                >
+                  <Sparkles className="size-4" />
+                  绑定 {provider.displayName}
+                </a>
+              ))}
+            </div>
           ) : (
             <p className="mt-4 text-xs text-[var(--ink-soft)]">
               第三方登录暂未启用。
@@ -354,7 +365,7 @@ export function ProfileForm({
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-0.5 size-1.5 shrink-0 rounded-full bg-[var(--accent)]" />
-              文件大小不超过 2MB
+              文件大小不超过 200KB
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-0.5 size-1.5 shrink-0 rounded-full bg-[var(--accent)]" />
@@ -373,9 +384,9 @@ export function ProfileForm({
             className="studio-card w-full max-w-md rounded-[1.8rem] p-6"
             onClick={(event) => event.stopPropagation()}
           >
-            <h3 className="text-lg font-semibold text-[var(--ink)]">解绑 LinuxDo</h3>
+            <h3 className="text-lg font-semibold text-[var(--ink)]">解绑 {linkedLabel}</h3>
             <p className="mt-2 text-sm leading-relaxed text-[var(--ink-soft)]">
-              解绑后将无法再通过 LinuxDo 登录本账号。积分、作品等数据不受影响。
+              解绑后将无法再通过 {linkedLabel} 登录本账号。积分、作品等数据不受影响。
             </p>
             {unlinkError ? (
               <p className="mt-3 text-sm text-rose-600">{unlinkError}</p>

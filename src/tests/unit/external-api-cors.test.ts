@@ -106,7 +106,34 @@ describe("公开 API 跨域访问", () => {
     "/images/private",
   ])("%s 保留网站接口的跨域边界", (path) => {
     expect(isExternalApiPath(path)).toBe(false);
-    expect(unstable_doesMiddlewareMatch({ config, nextConfig: {}, url: path })).toBe(false);
+    // /api 会进中间件做跨站提交检查，但不会加开放跨域的响应头
+    expect(unstable_doesMiddlewareMatch({ config, nextConfig: {}, url: path })).toBe(path.startsWith("/api/"));
+  });
+});
+
+describe("站内接口拒绝跨站提交", () => {
+  const send = (method: string, requestOrigin?: string) => proxy(new NextRequest(
+    "https://app.example.test/api/auth/login",
+    { method, headers: requestOrigin ? { origin: requestOrigin } : {} },
+  ));
+
+  beforeEach(() => {
+    mockGetEnv.mockReturnValue({ IMAGE_STORAGE_MANAGED_ENABLED: false, APP_URL: "https://app.example.test" });
+  });
+
+  it("别的网站发来的改数据请求一律拒绝", async () => {
+    for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
+      const response = send(method, "https://evil.example.test");
+      expect(response.status).toBe(403);
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    }
+    expect(send("POST", "null").status).toBe(403);
+  });
+
+  it("本站页面、不带 Origin 的请求和只读请求照常放行", () => {
+    expect(send("POST", "https://app.example.test").headers.get("x-middleware-next")).toBe("1");
+    expect(send("POST").headers.get("x-middleware-next")).toBe("1");
+    expect(send("GET", "https://evil.example.test").headers.get("x-middleware-next")).toBe("1");
   });
 });
 

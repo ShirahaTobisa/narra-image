@@ -147,7 +147,7 @@ describe("LinuxDo OAuth 用户处理", () => {
     });
 
     expect(mockDb.user.findUnique).toHaveBeenCalledWith({
-      select: { bannedAt: true, id: true, nickname: true },
+      select: { bannedAt: true, id: true, nickname: true, oauthId: true, passwordHash: true },
       where: { email: "tester@linuxdo.oauth" },
     });
     expect(mockDb.user.update).toHaveBeenCalledWith({
@@ -172,6 +172,20 @@ describe("LinuxDo OAuth 用户处理", () => {
     expect(mockDb.$transaction).not.toHaveBeenCalled();
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.user.id).toBe("user-2");
+  });
+
+  it.each([
+    ["有密码（可能是抢注的占位邮箱）", { passwordHash: "hash", oauthId: null }],
+    ["已绑着别的第三方号（改名前的旧用户名）", { passwordHash: null, oauthId: "12" }],
+  ])("占位邮箱对应的账号%s时不绑定、不接管", async (_label, owner) => {
+    mockDb.user.findFirst.mockResolvedValue(null);
+    mockDb.user.findUnique.mockResolvedValue({ bannedAt: null, id: "victim", nickname: null, ...owner });
+
+    const result = await findOrCreateOAuthUser({ ldUser: { ...baseLdUser, id: 99 } });
+
+    expect(result).toEqual({ ok: false, reason: "conflict" });
+    expect(mockDb.user.update).not.toHaveBeenCalled();
+    expect(mockDb.user.create).not.toHaveBeenCalled();
   });
 
   it("全新用户未提供邀请码时返回 invite_required", async () => {

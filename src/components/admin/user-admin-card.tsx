@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { CreditAdjuster } from "@/components/admin/admin-actions";
+import { UserUid } from "@/components/user-uid";
+import { OAUTH_PROVIDER_LABELS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { useAdminToast } from "./hooks/use-admin-toast";
 import { AdminConfirmDialog } from "./ui/admin-modal";
@@ -20,6 +22,7 @@ export type AdminUserCardData = {
   nickname: string | null;
   oauthProvider?: string | null;
   role: "admin" | "user";
+  uid: number;
 };
 
 type UserAdminCardProps = {
@@ -147,7 +150,7 @@ export function UserAdminCard({
             </span>
             {user.oauthProvider ? (
               <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700">
-                {user.oauthProvider === "linuxdo" ? "LinuxDo" : user.oauthProvider}
+                {OAUTH_PROVIDER_LABELS[user.oauthProvider] ?? user.oauthProvider}
               </span>
             ) : null}
             {user.banned ? (
@@ -164,6 +167,7 @@ export function UserAdminCard({
 
           <div className="mt-2 flex items-center gap-2">
             <h2 className="truncate text-base font-semibold text-[var(--ink)]">
+              <UserUid uid={user.uid} />
               {user.nickname?.trim() || user.email}
             </h2>
           </div>

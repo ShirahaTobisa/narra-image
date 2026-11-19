@@ -24,7 +24,7 @@ describe("后台生成记录搜索栏", () => {
     render(<GenerationSearchBar initialValue="" view="list" />);
 
     await user.type(
-      screen.getByPlaceholderText("搜索用户昵称、邮箱、任务 ID、提示词或模型…"),
+      screen.getByPlaceholderText("搜索 #编号、用户昵称、邮箱、任务 ID、提示词或模型…"),
       "alice@example.com",
     );
     await user.click(screen.getByRole("button", { name: "搜索" }));

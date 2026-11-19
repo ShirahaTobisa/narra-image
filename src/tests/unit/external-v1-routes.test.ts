@@ -213,12 +213,13 @@ describe("OpenAI 兼容外部 API", () => {
     );
   });
 
-  it("/v1/images/generations 内容审核命中时返回 OpenAI 错误且不生成", async () => {
-    mockCheckGenerationInput.mockReset();
-    mockCheckGenerationInput.mockResolvedValueOnce({
-      allowed: false,
-      message: "提交内容包含违规描述，已拒绝生成",
-    });
+  it("/v1/images/generations 内容审核拒绝时返回 OpenAI 错误（审核在共用出图函数里做）", async () => {
+    mockRunExternalGeneration.mockRejectedValueOnce(
+      Object.assign(new Error("提交内容包含违规描述，已拒绝生成"), {
+        code: "content_policy_violation",
+        status: 400,
+      }),
+    );
 
     const response = await imagePost(
       jsonRequest("/v1/images/generations", {
@@ -230,11 +231,10 @@ describe("OpenAI 兼容外部 API", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
       error: expect.objectContaining({
+        code: "content_policy_violation",
         message: "提交内容包含违规描述，已拒绝生成",
       }),
     });
-    expect(mockRunExternalGeneration).not.toHaveBeenCalled();
-    expect(mockRunViaGateway).not.toHaveBeenCalled();
   });
 
   it("/v1/images/generations 支持 Cherry Studio 常用的 b64_json 返回", async () => {

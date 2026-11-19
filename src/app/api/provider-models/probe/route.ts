@@ -24,6 +24,9 @@ export async function POST(request: Request) {
     const env = getEnv();
     let apiKey = body.apiKey?.trim() || "";
     let baseUrl = body.baseUrl;
+    if (!body.channelId && !env.CUSTOM_PROVIDER_ENABLED) {
+      return jsonError("本站暂不支持自填 API", 403);
+    }
 
     if (body.channelId) {
       await requireAdminRecord();

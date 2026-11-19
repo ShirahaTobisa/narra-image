@@ -19,7 +19,8 @@ export async function POST(request: Request) {
     const env = getEnv();
     const bootstrapInviteCode = env.BOOTSTRAP_INVITE_CODE?.trim();
 
-    if (bootstrapInviteCode) {
+    // 引导邀请码只在还没有管理员时补建，否则"清理已用邀请码"后它又能被用一次
+    if (bootstrapInviteCode && (await db.user.count({ where: { role: Role.ADMIN } })) === 0) {
       await db.inviteCode.upsert({
         where: {
           code: bootstrapInviteCode,
@@ -30,6 +31,14 @@ export async function POST(request: Request) {
           note: "初始管理员邀请码",
         },
       });
+    }
+
+    // 先确认邀请码能用再算 bcrypt：没邀请码的请求既探不出邮箱是否注册过，也白耗不了 CPU
+    const invite = body.inviteCode
+      ? await db.inviteCode.findUnique({ where: { code: body.inviteCode }, select: { usedAt: true } })
+      : null;
+    if (!invite || invite.usedAt) {
+      return jsonError("邀请码已失效", 400);
     }
 
     // bcrypt 约需上百毫秒，先在事务外算好，避免拉长事务持锁时间

@@ -18,7 +18,6 @@ export async function PATCH(request: Request) {
       where: { id: user.id },
       data: {
         ...(parsed.nickname !== undefined && { nickname: parsed.nickname }),
-        ...(parsed.avatarUrl !== undefined && { avatarUrl: parsed.avatarUrl }),
       },
       select: {
         avatarUrl: true,
@@ -27,6 +26,7 @@ export async function PATCH(request: Request) {
         id: true,
         nickname: true,
         role: true,
+        uid: true,
       },
     });
 

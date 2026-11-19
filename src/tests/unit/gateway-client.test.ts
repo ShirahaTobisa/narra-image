@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   mockAssertApiRateLimit,
+  mockAssertModeration,
   mockFindUnique,
   mockGetEnv,
   mockGetGenerationChannelForModel,
@@ -12,6 +13,7 @@ const {
   mockUpdateMany,
 } = vi.hoisted(() => ({
   mockAssertApiRateLimit: vi.fn(),
+  mockAssertModeration: vi.fn(),
   mockFindUnique: vi.fn(),
   mockGetEnv: vi.fn(),
   mockGetGenerationChannelForModel: vi.fn(),
@@ -22,6 +24,10 @@ const {
 
 vi.mock("@/lib/api-config", () => ({
   assertApiRateLimit: mockAssertApiRateLimit,
+}));
+
+vi.mock("@/lib/moderation/check", () => ({
+  assertExternalGenerationAllowed: mockAssertModeration,
 }));
 
 vi.mock("@/lib/env", () => ({
@@ -93,6 +99,7 @@ describe("gateway-client", () => {
   beforeEach(() => {
     setupEnv();
     mockAssertApiRateLimit.mockReset().mockResolvedValue(undefined);
+    mockAssertModeration.mockReset().mockResolvedValue(undefined);
     mockGetEnv.mockClear();
     mockFindUnique.mockReset().mockResolvedValue(null);
     mockIncrementUpdate.mockReset().mockResolvedValue({ id: "user_1" });
@@ -119,6 +126,36 @@ describe("gateway-client", () => {
     expect(isGatewayEnabled()).toBe(true);
     setupEnv({ GATEWAY_ENABLED: "false" });
     expect(isGatewayEnabled()).toBe(false);
+  });
+
+  it("内容审核不通过时不预扣积分、不转发给 Go", async () => {
+    const fetchMock = vi.mocked(globalThis.fetch as ReturnType<typeof vi.fn>);
+    mockAssertModeration.mockRejectedValueOnce(new Error("提交内容包含违规描述，已拒绝生成"));
+
+    await expect(
+      runExternalGenerationViaGateway({
+        apiKeyId: "ck_1",
+        user: { id: "usr_1", credits: 100 },
+        endpoint: "responses",
+        input: {
+          count: 1,
+          generationType: "text_to_image",
+          moderation: "auto",
+          outputCompression: null,
+          outputFormat: "png",
+          prompt: "违规描述",
+          quality: "auto",
+          size: "auto",
+        },
+      }),
+    ).rejects.toThrow("提交内容包含违规描述");
+
+    expect(mockAssertModeration).toHaveBeenCalledWith(
+      "usr_1",
+      expect.objectContaining({ prompt: "违规描述" }),
+    );
+    expect(mockUpdateMany).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("成功路径构造签名 envelope 并透传 Go 响应", async () => {

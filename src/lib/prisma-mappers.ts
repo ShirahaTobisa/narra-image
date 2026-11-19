@@ -95,7 +95,8 @@ type WorkJobFields = Pick<
   "createdAt" | "id" | "model" | "negativePrompt" | "prompt" | "size" | "status" | "userId"
 >;
 
-type WorkReviewerFields = Pick<User, "email" | "id">;
+// 审核人邮箱只有后台查询会带上；用户自己的作品接口不查它，免得把管理员邮箱发给用户
+type WorkReviewerFields = Pick<User, "id"> & Partial<Pick<User, "email">>;
 
 export type WorkRecord = GenerationImage & ImageAvailabilitySource & {
   job: WorkJobFields & {
@@ -106,7 +107,7 @@ export type WorkRecord = GenerationImage & ImageAvailabilitySource & {
 
 export type AdminWorkRecord = GenerationImage & ImageAvailabilitySource & {
   job: WorkJobFields & {
-    user: WorkReviewerFields & { nickname: string | null };
+    user: Pick<User, "email" | "id"> & { nickname: string | null };
   };
   reviewedBy?: WorkReviewerFields | null;
 };
@@ -128,7 +129,7 @@ export type SerializedWork = {
   reviewedAt: string | null;
   reviewedById: string | null;
   reviewer: {
-    email: string;
+    email?: string;
     id: string;
   } | null;
   showcaseStatus: WorkShowcaseStatus;
@@ -221,7 +222,9 @@ export function fromPrismaShowcaseStatus(status: ShowcaseStatus): WorkShowcaseSt
   return status;
 }
 
-export function serializeUser(user: Pick<User, "id" | "email" | "role" | "credits" | "nickname" | "avatarUrl">) {
+export function serializeUser(
+  user: Pick<User, "id" | "email" | "role" | "credits" | "nickname" | "avatarUrl" | "uid">,
+) {
   return {
     avatarUrl: user.avatarUrl,
     credits: user.credits,
@@ -229,6 +232,7 @@ export function serializeUser(user: Pick<User, "id" | "email" | "role" | "credit
     id: user.id,
     nickname: user.nickname,
     role: fromPrismaRole(user.role),
+    uid: user.uid,
   };
 }
 
@@ -320,7 +324,7 @@ export function serializeFeaturedWork(work: FeaturedWorkRecord): SerializedFeatu
   const presentation = presentGenerationImage(work);
   return {
     availability: presentation.availability,
-    authorAvatar: author.avatarUrl,
+    authorAvatar: null, // 公开画廊不放头像：头像不经审核，Discord 头像地址还会带出作者的 Discord 账号
     authorName: author.nickname || "匿名创作者",
     featuredAt: work.featuredAt?.toISOString() ?? null,
     id: work.id,
@@ -364,7 +368,7 @@ export type FeaturedVideoRecord = GeneratedVideo & {
 export function serializeFeaturedVideo(video: FeaturedVideoRecord): SerializedFeaturedVideo {
   const author = video.job.user;
   return {
-    authorAvatar: author.avatarUrl,
+    authorAvatar: null, // 公开画廊不放头像：头像不经审核，Discord 头像地址还会带出作者的 Discord 账号
     authorName: author.nickname || "匿名创作者",
     durationSeconds: typeof video.durationSeconds === "number" ? video.durationSeconds : null,
     featuredAt: video.featuredAt?.toISOString() ?? null,
@@ -377,6 +381,14 @@ export function serializeFeaturedVideo(video: FeaturedVideoRecord): SerializedFe
     title: video.job.model,
     videoUrl: video.url,
   };
+}
+
+// 站内渠道失败时，上游报错原文可能带渠道地址、OpenAI 组织 ID，给用户只看一句话；原文留在库里给后台排查
+function userFacingErrorMessage(job: Pick<GenerationJob, "errorMessage" | "providerMode">) {
+  if (!job.errorMessage || job.providerMode !== ProviderMode.BUILT_IN) return job.errorMessage;
+  return /moderation_blocked|safety system/i.test(job.errorMessage)
+    ? "提示词或参考图被 OpenAI 安全系统拒绝"
+    : "生成失败，请稍后再试";
 }
 
 export function serializeGeneration(
@@ -431,7 +443,7 @@ export function serializeGeneration(
       "errorCode" in job && typeof job.errorCode === "string"
         ? job.errorCode
         : null,
-    errorMessage: job.errorMessage,
+    errorMessage: userFacingErrorMessage(job),
     featuredAt: job.featuredAt?.toISOString() ?? null,
     generationType,
     aspectRatio:

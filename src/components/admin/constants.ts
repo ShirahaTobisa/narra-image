@@ -177,10 +177,10 @@ export const ADMIN_SETTINGS_LINKS: AdminSettingsTabItem[] = [
     label: "生图渠道",
   },
   {
-    description: "配置第三方 OAuth 登录源（如 LinuxDo 快捷登录）",
+    description: "配置第三方 OAuth 登录源（LinuxDo、Discord）",
     href: "/admin/settings/oauth",
     icon: KeyRound,
-    keywords: ["oauth", "linuxdo", "登录源", "第三方登录"],
+    keywords: ["oauth", "linuxdo", "discord", "登录源", "第三方登录"],
     label: "登录源",
   },
   {

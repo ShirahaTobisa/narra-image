@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   mockAssertApiRateLimit,
+  mockAssertModeration,
   mockCreateGenerationJob,
   mockFailGenerationJobAndRefund,
   mockFindGenerationJob,
@@ -12,6 +13,7 @@ const {
   mockUserUpdateMany,
 } = vi.hoisted(() => ({
   mockAssertApiRateLimit: vi.fn(),
+  mockAssertModeration: vi.fn(),
   mockCreateGenerationJob: vi.fn(),
   mockFailGenerationJobAndRefund: vi.fn(),
   mockFindGenerationJob: vi.fn(),
@@ -24,6 +26,10 @@ const {
 
 vi.mock("@/lib/api-config", () => ({
   assertApiRateLimit: mockAssertApiRateLimit,
+}));
+
+vi.mock("@/lib/moderation/check", () => ({
+  assertExternalGenerationAllowed: mockAssertModeration,
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -80,6 +86,7 @@ describe("外部 API 生成服务", () => {
     process.env.EXTERNAL_GENERATION_WAIT_TIMEOUT_SECONDS = "1";
 
     mockAssertApiRateLimit.mockReset();
+    mockAssertModeration.mockReset().mockResolvedValue(undefined);
     mockCreateGenerationJob.mockReset();
     mockFailGenerationJobAndRefund.mockReset();
     mockFindGenerationJob.mockReset();
@@ -216,6 +223,39 @@ describe("外部 API 生成服务", () => {
         workerManaged: true,
       },
     });
+  });
+
+  it("内容审核（含参考图）不通过时不扣积分、不建任务", async () => {
+    mockAssertModeration.mockRejectedValueOnce(new Error("提交内容包含违规描述，已拒绝生成"));
+    const sourceImages = [
+      { data: Buffer.from([1, 2, 3]), fileName: "source.png", mimeType: "image/png" },
+    ];
+
+    await expect(
+      runExternalGeneration({
+        apiKeyId: "key_1",
+        input: {
+          count: 1,
+          generationType: "image_to_image",
+          moderation: "auto",
+          outputFormat: "png",
+          prompt: "违规描述",
+          quality: "auto",
+          size: "auto",
+          sourceImages,
+        },
+        user: { credits: 500, id: "user_1" },
+      }),
+    ).rejects.toThrow("提交内容包含违规描述");
+
+    expect(mockAssertModeration).toHaveBeenCalledWith(
+      "user_1",
+      expect.objectContaining({ prompt: "违规描述", sourceImages }),
+    );
+    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(mockCreateGenerationJob).not.toHaveBeenCalled();
+    expect(mockUserUpdateMany).not.toHaveBeenCalled();
+    expect(mockPersistGeneratedImage).not.toHaveBeenCalled();
   });
 
   it("积分不足时不保存参考图，也不开放 Worker", async () => {

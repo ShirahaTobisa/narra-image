@@ -36,6 +36,7 @@ import {
   type ImageAvailabilitySource,
 } from "@/lib/storage/image-availability";
 import type { ImageAvailability } from "@/lib/types";
+import { formatUserUid } from "@/lib/user-uid";
 import { cn } from "@/lib/utils";
 import { useAdminToast } from "./hooks/use-admin-toast";
 import { AdminConfirmDialog, AdminModal } from "./ui/admin-modal";
@@ -46,7 +47,7 @@ export type GenerationAdminJob = GenerationJob & {
     GenerationImage &
       ImageAvailabilitySource & { availability?: ImageAvailability }
   >;
-  user: Pick<User, "email" | "nickname">;
+  user: Pick<User, "email" | "nickname" | "uid">;
   videos?: GeneratedVideo[];
 };
 
@@ -57,7 +58,8 @@ function adminImageAvailability(image: GenerationAdminJob["images"][number]) {
 }
 
 function getUserDisplayName(user: GenerationAdminJob["user"] | null | undefined) {
-  return user?.nickname?.trim() || user?.email || "未知用户";
+  const name = user?.nickname?.trim() || user?.email || "未知用户";
+  return `${formatUserUid(user?.uid)} ${name}`.trim();
 }
 
 export function isGenerationCoordinationRequired(job: GenerationAdminJob) {

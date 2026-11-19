@@ -204,6 +204,7 @@ function client(snapshot: FakeState) {
     },
     async $executeRaw(strings: TemplateStringsArray) {
       if (strings.join("?").includes("image_lock_reference_epoch")) return 1;
+      if (strings.join("?").includes('FROM "User"')) return 1; // 普通出图先锁用户再数排队任务
       if (!strings.join("?").includes("canvas_lock_assets")) throw new Error("Unexpected fake execute");
       events.push("lock-assets");
       if (expireDuringInputLock) now += CANVAS_LIMITS.preparationLeaseSeconds * 1_000 + 1;
@@ -233,7 +234,7 @@ beforeEach(() => {
   loseJobAck = false; loseReservationAck = false; failRunReads = false; rejectUnavailable = false; commitError = null;
   commitFailures = []; expireDuringInputLock = false; rawReservationFailure = false;
   state = { canvas: canvasRow(), credits: 50, runs: new Map(), jobs: new Map(), assets: new Map(), images: new Map(), roots: [], sequence: 0 };
-  mocks.env.mockReturnValue({ ...canvasStorageTestEnv, APP_URL: "https://app.invalid", IMAGE_STORAGE_MANAGED_ENABLED: false, AUTH_SECRET: "unit-test-intent-key", CANVAS_ENABLED: true, BUILTIN_PROVIDER_CREDIT_COST: 5, BUILTIN_PROVIDER_VIDEO_CREDIT_COST: 20, WORKER_CONTRACTS_V1_ENABLED: true });
+  mocks.env.mockReturnValue({ ...canvasStorageTestEnv, APP_URL: "https://app.invalid", IMAGE_STORAGE_MANAGED_ENABLED: false, AUTH_SECRET: "unit-test-intent-key", CANVAS_ENABLED: true, CUSTOM_PROVIDER_ENABLED: true, BUILTIN_PROVIDER_CREDIT_COST: 5, BUILTIN_PROVIDER_VIDEO_CREDIT_COST: 20, WORKER_CONTRACTS_V1_ENABLED: true });
   // These originals predate the managed inventory. Exercise the real exact
   // alias resolver with an explicit miss; unexpected managed queries still fail.
   mocks.imageQuery.mockImplementation(async (query: { text: string; values: unknown[] }) => {

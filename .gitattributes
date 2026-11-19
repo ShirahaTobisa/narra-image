@@ -28,3 +28,5 @@ prisma/migrations/20261115180000_image_history/migration.sql text eol=lf
 .trellis/tasks/**/research/asset-evidence/plus-jakarta-sans-OFL.txt -text whitespace=-blank-at-eol,-blank-at-eof
 public/marketing/home/fonts/cormorant-garamond-OFL.txt -text whitespace=-blank-at-eol,-blank-at-eof
 public/marketing/home/fonts/plus-jakarta-sans-OFL.txt -text whitespace=-blank-at-eol,-blank-at-eof
+prisma/migrations/20261119120000_oauth_allowed_guild/migration.sql text eol=lf
+prisma/migrations/20261119130000_user_uid/migration.sql text eol=lf

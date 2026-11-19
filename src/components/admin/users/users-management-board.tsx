@@ -19,6 +19,8 @@ import {
   UserAdminCard,
   type AdminUserCardData,
 } from "@/components/admin/user-admin-card";
+import { UserUid } from "@/components/user-uid";
+import { OAUTH_PROVIDER_LABELS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { useAdminToast } from "../hooks/use-admin-toast";
 import { AdminConfirmDialog } from "../ui/admin-modal";
@@ -183,7 +185,7 @@ export function UsersManagementBoard({
               <input
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="搜索用户邮箱、昵称或用户 ID…"
+                placeholder="搜索 #编号、邮箱、昵称或用户 ID…"
                 className="w-full rounded-xl border border-[var(--admin-line)] bg-white py-2.5 pr-9 pl-10 text-sm outline-none"
               />
               {searchInput ? (
@@ -350,6 +352,7 @@ export function UsersManagementBoard({
                           className="group text-left"
                         >
                           <div className="truncate font-semibold text-[var(--ink)] group-hover:text-[#c85a32]">
+                            <UserUid uid={user.uid} />
                             {user.nickname?.trim() || user.email}
                           </div>
                           {user.nickname?.trim() ? (
@@ -374,9 +377,7 @@ export function UsersManagementBoard({
                           </span>
                           {user.oauthProvider ? (
                             <span className="rounded-full bg-sky-50 px-2 py-0.5 font-medium text-sky-700">
-                              {user.oauthProvider === "linuxdo"
-                                ? "LinuxDo"
-                                : user.oauthProvider}
+                              {OAUTH_PROVIDER_LABELS[user.oauthProvider] ?? user.oauthProvider}
                             </span>
                           ) : null}
                           {user.banned ? (

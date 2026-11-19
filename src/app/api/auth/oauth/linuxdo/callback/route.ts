@@ -9,6 +9,7 @@ import {
   getLinuxDoConfig,
   linkLinuxDoAccount,
 } from "@/lib/auth/linuxdo-oauth";
+import { oauthLoginErrorMessage } from "@/lib/auth/oauth-accounts";
 import { attachSessionCookie, readSession } from "@/lib/auth/session";
 import { fromPrismaRole } from "@/lib/prisma-mappers";
 import { getEnv } from "@/lib/env";
@@ -92,12 +93,7 @@ export async function GET(request: Request) {
     // 未登录：查找或创建用户（新用户必须有有效邀请码）
     const result = await findOrCreateOAuthUser({ ldUser, inviteCode });
     if (!result.ok) {
-      const message =
-        result.reason === "invite_required"
-          ? "首次使用 LinuxDo 登录需要填写邀请码"
-          : result.reason === "banned"
-            ? "账号已被封禁"
-            : "邀请码已失效";
+      const message = oauthLoginErrorMessage(result.reason, "LinuxDo");
       return NextResponse.redirect(
         `${appUrl}/login?error=${encodeURIComponent(message)}`,
       );

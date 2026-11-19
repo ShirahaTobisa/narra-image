@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { ApiKeyConsole } from "@/components/api/api-key-console";
@@ -44,11 +45,21 @@ export default async function ApiKeysPage() {
           </p>
         </div>
 
-        <ApiKeyConsole
-          apiBaseUrl={apiBaseUrl}
-          apiKeys={apiKeys.map(serializeApiKey)}
-          apiConfig={serializeApiConfig(apiConfig)}
-        />
+        {apiConfig.isEnabled ? (
+          <ApiKeyConsole
+            apiBaseUrl={apiBaseUrl}
+            apiKeys={apiKeys.map(serializeApiKey)}
+            apiConfig={serializeApiConfig(apiConfig)}
+          />
+        ) : (
+          <div className="studio-card rounded-[1.8rem] p-6 text-sm leading-relaxed text-[var(--ink-soft)]">
+            站点暂未开放 API 调用，请到
+            <Link href="/create" className="mx-1 font-semibold text-[var(--accent)] hover:underline">
+              创作台
+            </Link>
+            用网页生成。
+          </div>
+        )}
       </section>
     </main>
   );

@@ -23,6 +23,7 @@ export const getCurrentUserRecord = cache(async () => {
       nickname: true,
       oauthProvider: true,
       role: true,
+      uid: true,
     },
   });
 
