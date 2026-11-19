@@ -87,6 +87,12 @@ export function TurnstileWidget({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<string | null>(null);
   const [status, setStatus] = useState<TurnstileStatus>("loading");
+  // 回调存进 ref：父组件每次渲染都传新函数也不重建验证框。
+  // 否则 验证通过 → 父组件存 token 重新渲染 → 验证框重建再验证，会一直转圈
+  const callbacksRef = useRef({ onError, onExpire, onVerify });
+  useEffect(() => {
+    callbacksRef.current = { onError, onExpire, onVerify };
+  });
 
   useImperativeHandle(ref, () => ({
     reset() {
@@ -115,15 +121,15 @@ export function TurnstileWidget({
           size,
           callback: (token) => {
             setStatus("verified");
-            onVerify(token);
+            callbacksRef.current.onVerify(token);
           },
           "expired-callback": () => {
             setStatus("expired");
-            onExpire?.();
+            callbacksRef.current.onExpire?.();
           },
           "error-callback": () => {
             setStatus("error");
-            onError?.();
+            callbacksRef.current.onError?.();
           },
         });
         widgetIdRef.current = widgetId;
@@ -131,7 +137,7 @@ export function TurnstileWidget({
       .catch(() => {
         if (!cancelled) {
           setStatus("error");
-          onError?.();
+          callbacksRef.current.onError?.();
         }
       });
 
@@ -146,7 +152,7 @@ export function TurnstileWidget({
       }
       widgetIdRef.current = null;
     };
-  }, [siteKey, theme, size, onVerify, onExpire, onError]);
+  }, [siteKey, theme, size]);
 
   return (
     <div className={className}>
