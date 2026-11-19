@@ -1,3 +1,5 @@
+import { GenerationStatus } from "@prisma/client";
+
 import { db } from "@/lib/db";
 import { getEnv } from "@/lib/env";
 import {
@@ -215,15 +217,39 @@ export async function getGenerationChannelForModel(
     return fallback;
   }
 
-  const channel = channels.find((candidate) => channelSupportsModel({
+  const supported = channels.filter((candidate) => channelSupportsModel({
     defaultModel: candidate.defaultModel,
     model: requestedModel,
     models: candidate.models,
   }));
-  if (!channel) {
+  const last = supported.at(-1);
+  if (!last) {
     throw new GenerationContractError("MODEL_NOT_SUPPORTED_BY_CHANNEL");
   }
-  return resolveStoredChannel(channel);
+  // 排在前面的渠道最近连续失败就先跳过，让后面的渠道兜底；都不行时还是用最后一条
+  for (const candidate of supported.slice(0, -1)) {
+    if (!(await isChannelFailing(candidate.id))) return resolveStoredChannel(candidate);
+  }
+  return resolveStoredChannel(last);
+}
+
+// 渠道最近 10 分钟里最后 3 个任务都失败了（被审核拦下的不算），就当它暂时不可用
+const CHANNEL_FAILURE_WINDOW_MS = 10 * 60 * 1000;
+const CHANNEL_FAILURE_STREAK = 3;
+
+async function isChannelFailing(channelId: string) {
+  const recent = await db.generationJob.findMany({
+    orderBy: { updatedAt: "desc" },
+    select: { errorMessage: true, status: true },
+    take: CHANNEL_FAILURE_STREAK,
+    where: {
+      providerChannelId: channelId,
+      status: { in: [GenerationStatus.SUCCEEDED, GenerationStatus.FAILED] },
+      updatedAt: { gte: new Date(Date.now() - CHANNEL_FAILURE_WINDOW_MS) },
+    },
+  });
+  return recent.length === CHANNEL_FAILURE_STREAK && recent.every((job) =>
+    job.status === GenerationStatus.FAILED && !/moderation_blocked|safety system/i.test(job.errorMessage ?? ""));
 }
 
 export function generationChannelModelSnapshot(channel: ResolvedChannel) {

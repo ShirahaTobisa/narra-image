@@ -188,14 +188,17 @@ export function normalizeProviderModels(
   return [...new Set(normalized)];
 }
 
+/** 渠道模型里填 "*" 的是兜底渠道：什么模型都接，出图时统一用它的默认模型 */
+export const WILDCARD_MODEL = "*";
+
 export function channelSupportsModel(input: {
   defaultModel: string;
   model: string;
   models: readonly string[];
 }) {
   const requestedModel = input.model.trim();
-  return normalizeProviderModels(input.defaultModel, input.models)
-    .includes(requestedModel);
+  const models = normalizeProviderModels(input.defaultModel, input.models);
+  return models.includes(requestedModel) || models.includes(WILDCARD_MODEL);
 }
 
 export function resolveGenerationModelOperation(

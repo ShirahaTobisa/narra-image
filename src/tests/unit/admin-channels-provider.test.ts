@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   mockBuiltInProviderConfigFindFirst,
   mockDecryptProviderSecret,
+  mockGenerationJobFindMany,
   mockProviderChannelCreate,
   mockProviderChannelFindFirst,
   mockProviderChannelFindMany,
@@ -10,6 +11,7 @@ const {
   vi.hoisted(() => ({
     mockBuiltInProviderConfigFindFirst: vi.fn(),
     mockDecryptProviderSecret: vi.fn(),
+    mockGenerationJobFindMany: vi.fn(),
     mockProviderChannelCreate: vi.fn(),
     mockProviderChannelFindFirst: vi.fn(),
     mockProviderChannelFindMany: vi.fn(),
@@ -20,6 +22,7 @@ vi.mock("@/lib/db", () => ({
     builtInProviderConfig: {
       findFirst: mockBuiltInProviderConfigFindFirst,
     },
+    generationJob: { findMany: mockGenerationJobFindMany },
     providerChannel: {
       create: mockProviderChannelCreate,
       findFirst: mockProviderChannelFindFirst,
@@ -39,7 +42,44 @@ vi.mock("@/lib/providers/provider-secret", () => ({
   decryptProviderSecret: mockDecryptProviderSecret,
 }));
 
-import { getChannelById, getChannelsForAdmin } from "@/lib/providers/built-in-provider";
+import { getChannelById, getChannelsForAdmin, getGenerationChannelForModel } from "@/lib/providers/built-in-provider";
+
+describe("站内渠道兜底", () => {
+  const channel = (id: string, defaultModel: string, models: string[]) => ({
+    apiKeyEncrypted: "enc", baseUrl: `https://${id}.example/v1`, creditCost: 5, defaultModel, id,
+    isActive: true, models, name: id, slug: id, sortOrder: 0, videoCreditCost: 20,
+  });
+  const failed = (errorMessage: string) => ({ errorMessage, status: "FAILED" });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockDecryptProviderSecret.mockResolvedValue("decrypted-key");
+    mockProviderChannelFindMany.mockResolvedValue([
+      channel("primary", "gpt-image-2.6-sunburst", ["gpt-image-2.6-flare"]),
+      channel("fallback", "gpt-image-2.6", ["*"]),
+    ]);
+  });
+
+  it("主渠道正常时用主渠道", async () => {
+    mockGenerationJobFindMany.mockResolvedValue([{ errorMessage: null, status: "SUCCEEDED" }]);
+    await expect(getGenerationChannelForModel("gpt-image-2.6-flare")).resolves.toMatchObject({ id: "primary" });
+  });
+
+  it("主渠道最近 3 个任务都失败，就换到兜底渠道", async () => {
+    mockGenerationJobFindMany.mockResolvedValue([failed("upstream 502"), failed("timeout"), failed("upstream 503")]);
+    await expect(getGenerationChannelForModel("gpt-image-2.6-flare")).resolves.toMatchObject({ id: "fallback" });
+  });
+
+  it("被审核拦下的失败不算渠道坏了", async () => {
+    mockGenerationJobFindMany.mockResolvedValue([failed("upstream 502"), failed("moderation_blocked"), failed("timeout")]);
+    await expect(getGenerationChannelForModel("gpt-image-2.6-flare")).resolves.toMatchObject({ id: "primary" });
+  });
+
+  it("主渠道不支持的模型直接由兜底渠道接", async () => {
+    await expect(getGenerationChannelForModel("gpt-image-9")).resolves.toMatchObject({ id: "fallback" });
+    expect(mockGenerationJobFindMany).not.toHaveBeenCalled();
+  });
+});
 
 describe("后台渠道列表", () => {
   beforeEach(() => {

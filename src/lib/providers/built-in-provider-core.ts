@@ -1,4 +1,4 @@
-import { normalizeProviderModels } from "@/lib/generation/contracts";
+import { normalizeProviderModels, WILDCARD_MODEL } from "@/lib/generation/contracts";
 
 /**
  * 给用户看的渠道：所有可用渠道合成一个"平台渠道"，只露出模型，不露渠道名和 ID。
@@ -9,7 +9,8 @@ export function mergeChannelsForUsers<T extends { defaultModel: string; id: stri
 ): T[] {
   const [first] = channels;
   if (!first) return [];
-  const models = [...new Set(channels.flatMap((channel) => normalizeProviderModels(channel.defaultModel, channel.models)))];
+  const models = [...new Set(channels.flatMap((channel) => normalizeProviderModels(channel.defaultModel, channel.models)))]
+    .filter((model) => model !== WILDCARD_MODEL);
   return [{ ...first, id: "", models, name: "平台渠道" }];
 }
 

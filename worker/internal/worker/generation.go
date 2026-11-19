@@ -57,7 +57,8 @@ func generateImages(ctx context.Context, storage *Storage, job GenerationJob, pr
 	if job.Count < 1 || job.Count > ImageMaxOutputCount {
 		return nil, ContractFailure{Code: errorProviderRequestInvalid, Message: "图片生成数量必须为 1 到 4 张"}
 	}
-	if strings.TrimSpace(job.Model) == "" {
+	// 以渠道算出的模型为准：兜底渠道会把用户选的模型换成它自己的默认模型
+	if provider.Model != "" {
 		job.Model = provider.Model
 	}
 

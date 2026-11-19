@@ -898,7 +898,7 @@ export function ChannelManager({ initialChannels }: ChannelManagerProps) {
                           )}
                           title={m.id}
                         >
-                          {m.id}
+                          {m.id === "*" ? "*（其余所有模型，兜底用）" : m.id}
                         </span>
                       </label>
 

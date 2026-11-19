@@ -9,9 +9,11 @@ describe("给用户看的渠道", () => {
     const merged = mergeChannelsForUsers([
       { creditCost: 5, defaultModel: "gpt-image-2", id: "ch_upstream", models: ["gpt-image-2"], name: "上游中转" },
       { creditCost: 9, defaultModel: "gpt-image-2", id: "ch_backup", models: ["gpt-image-2.5"], name: "官方 key 兜底" },
+      { creditCost: 0, defaultModel: "gpt-image-2.6", id: "ch_fallback", models: ["*"], name: "chatgpt2api" },
     ]);
+    // 兜底渠道的 "*" 不会出现在用户看到的模型里
     expect(merged).toEqual([
-      { creditCost: 5, defaultModel: "gpt-image-2", id: "", models: ["gpt-image-2", "gpt-image-2.5"], name: "平台渠道" },
+      { creditCost: 5, defaultModel: "gpt-image-2", id: "", models: ["gpt-image-2", "gpt-image-2.5", "gpt-image-2.6"], name: "平台渠道" },
     ]);
     expect(mergeChannelsForUsers([])).toEqual([]);
   });

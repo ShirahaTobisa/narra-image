@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -907,7 +908,7 @@ func (w *Worker) channelByModel(ctx context.Context, model string) (ProviderConf
 SELECT id, "baseUrl", "apiKeyEncrypted", "defaultModel", models, "isActive"
 FROM "ProviderChannel"
 WHERE "isActive" = true
-  AND ("defaultModel" = $1 OR $1 = ANY(models))
+  AND ("defaultModel" = $1 OR $1 = ANY(models) OR '*' = ANY(models))
 ORDER BY "sortOrder" ASC, "createdAt" ASC, id ASC
 LIMIT 1
 `, model)
@@ -947,18 +948,26 @@ func (w *Worker) scanChannel(row pgx.Row, requestedModel string) (ProviderConfig
 			Message: "渠道密钥无法读取",
 		}
 	}
-	model := requestedModel
-	if model == "" {
-		model = defaultModel
-	}
 	return ProviderConfig{
 		APIKey:              apiKey,
 		BaseURL:             baseURL,
 		ChannelID:           id,
-		Model:               model,
+		Model:               upstreamModel(defaultModel, requestedModel, models),
 		Models:              normalizedProviderModels(defaultModel, models),
 		AllowPrivateNetwork: true,
 	}, true, nil
+}
+
+// 渠道模型里填 "*" 的是兜底渠道：什么模型都接，统一用渠道默认模型出图
+const wildcardModel = "*"
+
+// upstreamModel 决定实际发给渠道的模型：兜底渠道接到它没单独列出的模型时，改用它的默认模型
+func upstreamModel(defaultModel string, requestedModel string, models []string) string {
+	listed := normalizedProviderModels(defaultModel, models)
+	if requestedModel == "" || !slices.Contains(listed, requestedModel) && slices.Contains(listed, wildcardModel) {
+		return defaultModel
+	}
+	return requestedModel
 }
 
 func (w *Worker) envProvider(model string) (ProviderConfig, error) {
@@ -998,7 +1007,8 @@ func providerSupportsModel(defaultModel string, requestedModel string, models []
 func modelInSnapshot(model string, models []string) bool {
 	model = strings.TrimSpace(model)
 	for _, candidate := range models {
-		if model == strings.TrimSpace(candidate) {
+		candidate = strings.TrimSpace(candidate)
+		if model == candidate || candidate == wildcardModel {
 			return true
 		}
 	}
