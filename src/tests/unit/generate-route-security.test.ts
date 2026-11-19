@@ -383,6 +383,22 @@ describe("生成接口安全校验顺序", () => {
     expect(mockFailGenerationJobAndRefund).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["普通用户指定渠道也不认，按模型自动选", "USER", false],
+    ["管理员可以指定渠道", "ADMIN", true],
+  ])("%s", async (_label, role, honored) => {
+    mockRequireCurrentUserRecord.mockResolvedValue({ credits: 100, id: "user_1", role });
+    mockGetGenerationChannelById.mockResolvedValue(await mockGetGenerationChannelForModel());
+    mockGetGenerationChannelForModel.mockClear();
+    mockParseGenerateRequest.mockResolvedValue(buildRequestBody({ channelId: "ch_backup", image: null, imageUrls: [], images: [] }));
+    mockDbTransaction.mockRejectedValueOnce(new Error("stop after channel selection"));
+
+    await POST(new Request("https://app.unit.invalid/api/generate", { method: "POST" }));
+
+    expect(mockGetGenerationChannelById).toHaveBeenCalledTimes(honored ? 1 : 0);
+    expect(mockGetGenerationChannelForModel).toHaveBeenCalledTimes(honored ? 0 : 1);
+  });
+
   it("每人同时最多 2 个任务在生成，再交就拒绝，不建任务也不扣分", async () => {
     const create = vi.fn();
     const charge = vi.fn();

@@ -9,6 +9,7 @@ import { getEnv } from "@/lib/env";
 import { GeneratorStudio } from "@/components/create/generator-studio";
 import { SiteHeader } from "@/components/marketing/site-header";
 import { getActiveChannels } from "@/lib/providers/built-in-provider";
+import { mergeChannelsForUsers } from "@/lib/providers/built-in-provider-core";
 import { failStalePendingGenerationJobs } from "@/lib/generation/job-refund";
 import type { ConversationGenerationsPage } from "@/lib/conversations/contracts";
 import { ConversationContentError, listConversationGenerations, listStudioConversations } from "@/lib/server/conversation-generations";
@@ -59,13 +60,13 @@ export default async function CreatePage({ searchParams }: CreatePageProps) {
   const params = await searchParams;
   const rawPrompt = Array.isArray(params?.prompt) ? params?.prompt[0] : params?.prompt;
   const initialPrompt = typeof rawPrompt === "string" ? rawPrompt.slice(0, 8000) : "";
-  const serializedChannels = channels.map((ch) => ({
+  const serializedChannels = mergeChannelsForUsers(channels.map((ch) => ({
     creditCost: ch.creditCost,
     defaultModel: ch.defaultModel,
     id: ch.id,
     models: ch.models,
     name: ch.name,
-  }));
+  })));
 
   return (
     <main className="flex h-[100dvh] flex-col overflow-hidden bg-[#f5efe6]">

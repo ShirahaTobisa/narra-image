@@ -9,6 +9,7 @@ import { getPublicTurnstileConfig } from "@/lib/auth/turnstile";
 import { SiteHeader } from "@/components/marketing/site-header";
 import { VideoStudio } from "@/components/video/video-studio";
 import { getActiveChannels } from "@/lib/providers/built-in-provider";
+import { mergeChannelsForUsers } from "@/lib/providers/built-in-provider-core";
 import { failStalePendingGenerationJobs } from "@/lib/generation/job-refund";
 
 export const dynamic = "force-dynamic";
@@ -39,13 +40,13 @@ export default async function VideoPage() {
   ]);
 
   const currentUser = serializeUser(user);
-  const serializedChannels = channels.map((ch) => ({
+  const serializedChannels = mergeChannelsForUsers(channels.map((ch) => ({
     defaultModel: ch.defaultModel,
     id: ch.id,
     models: ch.models,
     name: ch.name,
     videoCreditCost: ch.videoCreditCost,
-  }));
+  })));
 
   return (
     <main className="flex h-[100dvh] flex-col overflow-hidden bg-[#f5efe6]">

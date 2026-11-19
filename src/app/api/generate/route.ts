@@ -139,7 +139,8 @@ export async function POST(request: Request) {
     }
     const env = getEnv();
 
-    const channelId = body.channelId as string | undefined;
+    // 用户看不到渠道，走哪条由服务器按后台排序定；只有管理员能指定渠道（防止有人专挑兜底渠道用）
+    const channelId = user.role === "ADMIN" ? (body.channelId as string | undefined) : undefined;
     const builtInProvider = body.providerMode === "built_in"
       ? channelId
         ? await getGenerationChannelById(channelId, body.model)

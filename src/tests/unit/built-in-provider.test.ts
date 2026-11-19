@@ -1,7 +1,21 @@
 import {
   mergeBuiltInProviderConfigInput,
+  mergeChannelsForUsers,
   resolveBuiltInProviderConfig,
 } from "@/lib/providers/built-in-provider-core";
+
+describe("给用户看的渠道", () => {
+  it("所有渠道合成一个平台渠道，只露出模型，不露渠道名和 ID", () => {
+    const merged = mergeChannelsForUsers([
+      { creditCost: 5, defaultModel: "gpt-image-2", id: "ch_upstream", models: ["gpt-image-2"], name: "上游中转" },
+      { creditCost: 9, defaultModel: "gpt-image-2", id: "ch_backup", models: ["gpt-image-2.5"], name: "官方 key 兜底" },
+    ]);
+    expect(merged).toEqual([
+      { creditCost: 5, defaultModel: "gpt-image-2", id: "", models: ["gpt-image-2", "gpt-image-2.5"], name: "平台渠道" },
+    ]);
+    expect(mergeChannelsForUsers([])).toEqual([]);
+  });
+});
 
 describe("内置渠道配置", () => {
   it("存在后台配置时，优先使用后台配置", () => {
