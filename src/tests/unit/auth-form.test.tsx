@@ -53,4 +53,16 @@ describe("注册表单", () => {
       "/api/auth/oauth/linuxdo?inviteCode=invite-1",
     );
   });
+
+  it("Discord 限定了服务器时，不再提示首次登录要邀请码", () => {
+    render(
+      <AuthForm
+        mode="login"
+        oauthProviders={[{ displayName: "Discord", inviteExempt: true, type: "discord" }]}
+      />,
+    );
+
+    expect(screen.getByText("指定 Discord 服务器的成员直接登录，不用邀请码。")).toBeInTheDocument();
+    expect(screen.queryByText(/需要邀请码？/)).not.toBeInTheDocument();
+  });
 });

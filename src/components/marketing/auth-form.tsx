@@ -12,6 +12,7 @@ import {
 type OAuthProvider = {
   type: string;
   displayName: string;
+  inviteExempt?: boolean;
 };
 
 export type AuthFormTurnstile = {
@@ -112,6 +113,12 @@ export function AuthForm({
   }
 
   const hasOAuth = oauthProviders.length > 0;
+  // 限定了服务器的 Discord 不用邀请码，只有别的登录方式才提示填
+  const inviteProvider = oauthProviders.find((provider) => !provider.inviteExempt);
+  const exemptNames = oauthProviders
+    .filter((provider) => provider.inviteExempt)
+    .map((provider) => provider.displayName)
+    .join("、");
 
   return (
     <div className="grid gap-5">
@@ -219,12 +226,20 @@ export function AuthForm({
               </a>
             ))}
 
-            {mode === "register" ? (
+            {exemptNames ? (
               <p className="text-[11px] leading-5 text-[var(--ink-soft)]/80">
-                新用户使用 {oauthProviders[0]?.displayName ?? "第三方账号"} 注册需先填写上方邀请码；
+                指定 {exemptNames} 服务器的成员直接登录，不用邀请码。
+              </p>
+            ) : null}
+
+            {inviteProvider && mode === "register" ? (
+              <p className="text-[11px] leading-5 text-[var(--ink-soft)]/80">
+                新用户使用 {inviteProvider.displayName} 注册需先填写上方邀请码；
                 已绑定账号可直接登录，无需邀请码。
               </p>
-            ) : (
+            ) : null}
+
+            {inviteProvider && mode === "login" ? (
               <details className="auth-collapse">
                 <summary>
                   <span>需要邀请码？首次第三方登录请填写</span>
@@ -239,7 +254,7 @@ export function AuthForm({
                   老用户登录可留空；首次绑定第三方账号时邀请码用于消耗名额。
                 </p>
               </details>
-            )}
+            ) : null}
           </div>
         </>
       ) : null}

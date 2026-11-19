@@ -15,13 +15,18 @@ export async function getEnabledOAuthProviders() {
   const providers = await db.oAuthProvider.findMany({
     where: { isEnabled: true },
     select: {
+      allowedGuildId: true,
       type: true,
       displayName: true,
     },
     orderBy: { createdAt: "asc" },
   });
 
-  return providers;
+  // 和 Discord 登录回调同一条规则：限定了服务器，服务器成员首次登录不用邀请码
+  return providers.map(({ allowedGuildId, ...provider }) => ({
+    ...provider,
+    inviteExempt: provider.type === "discord" && Boolean(allowedGuildId),
+  }));
 }
 
 export async function getOAuthProvider(type: string): Promise<OAuthProviderInfo | null> {
