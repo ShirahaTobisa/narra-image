@@ -143,8 +143,10 @@ export async function verifyTurnstileToken(token: string): Promise<{
 
   try {
     const data = await siteVerify(secret, token);
-    if (data.success) return { ok: true };
-    return { ok: false, reason: data["error-codes"]?.join(",") || "verify-failed" };
+    if (!data.success) return { ok: false, reason: data["error-codes"]?.join(",") || "verify-failed" };
+    // 只认在本站页面上完成的验证：Key 里要是还加了 localhost 之类的域名，那边拿到的结果不能拿来这里用
+    if (data.hostname !== new URL(getEnv().APP_URL).hostname) return { ok: false, reason: "hostname-mismatch" };
+    return { ok: true };
   } catch (error) {
     return {
       ok: false,
