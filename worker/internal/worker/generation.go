@@ -110,7 +110,7 @@ func generateImages(ctx context.Context, storage *Storage, job GenerationJob, pr
 
 // 站内渠道（站长自己的 key）出图时的两条保护，用户自填渠道用的是他自己的 key，保持原样：
 //  1. 每个请求带 safety_identifier（站内用户 ID 的 SHA-256，不暴露原 ID），
-//     违规时 OpenAI 可以只封这个用户，不连累整个账号；
+//     违规时 OpenAI 能认出是哪个用户（会不会只限制这个用户、不动整个账号，由 OpenAI 决定）；
 //  2. 不转发用户选的宽松审核档（moderation=low），一律用上游默认。
 func usesSiteChannel(job GenerationJob) bool {
 	return job.ProviderMode != "CUSTOM"
