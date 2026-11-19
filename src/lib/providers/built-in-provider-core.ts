@@ -7,9 +7,12 @@ import { normalizeProviderModels, WILDCARD_MODEL } from "@/lib/generation/contra
 export function mergeChannelsForUsers<T extends { defaultModel: string; id: string; models: string[]; name: string }>(
   channels: T[],
 ): T[] {
-  const [first] = channels;
+  // 兜底渠道（模型填了 *）只接别的渠道接不住的活，不往用户的模型列表里加东西
+  const listed = channels.filter((channel) => !channel.models.includes(WILDCARD_MODEL));
+  const source = listed.length > 0 ? listed : channels;
+  const [first] = source;
   if (!first) return [];
-  const models = [...new Set(channels.flatMap((channel) => normalizeProviderModels(channel.defaultModel, channel.models)))]
+  const models = [...new Set(source.flatMap((channel) => normalizeProviderModels(channel.defaultModel, channel.models)))]
     .filter((model) => model !== WILDCARD_MODEL);
   return [{ ...first, id: "", models, name: "平台渠道" }];
 }
