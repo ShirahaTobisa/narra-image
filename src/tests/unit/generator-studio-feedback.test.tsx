@@ -229,6 +229,13 @@ function mockGenerateFetch() {
   };
 }
 
+describe("创作台渠道 ID", () => {
+  it.each(["", "__env__"])("渠道 ID 是 %j 时创作台照常打开，不会崩", (id) => {
+    renderStudio({ channels: [{ creditCost: 5, defaultModel: "gpt-image-2", id, models: ["gpt-image-2"], name: "平台渠道" }] });
+    expect(screen.getByText("你好，你想创作什么？")).toBeInTheDocument();
+  });
+});
+
 describe("创作台反馈改进", () => {
   beforeEach(() => {
     mockLocalStorage();

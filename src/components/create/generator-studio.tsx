@@ -25,7 +25,7 @@ import {
   type TurnstileWidgetHandle,
 } from "@/components/auth/turnstile-widget";
 import type { ConversationGenerationsPage } from "@/lib/conversations/contracts";
-import { canvasGenerationParametersSchema } from "@/lib/validators";
+import { canvasCanonicalIdSchema, canvasGenerationParametersSchema } from "@/lib/validators";
 import { Alert } from "@/components/ui/alert";
 
 import { useCanvasDocuments } from "./hooks/use-canvas-documents";
@@ -296,10 +296,15 @@ function StudioWorkspace({
   const { registerConversation: registerConversationJob, getJob, updateJob, canvasJobs } = useStudioJobs({
     ownerId, onConversationUpdate: handleConversationJobUpdate,
   });
-  const defaultCanvasParameters = useMemo(() => canvasGenerationParametersSchema.parse({
-    model: channels[0]?.defaultModel || "gpt-image-2",
-    channelId: channels[0]?.id ?? null,
-  }), [channels]);
+  const defaultCanvasParameters = useMemo(() => {
+    // 合并后的"平台渠道"没有真实 ID（空字符串），环境变量渠道是 __env__，都不是画布认的格式：
+    // 不传渠道，交给服务器按模型选，否则这里直接抛错，整个创作台打不开
+    const channelId = channels[0]?.id;
+    return canvasGenerationParametersSchema.parse({
+      model: channels[0]?.defaultModel || "gpt-image-2",
+      channelId: channelId && canvasCanonicalIdSchema.safeParse(channelId).success ? channelId : null,
+    });
+  }, [channels]);
   const canvasRuntime = useCanvasRuntimeLease({ ownerId, enabled: canvasEnabled, readOnly: canvasReadOnly, savedProvider, turnstile });
   const { controller: canvasController, snapshot: canvasSnapshot } = useCanvasDocuments({
     ownerId, enabled: canvasEnabled, readOnly: canvasReadOnly,
