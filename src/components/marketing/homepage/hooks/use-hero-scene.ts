@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { HERO_SCENES, HOME_MOTION } from "../constants";
+import { HERO_SCENES, HOME_MOTION, heroImageSrc } from "../constants";
 import type { HomeScene, HomeSceneId } from "../types";
 
 type HeroSceneState = {
@@ -93,7 +93,7 @@ export function useHeroScene(): UseHeroSceneResult {
     image.onerror = () => finish(false);
     pending.current = dispose;
     timeout = setTimeout(() => finish(false), HOME_MOTION.imageDeadlineMs);
-    image.src = scene.image;
+    image.src = heroImageSrc(scene.image);
     if (image.complete && image.naturalWidth > 0) decode();
   }, [cancelPending, publish]);
 

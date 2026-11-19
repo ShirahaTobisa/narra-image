@@ -1,4 +1,9 @@
+import { getThumbUrl } from "@/lib/image-url";
+
 import type { HomeScene } from "./types";
+
+/** 首屏大图走 Next 图片优化：按宽度输出 AVIF/WebP（原 PNG 每张 2～3MB）。预加载和显示都用它，免得下两遍 */
+export const heroImageSrc = (image: string) => getThumbUrl(image, 1920);
 
 export const HERO_SCENES = [
   {

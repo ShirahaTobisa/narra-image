@@ -7,7 +7,7 @@ import { ArrowUpRight, Check, ImageOff, Pause, Play, RotateCcw, Sparkle } from "
 
 import { cn } from "@/lib/utils";
 
-import { HERO_SCENES } from "./constants";
+import { HERO_SCENES, heroImageSrc } from "./constants";
 import { useHeroScene } from "./hooks/use-hero-scene";
 import { useHomeDust } from "./hooks/use-home-dust";
 import { useHomeMotion } from "./hooks/use-home-motion";
@@ -85,7 +85,7 @@ export function HeroScene() {
             <img
               key={`${scene.id}:${imageRevision}`}
               data-home-scene-image
-              src={scene.image}
+              src={heroImageSrc(scene.image)}
               alt={scene.alt}
               width={scene.width}
               height={scene.height}

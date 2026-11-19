@@ -45,6 +45,11 @@ export async function POST(request: Request) {
       return jsonError("服务器 ID 应为一串数字，多个用逗号或换行隔开（在 Discord 开发者模式下右键服务器复制）");
     }
 
+    // Discord 应用"基本信息"页的 Public Key 是 64 位十六进制，常被误填成 Client Secret，登录时只会报 invalid_client
+    if (body.type === "discord" && /^[0-9a-f]{64}$/i.test(body.clientSecret?.trim() ?? "")) {
+      return jsonError("这是 Discord 的 Public Key，不是 Client Secret：请到 Discord 开发者后台的 OAuth2 页面复制 Client Secret");
+    }
+
     await upsertOAuthProvider({
       allowedGuildId: guildIds?.join(","),
       clientId: body.clientId,

@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 
-import { HERO_SCENES, HOME_MOTION } from "@/components/marketing/homepage/constants";
+import { HERO_SCENES, HOME_MOTION, heroImageSrc } from "@/components/marketing/homepage/constants";
 import { HeroScene } from "@/components/marketing/homepage/hero-scene";
 import { HomeHero } from "@/components/marketing/homepage/home-hero";
 import { HomeMotionProvider } from "@/components/marketing/homepage/home-motion-provider";
@@ -70,7 +70,7 @@ describe("fixed editorial hero", () => {
     }
     act(() => vi.advanceTimersByTime(HOME_MOTION.typewriterMs * 3));
     expect(container.querySelector("[data-home-typewriter]")?.textContent).toBe(scene.prompt.slice(0, 3));
-    expect(container.querySelector("[data-home-scene-image]")).toHaveAttribute("src", scene.image);
+    expect(container.querySelector("[data-home-scene-image]")).toHaveAttribute("src", heroImageSrc(scene.image));
 
     // This exercises the live hook/clipboard state; native CSS hit testing needs a browser.
     const frame = container.querySelector<HTMLDivElement>("[data-home-hero-frame]")!;
@@ -99,13 +99,13 @@ describe("fixed editorial hero", () => {
     expect(screen.getByRole("tab", { name: "胶片光影" })).toHaveAttribute("aria-selected", "true");
     fireEvent.click(screen.getByRole("tab", { name: "东方美学" }));
     await resolveImage(2);
-    expect(container.querySelector("[data-home-scene-image]")).toHaveAttribute("src", HERO_SCENES[2].image);
+    expect(container.querySelector("[data-home-scene-image]")).toHaveAttribute("src", heroImageSrc(HERO_SCENES[2].image));
     expect(container.querySelector("[data-home-scene-image]")).toHaveAttribute("width", String(HERO_SCENES[2].width));
     expect(container.querySelector("[data-home-scene-image]")).toHaveAttribute("height", String(HERO_SCENES[2].height));
     expect(container.querySelector("[data-home-hero-frame]")).toHaveAttribute("data-scene-id", "oriental");
     expect(screen.getByRole("tab", { name: "东方美学" })).toHaveAttribute("aria-selected", "true");
     await act(async () => images[1].resolveDecode());
-    expect(container.querySelector("[data-home-scene-image]")).toHaveAttribute("src", HERO_SCENES[2].image);
+    expect(container.querySelector("[data-home-scene-image]")).toHaveAttribute("src", heroImageSrc(HERO_SCENES[2].image));
     expect(container.querySelector("[data-home-typewriter]")?.textContent).toBe(HERO_SCENES[2].prompt);
   });
 
@@ -123,7 +123,7 @@ describe("fixed editorial hero", () => {
       await Promise.resolve();
     });
     expect(container.querySelector("[data-home-hero-frame]")).toHaveAttribute("data-scene-id", "film");
-    expect(container.querySelector("[data-home-scene-image]")).toHaveAttribute("src", HERO_SCENES[0].image);
+    expect(container.querySelector("[data-home-scene-image]")).toHaveAttribute("src", heroImageSrc(HERO_SCENES[0].image));
     expect(screen.getByRole("tab", { name: "胶片光影" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-busy", "false");
     expect(screen.getByRole("status")).toBeEmptyDOMElement();
@@ -179,7 +179,7 @@ describe("fixed editorial hero", () => {
     fireEvent.click(screen.getByRole("button", { name: "重试图片" }));
     await resolveImage(1);
     expect(container.querySelector("[data-home-scene-image]")).not.toBe(failedImage);
-    expect(container.querySelector("[data-home-scene-image]")).toHaveAttribute("src", HERO_SCENES[0].image);
+    expect(container.querySelector("[data-home-scene-image]")).toHaveAttribute("src", heroImageSrc(HERO_SCENES[0].image));
     expect(container.querySelector("[data-home-hero-frame]")).toHaveAttribute("data-image-state", "ready");
     expect(screen.queryByText("示意图暂时无法加载")).not.toBeInTheDocument();
   });
