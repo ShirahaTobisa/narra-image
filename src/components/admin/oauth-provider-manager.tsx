@@ -62,7 +62,7 @@ export function OAuthProviderManager({
     const existing = providers.find((p) => p.type === type);
     setFormClientId(existing?.clientId ?? "");
     setFormClientSecret("");
-    setFormGuildId(existing?.allowedGuildId ?? "");
+    setFormGuildId(existing?.allowedGuildId?.split(",").join("\n") ?? "");
     setFormEnabled(existing?.isEnabled ?? false);
     setEditingType(type);
     setMessage(null);
@@ -171,7 +171,7 @@ export function OAuthProviderManager({
                     </h2>
                     {existing?.allowedGuildId ? (
                       <span className="rounded-full bg-[#c85a32]/10 px-2.5 py-0.5 text-xs font-medium text-[#b54722]">
-                        仅限服务器成员
+                        仅限 {existing.allowedGuildId.split(",").length} 个服务器的成员
                       </span>
                     ) : null}
                     {existing ? (
@@ -251,18 +251,17 @@ export function OAuthProviderManager({
                 {sp.guildGate ? (
                   <label className="grid gap-1.5">
                     <span className="text-xs font-medium text-[var(--ink-soft)]">
-                      限定服务器 ID（可选）
+                      限定服务器 ID（可选，可填多个）
                     </span>
-                    <input
-                      type="text"
-                      inputMode="numeric"
+                    <textarea
+                      rows={3}
                       value={formGuildId}
                       onChange={(e) => setFormGuildId(e.target.value)}
-                      placeholder="留空 = 不限定，新用户需要邀请码"
+                      placeholder="留空 = 不限定，新用户需要邀请码；多个服务器每行一个，或用逗号隔开"
                       className="w-full rounded-xl border border-[var(--line)] bg-white px-4 py-2.5 font-mono text-sm outline-none"
                     />
                     <span className="text-xs leading-relaxed text-[var(--ink-soft)]">
-                      填了就只放这个服务器的成员登录，每次登录都检查，被移出服务器就登不进来，也不需要邀请码。
+                      填了就只放这些服务器的成员登录（是其中任意一个的成员就行），每次登录都检查，被移出服务器就登不进来，也不需要邀请码。
                       服务器 ID 在 Discord 开发者模式下右键服务器名复制。
                     </span>
                   </label>

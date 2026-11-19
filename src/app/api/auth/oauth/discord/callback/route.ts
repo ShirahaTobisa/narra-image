@@ -9,6 +9,7 @@ import {
   getDiscordCallbackUrl,
   getDiscordConfig,
   isDiscordGuildMember,
+  parseDiscordGuildIds,
 } from "@/lib/auth/discord-oauth";
 import { findOrCreateOAuthAccount, linkOAuthAccount, oauthLoginErrorMessage } from "@/lib/auth/oauth-accounts";
 import { attachSessionCookie, readSession } from "@/lib/auth/session";
@@ -56,8 +57,9 @@ export async function GET(request: Request) {
     );
     const discordUser = await fetchDiscordUser(accessToken);
 
-    // 限定服务器时每次登录都查：被踢出服务器就登不进来
-    if (config.allowedGuildId && !(await isDiscordGuildMember(accessToken, config.allowedGuildId))) {
+    // 限定服务器时每次登录都查：是其中任意一个服务器的成员才放行，被踢出就登不进来
+    const guildIds = parseDiscordGuildIds(config.allowedGuildId);
+    if (guildIds.length > 0 && !(await isDiscordGuildMember(accessToken, guildIds))) {
       return loginError("请先加入指定的 Discord 服务器再登录");
     }
 
@@ -83,7 +85,7 @@ export async function GET(request: Request) {
     // 未登录：查找或创建用户（限定了服务器就免邀请码，否则新用户必须有有效邀请码）
     const result = await findOrCreateOAuthAccount(profile, {
       inviteCode,
-      inviteExempt: Boolean(config.allowedGuildId),
+      inviteExempt: guildIds.length > 0,
     });
     if (!result.ok) {
       return loginError(oauthLoginErrorMessage(result.reason, "Discord"));

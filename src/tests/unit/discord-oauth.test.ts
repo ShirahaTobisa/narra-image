@@ -29,7 +29,7 @@ vi.mock("@/lib/auth/session", () => ({
 }));
 
 import { GET as callback } from "@/app/api/auth/oauth/discord/callback/route";
-import { buildDiscordAuthorizeUrl, discordProfile } from "@/lib/auth/discord-oauth";
+import { buildDiscordAuthorizeUrl, discordProfile, parseDiscordGuildIds } from "@/lib/auth/discord-oauth";
 
 const GUILD_ID = "111122223333444455";
 const DISCORD_USER = { avatar: "abc", global_name: "Alice", id: "123456789012345678", username: "alice" };
@@ -56,6 +56,8 @@ function mockDiscordApi(member: { status: number; body?: unknown }) {
         ? new Response("{}", { status: 404 })
         : Response.json(member.body ?? {}, { status: member.status });
     }
+    // 其他服务器：都不是成员
+    if (url.includes("/users/@me/guilds/")) return new Response("{}", { status: 404 });
     throw new Error(`unexpected fetch ${url}`);
   }) as typeof fetch;
 }
@@ -108,6 +110,30 @@ describe("Discord 登录", () => {
 
     expect(decodeURIComponent(response.headers.get("location") ?? "")).toContain("授权状态验证失败");
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("限定服务器 ID 可以填多个，逗号、换行都行，重复的只算一次", () => {
+    expect(parseDiscordGuildIds(` 111111111111111111，\n${GUILD_ID}, 111111111111111111 `)).toEqual(["111111111111111111", GUILD_ID]);
+    expect(parseDiscordGuildIds(null)).toEqual([]);
+  });
+
+  it("限定多个服务器：是其中任意一个的成员就能登录", async () => {
+    mockDb.oAuthProvider.findUnique.mockResolvedValue(providerConfig(`111111111111111111,${GUILD_ID}`));
+    mockDiscordApi({ body: { pending: false }, status: 200 });
+
+    expect(await runCallback()).toBe("https://draw.example.com/create");
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/users/@me/guilds/111111111111111111/member"),
+      expect.anything(),
+    );
+  });
+
+  it("限定多个服务器：哪个都不是成员就不让登录", async () => {
+    mockDb.oAuthProvider.findUnique.mockResolvedValue(providerConfig(`111111111111111111,${GUILD_ID}`));
+    mockDiscordApi({ status: 404 });
+
+    expect(await runCallback()).toContain("请先加入指定的 Discord 服务器再登录");
+    expect(mockDb.user.create).not.toHaveBeenCalled();
   });
 
   it("限定服务器：不是成员就不让登录，也不查账号", async () => {

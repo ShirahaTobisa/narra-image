@@ -1,5 +1,6 @@
 import { requireAdminRecord } from "@/lib/server/current-user";
 import { jsonError, jsonOk, getErrorMessage, parseJsonBody } from "@/lib/server/http";
+import { parseDiscordGuildIds } from "@/lib/auth/discord-oauth";
 import { getAllOAuthProviders, upsertOAuthProvider } from "@/lib/auth/oauth-config";
 
 export async function GET() {
@@ -35,17 +36,17 @@ export async function POST(request: Request) {
       return jsonError("缺少必要参数");
     }
 
-    // 限定服务器只对 Discord 有意义；Discord 的服务器 ID 是一串数字
-    const allowedGuildId =
+    // 限定服务器只对 Discord 有意义；可以填多个服务器 ID，是其中任意一个的成员就放行
+    const guildIds =
       body.type === "discord" && typeof body.allowedGuildId === "string"
-        ? body.allowedGuildId.trim()
+        ? parseDiscordGuildIds(body.allowedGuildId)
         : undefined;
-    if (allowedGuildId && !/^\d{15,25}$/.test(allowedGuildId)) {
-      return jsonError("服务器 ID 应为一串数字（在 Discord 开发者模式下右键服务器复制）");
+    if (guildIds?.some((id) => !/^\d{15,25}$/.test(id))) {
+      return jsonError("服务器 ID 应为一串数字，多个用逗号或换行隔开（在 Discord 开发者模式下右键服务器复制）");
     }
 
     await upsertOAuthProvider({
-      allowedGuildId,
+      allowedGuildId: guildIds?.join(","),
       clientId: body.clientId,
       clientSecret: body.clientSecret || "",
       displayName: body.displayName || body.type,

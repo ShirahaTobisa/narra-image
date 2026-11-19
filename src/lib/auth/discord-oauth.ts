@@ -77,25 +77,35 @@ export async function fetchDiscordUser(accessToken: string): Promise<DiscordUser
   return response.json() as Promise<DiscordUser>;
 }
 
+/** 后台填的限定服务器 ID：逗号、空格、换行都能隔开（库里存成逗号连起来的一串） */
+export function parseDiscordGuildIds(value: string | null | undefined) {
+  return [...new Set((value ?? "").split(/[\s,，、]+/).filter(Boolean))];
+}
+
 /**
- * 当前用户是不是指定服务器的正式成员：404 = 不在服务器里；
+ * 当前用户是不是其中任意一个服务器的正式成员：404 = 不在这个服务器；
  * pending = 还没通过服务器的入群验证，也不算。其他错误直接抛出（登录失败，不放行）。
  */
-export async function isDiscordGuildMember(accessToken: string, guildId: string) {
-  const response = await fetch(
-    `${DISCORD_API_URL}/users/@me/guilds/${encodeURIComponent(guildId)}/member`,
-    { headers: { Accept: "application/json", Authorization: `Bearer ${accessToken}` } },
-  );
+export async function isDiscordGuildMember(accessToken: string, guildIds: string[]) {
+  for (const guildId of guildIds) {
+    const response = await fetch(
+      `${DISCORD_API_URL}/users/@me/guilds/${encodeURIComponent(guildId)}/member`,
+      { headers: { Accept: "application/json", Authorization: `Bearer ${accessToken}` } },
+    );
 
-  if (response.status === 404) {
-    return false;
-  }
-  if (!response.ok) {
-    throw new Error(`Discord guild member check failed: ${response.status}`);
-  }
+    if (response.status === 404) {
+      continue;
+    }
+    if (!response.ok) {
+      throw new Error(`Discord guild member check failed: ${response.status}`);
+    }
 
-  const member = (await response.json()) as { pending?: boolean };
-  return member.pending !== true;
+    const member = (await response.json()) as { pending?: boolean };
+    if (member.pending !== true) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function discordProfile(user: DiscordUser): OAuthProfile {
