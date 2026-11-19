@@ -4,6 +4,7 @@ import { Loader2, Save, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
+import { SecretInput } from "@/components/ui/secret-input";
 import { useAdminToast } from "./hooks/use-admin-toast";
 import { AdminSwitch } from "./ui/admin-switch";
 
@@ -172,9 +173,8 @@ export function ModerationConfigForm({
               >
                 AI 审核 API Key
               </label>
-              <input
+              <SecretInput
                 id="moderation-api-key"
-                type="password"
                 value={aiApiKey}
                 onChange={(event) => setAiApiKey(event.target.value)}
                 placeholder={config.aiConfigured ? "已加密存储（留空不修改）" : "未配置"}

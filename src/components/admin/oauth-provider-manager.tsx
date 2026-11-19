@@ -5,6 +5,7 @@ import { motion } from "motion/react";
 import { useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
+import { SecretInput } from "@/components/ui/secret-input";
 import { useAdminToast } from "./hooks/use-admin-toast";
 import { AdminSwitch } from "./ui/admin-switch";
 
@@ -239,8 +240,7 @@ export function OAuthProviderManager({
                   <span className="text-xs font-medium text-[var(--ink-soft)]">
                     Client Secret
                   </span>
-                  <input
-                    type="password"
+                  <SecretInput
                     value={formClientSecret}
                     onChange={(e) => setFormClientSecret(e.target.value)}
                     placeholder={existing ? "留空则保留当前密钥不修改" : sp.credentialHint}

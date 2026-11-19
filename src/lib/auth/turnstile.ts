@@ -105,6 +105,24 @@ type SiteVerifyResponse = {
   action?: string;
 };
 
+/** 把 token 交给 Cloudflare 核对，5 秒没回就中止 */
+async function siteVerify(secret: string, token: string) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), VERIFY_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(SITEVERIFY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ secret, response: token }).toString(),
+      signal: controller.signal,
+    });
+    return (await response.json()) as SiteVerifyResponse;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function verifyTurnstileToken(token: string): Promise<{
   ok: boolean;
   reason?: string;
@@ -123,17 +141,8 @@ export async function verifyTurnstileToken(token: string): Promise<{
     return { ok: false, reason: "secret-decrypt-failed" };
   }
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), VERIFY_TIMEOUT_MS);
-
   try {
-    const response = await fetch(SITEVERIFY_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ secret, response: token }).toString(),
-      signal: controller.signal,
-    });
-    const data = (await response.json()) as SiteVerifyResponse;
+    const data = await siteVerify(secret, token);
     if (data.success) return { ok: true };
     return { ok: false, reason: data["error-codes"]?.join(",") || "verify-failed" };
   } catch (error) {
@@ -141,8 +150,16 @@ export async function verifyTurnstileToken(token: string): Promise<{
       ok: false,
       reason: error instanceof Error && error.name === "AbortError" ? "timeout" : "network-error",
     };
-  } finally {
-    clearTimeout(timer);
+  }
+}
+
+/** 保存前核对 Secret Key：拿假 token 去问 Cloudflare，它明确说 Secret Key 不对才算填错；连不上就不拦 */
+export async function isTurnstileSecretRejected(secret: string) {
+  try {
+    const data = await siteVerify(secret, "secret-key-check");
+    return Boolean(data["error-codes"]?.includes("invalid-input-secret"));
+  } catch {
+    return false;
   }
 }
 

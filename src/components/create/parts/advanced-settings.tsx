@@ -5,6 +5,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useId } from "react";
 
+import { SecretInput } from "@/components/ui/secret-input";
 import { imageSizeLimits } from "@/lib/generation/sizes";
 import type {
   GenerationModeration,
@@ -171,10 +172,8 @@ export function AdvancedSettings({
 
                 <label>
                   <span className="mb-1.5 block text-xs font-medium text-[var(--ink-soft)]">API Key</span>
-                  <input
+                  <SecretInput
                     aria-label="第三方 API Key"
-                    type="password"
-                    autoComplete="off"
                     value={customProvider.apiKey}
                     onChange={(event) => onChangeCustomProvider({
                       ...customProvider,

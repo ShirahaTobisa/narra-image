@@ -4,6 +4,7 @@ import { ExternalLink, Loader2, Save, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
+import { SecretInput } from "@/components/ui/secret-input";
 import { useAdminToast } from "./hooks/use-admin-toast";
 import { AdminSwitch } from "./ui/admin-switch";
 
@@ -56,7 +57,7 @@ export function TurnstileConfigForm({
         protectRegister: config.protectRegister,
         siteKey: siteKey.trim() || null,
       };
-      if (secretInput) payload.secretKey = secretInput;
+      if (secretInput.trim()) payload.secretKey = secretInput.trim();
 
       const res = await fetch("/api/admin/turnstile", {
         body: JSON.stringify(payload),
@@ -158,8 +159,7 @@ export function TurnstileConfigForm({
                 </span>
               ) : null}
             </span>
-            <input
-              type="password"
+            <SecretInput
               value={secretInput}
               onChange={(e) => setSecretInput(e.target.value)}
               placeholder={config.secretConfigured ? "留空则保留当前已存储的 Secret Key" : "0x4AAAAAA..."}

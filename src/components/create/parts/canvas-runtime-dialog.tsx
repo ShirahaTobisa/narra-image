@@ -5,6 +5,7 @@ import { useCallback, useEffect, useId, useRef } from "react";
 
 import { TurnstileWidget } from "@/components/auth/turnstile-widget";
 import { Alert } from "@/components/ui/alert";
+import { SecretInput } from "@/components/ui/secret-input";
 import { cn } from "@/lib/utils";
 
 import type { CanvasRuntimeDialogView, UseCanvasRuntimeLeaseResult } from "../hooks/use-canvas-runtime-lease";
@@ -65,7 +66,7 @@ export function CanvasRuntimeDialog({ dialog, widgetRef, changeProvider, verify,
           {dialog.savedProviderAvailable && <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-[var(--ink)]"><input type="checkbox" checked={provider.useSaved} onChange={(event) => changeProvider(dialog.id, { ...provider, useSaved: event.target.checked })} />使用账户已保存的渠道</label>}
           {provider.useSaved ? <p className="text-xs text-[var(--ink-soft)]">API Key 由服务端读取，本次不发送浏览器端凭据。</p> : <>
             <label className="block text-xs font-medium text-[var(--ink-soft)]">画布 Base URL<input aria-label="画布 Base URL" type="url" required value={provider.baseUrl} onChange={(event) => changeProvider(dialog.id, { ...provider, baseUrl: event.target.value })} className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm text-[var(--ink)]" /></label>
-            <label className="block text-xs font-medium text-[var(--ink-soft)]">画布 API Key<input aria-label="画布 API Key" type="password" autoComplete="off" required value={provider.apiKey} onChange={(event) => changeProvider(dialog.id, { ...provider, apiKey: event.target.value })} className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm text-[var(--ink)]" /></label>
+            <label className="block text-xs font-medium text-[var(--ink-soft)]">画布 API Key<SecretInput aria-label="画布 API Key" required value={provider.apiKey} onChange={(event) => changeProvider(dialog.id, { ...provider, apiKey: event.target.value })} className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm text-[var(--ink)]" /></label>
             <label className="block text-xs font-medium text-[var(--ink-soft)]">画布渠道名称<input aria-label="画布渠道名称" maxLength={40} value={provider.label} onChange={(event) => changeProvider(dialog.id, { ...provider, label: event.target.value })} className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm text-[var(--ink)]" /></label>
           </>}
         </fieldset>}

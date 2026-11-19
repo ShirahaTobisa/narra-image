@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import {
   getTurnstileConfig,
+  isTurnstileSecretRejected,
   updateTurnstileConfig,
 } from "@/lib/auth/turnstile";
 import { requireAdminRecord } from "@/lib/server/current-user";
@@ -49,6 +50,9 @@ export async function PATCH(request: Request) {
   try {
     await requireAdminRecord();
     const body = patchSchema.parse(await parseJsonBody(request));
+    if (body.secretKey && (await isTurnstileSecretRejected(body.secretKey))) {
+      return jsonError("Cloudflare 说这个 Secret Key 不对：请到 Cloudflare 的 Turnstile 页面复制 Secret Key（不是 Site Key）");
+    }
     const cfg = await updateTurnstileConfig(body);
     return jsonOk({ config: serialize(cfg) });
   } catch (error) {

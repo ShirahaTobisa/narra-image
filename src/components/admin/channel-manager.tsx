@@ -20,6 +20,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 
 import { Alert } from "@/components/ui/alert";
+import { SecretInput } from "@/components/ui/secret-input";
 import { cn } from "@/lib/utils";
 import { useAdminToast } from "./hooks/use-admin-toast";
 import { AdminConfirmDialog, AdminModal } from "./ui/admin-modal";
@@ -753,14 +754,13 @@ export function ChannelManager({ initialChannels }: ChannelManagerProps) {
                 </span>
               ) : null}
             </span>
-            <input
+            <SecretInput
               value={formApiKey}
               onChange={(e) => {
                 setIsFormDirty(true);
                 setFormApiKey(e.target.value);
               }}
-              placeholder={editingChannel?.apiKeyConfigured ? "••••••••" : "sk-..."}
-              type="password"
+              placeholder={editingChannel?.apiKeyConfigured ? "已保存（留空不修改）" : "sk-..."}
               className="rounded-xl border border-[var(--line)] bg-white px-3.5 py-2.5 font-mono text-sm outline-none"
             />
           </label>
