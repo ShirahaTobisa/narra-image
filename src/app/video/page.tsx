@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { GenerationType } from "@prisma/client";
 
 import { db } from "@/lib/db";
+import { getEnv } from "@/lib/env";
 import { serializeGenerationsForClient, serializeUser } from "@/lib/prisma-mappers";
 import { imageAvailabilityInclude } from "@/lib/storage/image-availability";
 import { getCurrentUserRecord } from "@/lib/server/current-user";
@@ -15,6 +16,8 @@ import { failStalePendingGenerationJobs } from "@/lib/generation/job-refund";
 export const dynamic = "force-dynamic";
 
 export default async function VideoPage() {
+  // 视频功能关着（站点没有视频渠道）时直接回创作台
+  if (!getEnv().VIDEO_ENABLED) redirect("/create");
   const user = await getCurrentUserRecord();
   if (!user) {
     redirect("/login");

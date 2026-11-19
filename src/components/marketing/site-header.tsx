@@ -2,6 +2,7 @@
 import Link from "next/link";
 
 import { isApiEnabled } from "@/lib/api-config";
+import { getEnv } from "@/lib/env";
 import { getCheckInSummary } from "@/lib/benefits/config";
 import { cn } from "@/lib/utils";
 import { LogoutButton } from "@/components/auth/logout-button";
@@ -41,7 +42,7 @@ export async function SiteHeader({
     { href: "/", label: "首页" },
     { href: "/create", label: "创作台" },
     { href: "/prompts", label: "提示词库" },
-    { href: "/video", label: "视频" },
+    ...(getEnv().VIDEO_ENABLED ? [{ href: "/video", label: "视频" }] : []),
     { href: "/works", label: "作品" },
     ...(currentUser && apiEnabled ? [{ href: "/api-keys", label: "API" }] : []),
     ...(currentUser?.role === "admin"

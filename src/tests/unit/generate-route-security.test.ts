@@ -52,6 +52,8 @@ vi.mock("@/lib/moderation/check", () => ({
   checkGenerationInput: mockCheckGenerationInput,
 }));
 
+const env = vi.hoisted(() => ({ VIDEO_ENABLED: true }));
+
 vi.mock("@/lib/env", () => ({
   getEnv: () => ({
     AUTH_SECRET: "unit-test-secret",
@@ -60,6 +62,7 @@ vi.mock("@/lib/env", () => ({
     BUILTIN_PROVIDER_CREDIT_COST: 5,
     BUILTIN_PROVIDER_VIDEO_CREDIT_COST: 20,
     CUSTOM_PROVIDER_ENABLED: true,
+    VIDEO_ENABLED: env.VIDEO_ENABLED,
     WORKER_CONTRACTS_V1_ENABLED: false,
   }),
 }));
@@ -188,6 +191,7 @@ describe("生成接口安全校验顺序", () => {
     });
     mockRequireTurnstile.mockResolvedValue(undefined);
     mockCheckGenerationInput.mockResolvedValue({ allowed: true });
+    env.VIDEO_ENABLED = true;
   });
 
   it("站内渠道只接受本站图片作参考图，外部链接在上传前拒绝", async () => {
@@ -298,6 +302,18 @@ describe("生成接口安全校验顺序", () => {
     });
     expect(mockConversationFindFirst).toHaveBeenCalled();
     expect(mockPersistGeneratedImage).not.toHaveBeenCalled();
+    expect(mockDbTransaction).not.toHaveBeenCalled();
+  });
+
+  it("视频功能关闭时拒绝视频请求，不送审、不建 job", async () => {
+    env.VIDEO_ENABLED = false;
+    mockParseGenerateRequest.mockResolvedValue(buildRequestBody({ generationType: "text_to_video" }));
+
+    const response = await POST(new Request("https://example.com/api/generate", { method: "POST" }));
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "本站暂不支持视频生成" });
+    expect(mockCheckGenerationInput).not.toHaveBeenCalled();
     expect(mockDbTransaction).not.toHaveBeenCalled();
   });
 

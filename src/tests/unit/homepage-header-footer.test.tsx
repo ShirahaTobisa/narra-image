@@ -1,8 +1,9 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-const mocks = vi.hoisted(() => ({ apiEnabled: vi.fn(async () => true), summary: vi.fn(), refresh: vi.fn(), pathname: vi.fn(() => "/") }));
+const mocks = vi.hoisted(() => ({ apiEnabled: vi.fn(async () => true), summary: vi.fn(), refresh: vi.fn(), pathname: vi.fn(() => "/"), env: { VIDEO_ENABLED: true } }));
 vi.mock("@/lib/api-config", () => ({ isApiEnabled: mocks.apiEnabled }));
+vi.mock("@/lib/env", () => ({ getEnv: () => mocks.env }));
 vi.mock("@/lib/benefits/config", () => ({ getCheckInSummary: mocks.summary }));
 vi.mock("next/navigation", () => ({ usePathname: mocks.pathname, useRouter: () => ({ refresh: mocks.refresh, push: vi.fn() }) }));
 
@@ -23,6 +24,7 @@ beforeEach(() => {
   environment = installHomeMotionEnvironment();
   mocks.summary.mockResolvedValue({ checkedInToday: false, checkInReward: 10 });
   mocks.pathname.mockReturnValue("/");
+  mocks.env.VIDEO_ENABLED = true;
   mocks.refresh.mockReset();
   writePetEnabled(false);
 });
@@ -61,6 +63,14 @@ describe("homepage header variant and account behavior", () => {
     const navigation = screen.getByRole("navigation", { name: "主导航" });
     expect(within(navigation).queryByRole("link", { name: "API" })).toBeNull();
     expect(within(navigation).getByRole("link", { name: "创作台" })).toHaveAttribute("href", "/create");
+  });
+
+  it("hides the video entry when video is switched off", async () => {
+    mocks.env.VIDEO_ENABLED = false;
+    render(await SiteHeader({ currentUser: user, variant: "home", activeHref: "/" }));
+    const navigation = screen.getByRole("navigation", { name: "主导航" });
+    expect(within(navigation).queryByRole("link", { name: "视频" })).toBeNull();
+    expect(within(navigation).getByRole("link", { name: "作品" })).toHaveAttribute("href", "/works");
   });
 
   it("calls the existing real check-in/logout endpoints and real pet store, not decorative actions", async () => {
@@ -183,5 +193,12 @@ describe("truthful home footer", () => {
     const hrefs = screen.getAllByRole("link").map((link) => link.getAttribute("href"));
     expect(hrefs).not.toContain("/api-keys");
     expect(hrefs).not.toContain("/login");
+  });
+
+  it("hides the video link when video is switched off", () => {
+    render(<HomeFooter isAuthenticated videoEnabled={false} />);
+    const hrefs = screen.getAllByRole("link").map((link) => link.getAttribute("href"));
+    expect(hrefs).not.toContain("/video");
+    expect(hrefs).toContain("/create");
   });
 });

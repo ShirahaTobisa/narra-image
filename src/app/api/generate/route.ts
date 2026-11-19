@@ -112,6 +112,9 @@ export async function POST(request: Request) {
     if (body.providerMode === "custom" && !getEnv().CUSTOM_PROVIDER_ENABLED) {
       return rejectPreparationResponse(jsonError("本站暂不支持自填 API，请使用平台渠道", 403));
     }
+    if (body.generationType.endsWith("_video") && !getEnv().VIDEO_ENABLED) {
+      return rejectPreparationResponse(jsonError("本站暂不支持视频生成", 403));
+    }
     await requireTurnstile("generate", body.turnstileToken);
 
     const fileSourceImages = await Promise.all(

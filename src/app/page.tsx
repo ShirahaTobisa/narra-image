@@ -7,6 +7,7 @@ import { SiteHeader } from "@/components/marketing/site-header";
 import { FeaturedGallery } from "@/components/marketing/featured-gallery";
 import { CapabilitySection } from "@/components/marketing/homepage/capability-section";
 import { HomeFooter } from "@/components/marketing/homepage/home-footer";
+import { getEnv } from "@/lib/env";
 import { HomeHero } from "@/components/marketing/homepage/home-hero";
 import { HomeMotionProvider } from "@/components/marketing/homepage/home-motion-provider";
 import { HomeReveal } from "@/components/marketing/homepage/home-reveal";
@@ -94,7 +95,7 @@ export default async function Home() {
           </div>
         </HomeReveal>
       </main>
-      <HomeFooter apiEnabled={apiEnabled} isAuthenticated={Boolean(currentUser)} />
+      <HomeFooter apiEnabled={apiEnabled} isAuthenticated={Boolean(currentUser)} videoEnabled={getEnv().VIDEO_ENABLED} />
     </HomeMotionProvider>
   );
 }

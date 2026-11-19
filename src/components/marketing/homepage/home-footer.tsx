@@ -4,10 +4,10 @@ import { ArrowUpRight } from "lucide-react";
 import { FOOTER_CREATION_LINKS, FOOTER_EXPLORE_LINKS } from "./constants";
 import styles from "./homepage.module.css";
 
-/** apiEnabled：站点 API 关着时不显示「开发者 API」入口 */
-type HomeFooterProps = { apiEnabled?: boolean; isAuthenticated: boolean };
+/** apiEnabled：站点 API 关着时不显示「开发者 API」入口；videoEnabled：视频功能关着时不显示「视频创作」 */
+type HomeFooterProps = { apiEnabled?: boolean; isAuthenticated: boolean; videoEnabled?: boolean };
 
-export function HomeFooter({ apiEnabled = true, isAuthenticated }: HomeFooterProps) {
+export function HomeFooter({ apiEnabled = true, isAuthenticated, videoEnabled = true }: HomeFooterProps) {
   return (
     <footer id="footer" className={styles.footer}>
       <div className={styles.container}>
@@ -19,7 +19,7 @@ export function HomeFooter({ apiEnabled = true, isAuthenticated }: HomeFooterPro
           <nav className={styles.footerColumns} aria-label="页脚导航">
             <div>
               <h2>创作空间</h2>
-              <ul>{FOOTER_CREATION_LINKS.map((link) => <li key={link.href}><Link href={link.href} prefetch={false}>{link.label}</Link></li>)}</ul>
+              <ul>{FOOTER_CREATION_LINKS.filter((link) => videoEnabled || link.href !== "/video").map((link) => <li key={link.href}><Link href={link.href} prefetch={false}>{link.label}</Link></li>)}</ul>
             </div>
             <div>
               <h2>工具与账户</h2>

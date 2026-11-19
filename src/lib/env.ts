@@ -188,6 +188,7 @@ const envSchema = z.object({
   CANVAS_ENABLED: booleanEnv(false),
   // 用户自填第三方渠道：公开站默认关（自填渠道出的图不经审核，还不花积分、能占满队列）
   CUSTOM_PROVIDER_ENABLED: booleanEnv(false),
+  VIDEO_ENABLED: booleanEnv(true),
   CANVAS_ASSET_GC_INTERVAL_SECONDS: integerEnv(60, 60),
   CANVAS_ASSET_GC_BATCH_SIZE: integerEnv(20, 1, 100),
   DATABASE_READY_ATTEMPTS: integerEnv(180, 1, 10_000),
