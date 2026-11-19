@@ -65,6 +65,26 @@ export async function exchangeDiscordToken(
   return data.access_token;
 }
 
+/** 保存前核对 Client ID 和 Client Secret：向 Discord 换一次令牌，它明确回 invalid_client 才算填错；连不上就不拦 */
+export async function isDiscordSecretRejected(clientId: string, clientSecret: string) {
+  try {
+    const response = await fetch(`${DISCORD_API_URL}/oauth2/token`, {
+      body: new URLSearchParams({ grant_type: "client_credentials", scope: "identify" }),
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+      signal: AbortSignal.timeout(5000),
+    });
+    if (response.status !== 401) return false;
+    const data = (await response.json().catch(() => ({}))) as { error?: string };
+    return data.error === "invalid_client";
+  } catch {
+    return false;
+  }
+}
+
 export async function fetchDiscordUser(accessToken: string): Promise<DiscordUser> {
   const response = await fetch(`${DISCORD_API_URL}/users/@me`, {
     headers: { Accept: "application/json", Authorization: `Bearer ${accessToken}` },
