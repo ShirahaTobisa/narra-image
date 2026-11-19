@@ -24,7 +24,8 @@ export async function POST(request: Request) {
     const env = getEnv();
     let apiKey = body.apiKey?.trim() || "";
     let baseUrl = body.baseUrl;
-    if (!body.channelId && !env.CUSTOM_PROVIDER_ENABLED) {
+    // 关了自填渠道时只拦普通用户；管理员在后台添加新渠道时要靠它拉模型列表
+    if (!body.channelId && !env.CUSTOM_PROVIDER_ENABLED && user.role !== "ADMIN") {
       return jsonError("本站暂不支持自填 API", 403);
     }
 

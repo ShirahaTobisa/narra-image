@@ -119,6 +119,7 @@ describe("模型探测接口", () => {
 
   it("站点关了自填渠道时普通用户不能探测任何地址", async () => {
     mockEnv.CUSTOM_PROVIDER_ENABLED = false;
+    mockRequireCurrentUserRecord.mockResolvedValue({ id: "user_1", role: "USER" });
     try {
       const response = await POST(
         new Request("http://localhost/api/provider-models/probe", {
@@ -128,6 +129,26 @@ describe("模型探测接口", () => {
       );
       expect(response.status).toBe(403);
       expect(mockFetchOpenAICompatibleModelIds).not.toHaveBeenCalled();
+    } finally {
+      mockEnv.CUSTOM_PROVIDER_ENABLED = true;
+    }
+  });
+
+  it("关了自填渠道也不影响管理员添加新渠道时拉模型", async () => {
+    mockEnv.CUSTOM_PROVIDER_ENABLED = false;
+    mockRequireCurrentUserRecord.mockResolvedValue({ id: "admin_1", role: "ADMIN" });
+    try {
+      const response = await POST(
+        new Request("http://localhost/api/provider-models/probe", {
+          method: "POST",
+          body: JSON.stringify({ apiKey: "sk-upstream", baseUrl: "https://upstream.example.com/v1" }),
+        }),
+      );
+      expect(response.status).toBe(200);
+      expect(mockFetchOpenAICompatibleModelIds).toHaveBeenCalledWith({
+        apiKey: "sk-upstream",
+        baseUrl: "https://upstream.example.com/v1",
+      });
     } finally {
       mockEnv.CUSTOM_PROVIDER_ENABLED = true;
     }
