@@ -47,3 +47,24 @@
 ### Next Steps
 
 - 真实账号登录、第三方验证码和计费出图尚未执行。
+
+
+## Session 3: 审核补漏与安全发布
+
+**Date**: 2026-11-20
+**Task**: 审核补漏与安全发布
+**Branch**: `fix/site-stability`
+
+### Summary
+
+强制站内完整AI审核，覆盖负面提示词/静态参考图、完整分类和输入覆盖，保守NSFW阈值；修正公网图片下载、首次配置、外部编辑数量限制和Worker安全拒绝。2426项Vitest、47项脚本、Linux Go、类型/lint/构建及依赖审计通过。已推送draw-aliya并在sakura更新App+Worker；备份、健康、无害图文审核与访问限制验收通过，未进行真实生图。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b318b6e` | (see git log) |
+
+### Status
+
+[OK] **Completed**
