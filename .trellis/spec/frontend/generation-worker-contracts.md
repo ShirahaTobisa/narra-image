@@ -72,6 +72,7 @@ Docker 命令通过 `LocalDockerSession` 验证并固定本地 unix/npipe endpoi
 - Node 单测：入队渠道校验、取消三阶段、等待超时、管理员清理和退款 CAS。
 - Go 单测：claim 原子性、handoff、有限重试、租约过期、公平性、停止与成功写回 ordinal。
 - Disposable PostgreSQL：legacy snapshot -> additive migration；schema/trigger、attempt 唯一、UNKNOWN 不退款、重复退款、stale ordinal 不写媒体。
+- `legacy-schema.sql` 是部分旧库夹具；新增迁移若依赖历史业务表，须补齐其原始前置结构（如 `OAuthProvider`），不能修改已发布 SQL 或跳过迁移。完整 Prisma schema diff 应另用全部历史迁移建立的临时库，不能把部分夹具声称为全库一致性证明。
 - `local-docker-safety.test.ts`：远端 context 在 daemon/创建前失败、probe 后 context 改变仍固定原本地 endpoint、私密环境不继承、配置/owner 不匹配拒绝清理、standalone worker 命令边界使用同一防护。
 - 最终门禁：`tsc --noEmit`、三个 verify wrapper、`go build ./...`、`git diff --check`。
 

@@ -299,6 +299,22 @@ ALTER TABLE "PromptLibraryItem" ADD CONSTRAINT "PromptLibraryItem_sourceId_fkey"
   FOREIGN KEY ("sourceId") REFERENCES "PromptSource"("id")
   ON DELETE CASCADE ON UPDATE CASCADE;
 
+-- Fixture-only prerequisite from the immutable initial migration: the later
+-- oauth_allowed_guild migration alters this table; this snapshot stays partial.
+CREATE TABLE "OAuthProvider" (
+  "id" TEXT NOT NULL,
+  "type" TEXT NOT NULL,
+  "displayName" TEXT NOT NULL,
+  "clientId" TEXT NOT NULL,
+  "clientSecret" TEXT NOT NULL,
+  "isEnabled" BOOLEAN NOT NULL DEFAULT false,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "OAuthProvider_pkey" PRIMARY KEY ("id")
+);
+
+CREATE UNIQUE INDEX "OAuthProvider_type_key" ON "OAuthProvider"("type");
+
 CREATE TABLE "_prisma_migrations" (
   "id" VARCHAR(36) NOT NULL,
   "checksum" VARCHAR(64) NOT NULL,

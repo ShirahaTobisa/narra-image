@@ -60,3 +60,9 @@ helper 不携带 cookie/账号密码，不请求实际 Discord authorize/callbac
 只读核对新字节：db.py:336 在 release-helper 模式直接使用同一 manifest 的 `containers[2].image` 精确 PostgreSQL ID；release.py:82 要求 DB 回执的 postgresImageId 与该 ID 相同，避免验收使用浮动 postgres:17-alpine。这里只复用经过核实的镜像，仍启动随机 localhost/tmpfs 实例，不使用线上容器或数据卷。
 
 runtime-check 清单由 16 套增为 24 套，新增 moderation-check、public-auth-policy、public-login-page、discord-oauth、admin-user-ban-route、public-work-visibility、featured-route、work-like-route；执行/隔离/精确 owner 清理方式未变。release、DB、runtime 三份新 SHA-256 与主代理给定摘要逐项一致，HTTP 摘要未变；四份 Python ast.parse 通过。上表已更新。此增量未运行产品测试或 harness 主体。
+
+## 实机测试环境调整
+
+首次隔离 DB 检查在创建任何容器前停止：服务器 `/usr/bin/docker` 动态依赖 glibc，原脚本只接受静态客户端。仅调整临时 harness：动态分支限定系统 Docker、x86_64 加载器和 libc，解析真实路径、所有者、写权限、ELF 与实际依赖；两个固定库文件只读挂载，挂载前后重核字节。没有安装软件、放开生产数据或修改产品镜像。原失败日志保留为 `db-tests.log`，后续执行使用 `db-tests-final.log`。
+
+DB helper 新 SHA256 为 `dea9eb4e6f7595991292134c293a21efc342ead6e10675cc496e8f946b8cb129`；实施代理完成语法、15项解析正反例和计划模式，主代理复核实际分支与挂载范围。成功回执另存 `dockerCliRuntime.files` 的客户端/运行库原始路径、目标路径和摘要。最终部署核查脚本也在读取 manifest 前取得同一个发布锁，持锁至回执和精确临时文件清理结束，避免并行发布交错。
