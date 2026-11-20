@@ -68,3 +68,24 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 4: Preserve img2img with independent local image prescreen
+
+**Date**: 2026-11-20
+**Task**: Preserve img2img with independent local image prescreen
+**Branch**: `fix/site-stability`
+
+### Summary
+
+Kept reference-image generation; added fixed local NSFWJS/WASM prescreen before remote moderation with bounded queue and fail-closed handling. 2464 app tests and 54 script tests pass; verified exact Node24 Alpine image offline on Sakura, deployed app, preserved worker/database and recorded limitations. Dedicated CSAM service remains unavailable with current credentials.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ff5dfec` | (see git log) |
+
+### Status
+
+[OK] **Completed**
