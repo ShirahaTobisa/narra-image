@@ -1,0 +1,2 @@
+{"withImage":false,"status":200,"ms":300,"model":"omni-moderation-latest","resultCount":1,"results":[{"flagged":false,"sexual":5.955139348629957e-7,"minors":8.059446204294678e-8,"sexualFlag":false,"minorsFlag":false,"appliedSexual":["text"],"appliedMinors":["text"]}]}
+{"withImage":true,"status":200,"ms":517,"model":"omni-moderation-latest","resultCount":1,"results":[{"flagged":false,"sexual":0.000002355261854303796,"minors":1.4144759985825914e-7,"sexualFlag":false,"minorsFlag":false,"appliedSexual":["text","image"],"appliedMinors":["text"]}]}

@@ -1,0 +1,118 @@
+{
+  "sha": "b318b6e3ac72f9081764c1cb09f5914e04d52519",
+  "deployedAt": "2026-11-20T08:58:12.229400+00:00",
+  "appImageId": "sha256:211927ca1fa5edf6c247322a27c8cb0b707eb08a1feb07e764e17c5e351992c2",
+  "workerImageId": "sha256:2612d7ad3b7f85b5ba06ad8f75f6a371560a1872a99c4be88f9d39b0982c48f1",
+  "appContainerId": "5df5241f826756bd349b8fd623a80223841adb711f84c484eb74e74caac93c11",
+  "workerContainerId": "a564c44a8477f12c428ca00a1746d10df3820139cbed23256e426f9cdbb69df6",
+  "databaseUnchanged": true,
+  "volumesPreserved": true,
+  "migrationStatus": "up-to-date",
+  "backup": "/srv/narra-image-backups/20261120-b318b6e",
+  "local": [
+    {
+      "path": "/api/healthz",
+      "status": 200,
+      "ms": 8
+    },
+    {
+      "path": "/api/readyz",
+      "status": 200,
+      "ms": 114
+    },
+    {
+      "path": "/",
+      "status": 200,
+      "ms": 259
+    },
+    {
+      "path": "/login",
+      "status": 200,
+      "ms": 32
+    },
+    {
+      "path": "/register",
+      "status": 200,
+      "ms": 15
+    },
+    {
+      "path": "/invite-claim",
+      "status": 200,
+      "ms": 16
+    },
+    {
+      "path": "/create",
+      "status": 200
+    },
+    {
+      "path": "/api/me/generations",
+      "status": 401
+    },
+    {
+      "path": "/api/auth/login cross-origin",
+      "status": 403
+    },
+    {
+      "path": "/api/auth/login invalid",
+      "status": 400
+    }
+  ],
+  "public": [
+    {
+      "path": "/",
+      "status": 200,
+      "ms": 122
+    },
+    {
+      "path": "/login",
+      "status": 200,
+      "ms": 100
+    },
+    {
+      "path": "/register",
+      "status": 200,
+      "ms": 213
+    },
+    {
+      "path": "/invite-claim",
+      "status": 200,
+      "ms": 46
+    },
+    {
+      "path": "/create",
+      "status": 200
+    },
+    {
+      "path": "/api/me/generations",
+      "status": 401
+    },
+    {
+      "path": "/api/auth/login cross-origin",
+      "status": 403
+    },
+    {
+      "path": "/api/auth/login invalid",
+      "status": 400
+    }
+  ],
+  "stateAfter": {
+    "jobs": [
+      {
+        "status": "SUCCEEDED",
+        "count": 2
+      }
+    ],
+    "moderation": {
+      "isEnabled": true,
+      "sensitiveWordsEnabled": true,
+      "aiEnabled": true,
+      "aiBaseUrl": "https://api.openai.com/v1",
+      "aiModel": "omni-moderation-latest",
+      "aiThreshold": 0.7,
+      "hasKey": true
+    },
+    "api": {
+      "isEnabled": false
+    }
+  }
+}
