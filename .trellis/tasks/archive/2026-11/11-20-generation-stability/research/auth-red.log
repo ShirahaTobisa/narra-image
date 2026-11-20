@@ -1,0 +1,281 @@
+
+ RUN  v4.1.5 D:/tools/codex/projects/narra-image
+
+stderr | src/tests/unit/auth-form-submission.test.tsx > 登录提交恢复 > 网络中断 留在表单内，并使验证码可以重试
+TypeError: Failed to fetch
+    at it.each.Promise.resolve.ok (D:/tools/codex/projects/narra-image/src/tests/unit/auth-form-submission.test.tsx:35:35)
+    at Mock (file:///D:/tools/codex/projects/narra-image/node_modules/.pnpm/@vitest+spy@4.1.5/node_modules/@vitest/spy/dist/index.js:332:34)
+    at handleSubmit (D:/tools/codex/projects/narra-image/src/components/marketing/auth-form.tsx:73:28)
+    at D:\tools\codex\projects\narra-image\node_modules\.pnpm\react-dom@19.2.4_react@19.2.4\node_modules\react-dom\cjs\react-dom-client.development.js:8956:22
+    at startTransition (D:\tools\codex\projects\narra-image\node_modules\.pnpm\react-dom@19.2.4_react@19.2.4\node_modules\react-dom\cjs\react-dom-client.development.js:8884:27)
+    at startHostTransition (D:\tools\codex\projects\narra-image\node_modules\.pnpm\react-dom@19.2.4_react@19.2.4\node_modules\react-dom\cjs\react-dom-client.development.js:8947:7)
+    at listener (D:\tools\codex\projects\narra-image\node_modules\.pnpm\react-dom@19.2.4_react@19.2.4\node_modules\react-dom\cjs\react-dom-client.development.js:19100:21)
+    at executeDispatch (D:\tools\codex\projects\narra-image\node_modules\.pnpm\react-dom@19.2.4_react@19.2.4\node_modules\react-dom\cjs\react-dom-client.development.js:19116:9)
+    at processDispatchQueue (D:\tools\codex\projects\narra-image\node_modules\.pnpm\react-dom@19.2.4_react@19.2.4\node_modules\react-dom\cjs\react-dom-client.development.js:19173:19)
+    at D:\tools\codex\projects\narra-image\node_modules\.pnpm\react-dom@19.2.4_react@19.2.4\node_modules\react-dom\cjs\react-dom-client.development.js:19767:9 {
+  [stack]: [Getter/Setter],
+  [message]: 'Failed to fetch'
+}
+
+The above error occurred in the <form> component.
+
+React will try to recreate this component tree from scratch using the error boundary you provided, Boundary.
+
+
+stderr | src/tests/unit/auth-form-submission.test.tsx > 登录提交恢复 > 网关 HTML 留在表单内，并使验证码可以重试
+SyntaxError: Unexpected token <
+    at Object.json (D:/tools/codex/projects/narra-image/src/tests/unit/auth-form-submission.test.tsx:36:79)
+    at handleSubmit (D:/tools/codex/projects/narra-image/src/components/marketing/auth-form.tsx:84:36) {
+  [stack]: [Getter/Setter],
+  [message]: 'Unexpected token <'
+}
+
+The above error occurred in the <form> component.
+
+React will try to recreate this component tree from scratch using the error boundary you provided, Boundary.
+
+
+ ❯ src/tests/unit/auth-form-submission.test.tsx (4 tests | 4 failed) 3180ms
+     × 网络中断 留在表单内，并使验证码可以重试 1101ms
+     × 网关 HTML 留在表单内，并使验证码可以重试 1024ms
+     × 等待响应期间显示处理中，并只提交一次 1023ms
+     × 切换登录/注册模式不能复用旧验证码 30ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/tests/unit/auth-form-submission.test.tsx > 登录提交恢复 > 网络中断 留在表单内，并使验证码可以重试
+ FAIL  src/tests/unit/auth-form-submission.test.tsx > 登录提交恢复 > 网关 HTML 留在表单内，并使验证码可以重试
+TestingLibraryElementError: Unable to find role="alert"
+
+Ignored nodes: comments, script, style
+<body>
+  <div>
+    <div>
+      错误页
+    </div>
+  </div>
+</body>
+
+Ignored nodes: comments, script, style
+<body>
+  <div>
+    <div>
+      错误页
+    </div>
+  </div>
+</body>
+ ❯ waitForWrapper node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/wait-for.js:163:27
+ ❯ node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:86:33
+ ❯ src/tests/unit/auth-form-submission.test.tsx:42:25
+     40|     fireEvent.click(screen.getByRole("button", { name: "完成验证" }));
+     41|     submit();
+     42|     expect(await screen.findByRole("alert")).toHaveTextContent(/网络连接失败…
+       |                         ^
+     43|     expect(screen.queryByText("错误页")).not.toBeInTheDocument();
+     44|     expect(screen.getByRole("button", { name: "登录进入创作台" })).toBeDisabl…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  src/tests/unit/auth-form-submission.test.tsx > 登录提交恢复 > 等待响应期间显示处理中，并只提交一次
+TestingLibraryElementError: Unable to find role="button" and name "处理中..."
+
+Ignored nodes: comments, script, style
+<body>
+  <div>
+    <div
+      class="grid gap-5"
+    >
+      <form
+        action="javascript:throw new Error('A React form was unexpectedly submitted. If you called form.submit() manually, consider using form.requestSubmit() instead. If you\\'re trying to use event.stopPropagation() in a submit event handler, consider also calling event.preventDefault().')"
+        class="grid gap-4"
+      >
+        <div
+          class="grid gap-2"
+        >
+          <label
+            class="text-xs font-medium uppercase tracking-[0.2em] text-[var(--ink-soft)]"
+            for="auth-email"
+          >
+            邮箱
+          </label>
+          <input
+            autocomplete="username"
+            class="auth-input"
+            id="auth-email"
+            name="email"
+            placeholder="you@example.com"
+            required=""
+            type="email"
+          />
+        </div>
+        <div
+          class="grid gap-2"
+        >
+          <label
+            class="text-xs font-medium uppercase tracking-[0.2em] text-[var(--ink-soft)]"
+            for="auth-password"
+          >
+            密码
+          </label>
+          <input
+            autocomplete="current-password"
+            class="auth-input"
+            id="auth-password"
+            name="password"
+            placeholder="至少 8 位"
+            required=""
+            type="password"
+          />
+        </div>
+        <button
+          class="auth-submit-btn mt-2"
+          type="submit"
+        >
+          <span
+            class="flex items-center justify-center gap-2"
+          >
+            登录进入创作台
+            <svg
+              aria-hidden="true"
+              class="lucide lucide-arrow-right size-4"
+              fill="none"
+              height="24"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              viewBox="0 0 24 24"
+              width="24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M5 12h14"
+              />
+              <path
+                d="m12 5 7 7-7 7"
+              />
+            </svg>
+          </span>
+        </button>
+      </form>
+    </div>
+  </div>
+</body>
+
+Ignored nodes: comments, script, style
+<body>
+  <div>
+    <div
+      class="grid gap-5"
+    >
+      <form
+        action="javascript:throw new Error('A React form was unexpectedly submitted. If you called form.submit() manually, consider using form.requestSubmit() instead. If you\\'re trying to use event.stopPropagation() in a submit event handler, consider also calling event.preventDefault().')"
+        class="grid gap-4"
+      >
+        <div
+          class="grid gap-2"
+        >
+          <label
+            class="text-xs font-medium uppercase tracking-[0.2em] text-[var(--ink-soft)]"
+            for="auth-email"
+          >
+            邮箱
+          </label>
+          <input
+            autocomplete="username"
+            class="auth-input"
+            id="auth-email"
+            name="email"
+            placeholder="you@example.com"
+            required=""
+            type="email"
+          />
+        </div>
+        <div
+          class="grid gap-2"
+        >
+          <label
+            class="text-xs font-medium uppercase tracking-[0.2em] text-[var(--ink-soft)]"
+            for="auth-password"
+          >
+            密码
+          </label>
+          <input
+            autocomplete="current-password"
+            class="auth-input"
+            id="auth-password"
+            name="password"
+            placeholder="至少 8 位"
+            required=""
+            type="password"
+          />
+        </div>
+        <button
+          class="auth-submit-btn mt-2"
+          type="submit"
+        >
+          <span
+            class="flex items-center justify-center gap-2"
+          >
+            登录进入创作台
+            <svg
+              aria-hidden="true"
+              class="lucide lucide-arrow-right size-4"
+              fill="none"
+              height="24"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              viewBox="0 0 24 24"
+              width="24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M5 12h14"
+              />
+              <path
+                d="m12 5 7 7-7 7"
+              />
+            </svg>
+          </span>
+        </button>
+      </form>
+    </div>
+  </div>
+</body>
+ ❯ waitForWrapper node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/wait-for.js:163:27
+ ❯ node_modules/.pnpm/@testing-library+dom@10.4.1/node_modules/@testing-library/dom/dist/query-helpers.js:86:33
+ ❯ src/tests/unit/auth-form-submission.test.tsx:55:25
+     53|     render(<AuthForm mode="login" />);
+     54|     submit();
+     55|     expect(await screen.findByRole("button", { name: "处理中..." })).toBe…
+       |                         ^
+     56|     submit();
+     57|     expect(fetchMock).toHaveBeenCalledTimes(1);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  src/tests/unit/auth-form-submission.test.tsx > 登录提交恢复 > 切换登录/注册模式不能复用旧验证码
+Error: expect(element).toBeDisabled()
+
+Received element is not disabled:
+  <button
+  class="auth-submit-btn mt-2"
+  type="submit"
+/>
+ ❯ src/tests/unit/auth-form-submission.test.tsx:68:62
+     66|     expect(screen.getByRole("button", { name: "登录进入创作台" })).toBeEnable…
+     67|     rerender(<AuthForm mode="register" turnstile={turnstile} />);
+     68|     expect(screen.getByRole("button", { name: "注册并进入创作台" })).toBeDisab…
+       |                                                              ^
+     69|   });
+     70| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed (4)
+   Start at  14:13:17
+   Duration  4.76s (transform 57ms, setup 125ms, import 252ms, tests 3.18s, environment 921ms)

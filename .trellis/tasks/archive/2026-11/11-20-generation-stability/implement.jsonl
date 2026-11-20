@@ -1,0 +1,6 @@
+{"reason":"Regression tests and required checks","file":".trellis/spec/frontend/quality-guidelines.md"}
+{"reason":"Request lifecycle and stale response guards","file":".trellis/spec/frontend/state-management.md"}
+{"reason":"Reference ownership, ordering and moderation contracts","file":".trellis/spec/operations/generation-inputs.md"}
+{"reason":"Authentication and Turnstile defect evidence","file":".trellis/tasks/archive/2026-11/11-20-generation-stability/research/auth.md"}
+{"reason":"Generation and storage defect evidence","file":".trellis/tasks/archive/2026-11/11-20-generation-stability/research/backend.md"}
+{"reason":"Studio retry and input-order defect evidence","file":".trellis/tasks/archive/2026-11/11-20-generation-stability/research/studio.md"}

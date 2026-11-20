@@ -1,0 +1,3 @@
+{"reason":"Regression tests and required checks","file":".trellis/spec/frontend/quality-guidelines.md"}
+{"reason":"Request lifecycle and stale response guards","file":".trellis/spec/frontend/state-management.md"}
+{"reason":"Reference ownership, ordering and moderation contracts","file":".trellis/spec/operations/generation-inputs.md"}
