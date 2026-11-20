@@ -13,6 +13,7 @@
 - `checkGenerationInput({ userId, prompt?, negativePrompt?, images?, builtIn? })` 在入队前审核实际文本和原图字节；外部两条链路共用 `assertExternalGenerationAllowed`。
 - `moderationResponseSchema` 校验 `{ results: [{ flagged, categories, category_scores, category_applied_input_types? }] }`。
 - `assertModerationImages(images)` 校验静态图片，不改写字节；`verifyCanvasImage(bytes, declaredType, maximumBytes = CANVAS_LIMITS.importBytes)` 的调用方应显式选择自己的大小边界。
+- `checkLocalImages(ReadonlyArray<{ data: Buffer | Uint8Array; mimeType: string }>)` 返回 `{ blocked: false }` 或 `{ blocked: true; category: "sexual"; score: number; model: string }`；故障抛错，由共享审核转为不可用。
 - `fetchPublicHttpUrl(url, { signal?, redirect?: "manual" })` 固定到已验证的公网 IP；默认拒绝跳转，manual 调用方必须逐跳重新调用此函数。
 
 ## 3. 输入与边界
@@ -28,6 +29,12 @@
 - 图像必须明确被 `category_applied_input_types.sexual` 的 `image` 覆盖；有文字且返回覆盖字段时，sexual 和 sexual/minors 都必须含 `text`。旧纯文本响应可以省略整个覆盖字段。官方 omni 的 sexual/minors 仅支持文字，不能声称它识别了图片人物年龄，也不能要求该分类返回 image。
 - 站内 sexual 拒绝线为 `min(aiThreshold, 0.2)`；sexual/minors 为 `0.02`，与通用阈值无关。这是保守策略，不是概率保证。无效响应/超时不记录用户违规。
 - 参考图接受实际 MIME 匹配的静态 PNG/JPEG/WebP/GIF，单图最多20 MiB；拒绝动画/多帧，避免只审首帧。审核与生成使用同一份字节。Canvas 默认8 MiB 边界不能隐式应用到普通/API 图片。
+- 图片通过格式校验后，先逐图本机预审，全部通过才能构造远程审核请求；本地通过不免除远程审核。普通最多16张、外部API最多4张，上传/历史图/Canvas实际字节共用门禁。纯文本不初始化本地模型；自定义渠道仍遵循已有开关语义。
+- 本机固定 `nsfwjs/MobileNetV2Mid@4.4.0` 与 TFJS/WASM 4.22.0：五类 Drawing/Hentai/Neutral/Porn/Sexy 分数必须完整且有限，均在0～1。Porn或Hentai >=0.2、Sexy >=0.8拒绝；这些是业务阈值，不是校准概率或未成年/CSAM识别。`ContentReview.aiModel` 使用实际本地模型标识，不能写成远程模型。
+- `scripts/moderation-image-worker.mjs` 保持原生ESM导入所选模型，不能经Next转换成CJS；模型/WASM随固定依赖进入镜像，不在请求时下载。CJS包装会枚举大模型字符串，实测多分配约800MiB。Node24/Alpine需用目标镜像实跑，不能忽略上游engine声明差异后只靠类型检查发布。
+- 进程级共享一个Node Worker，1活动请求+2等待请求，已接纳请求原图压缩字节共256MiB。8秒整批截止包含排队/冷加载/全部图片；同时检查绝对截止，不能只依赖定时器回调顺序。该预算不包含路由读入但尚未送审的HTTP文件。
+- 每次只复制当前图片到Worker，不转移/修改调用方原Buffer；64MP解码上限，WASM一线程，逐图释放输入Tensor。活动超时/错误终止Worker并清空待审预算，旧线程退出前不得另开，退出后退避1秒；等待超时单独移除。空闲Worker unref。
+- `readModerationRgb` 应用EXIF方向；有alpha时先在独立管线去alpha输出有界RGB，再缩224×224，防止Sharp先缩放预乘而丢掉隐藏RGB。普通图直接缩小；透明图中间缓冲最多192MB，连续大图可能因GC重叠有更高峰值，不能把单图测试RSS当整站预算。只对分析副本这样处理。
 - 外部 URL 下载最多10 MiB、3次跳转、总计10秒；计时覆盖 DNS、连接和完整流式正文。每跳重新查公网上游并固定连接 IP，超限、取消、无正文状态都关闭原响应，不做检查后再次解析的 fetch。images/edits 与 chat/responses 一致最多4张；JSON/multipart 各别名合计，下载/读取文件前拒绝超量。
 - DB 审核行优先，环境变量兜底；首个 PATCH 创建行时先继承 `MODERATION_*` 再合并 patch，避免未修改开关被 DB 默认关闭。Compose 必须传入全部7个变量，默认模型是 `omni-moderation-latest`；环境默认不会覆盖现有 DB 行。
 - Worker 将明确的 HTTP/JSON/SSE 安全拒绝归一为 `PROVIDER_POLICY_REJECTED` 和固定 `moderation_blocked` 消息，不保留原始正文、不自动重试。仅当拒绝完整结束且无已生成图片时可作为已确定失败补偿；SSE 缺终结、解析失败、批次已产图时保留 v1 UNKNOWN 语义。不能把所有同名错误码计为违规（历史视频错误也使用它）。
@@ -46,6 +53,7 @@
 | Canvas 内部输入不是可读本站图片 | `SiteImageError`，403；响应 `private, no-store` |
 | 审核字段缺失、类型错误或越界 | 审核不可用；不入队、不扣费、不增加违规计数 |
 | 站内审核关闭、密钥无效、图片覆盖缺失、动画图或超时 | 同样按审核不可用拒绝；后台文案不得称“降级放行” |
+| 本机队列/字节超额、解码超限、分数缺项、线程启动/推理失败或整批超时 | 同样按审核不可用拒绝；不发外部请求、不记用户违规；实际超时须终止线程 |
 | 明确分类/分数/词库命中 | 记录 ContentReview 并拒绝；上游明确安全拒绝另纳入24小时冷却统计 |
 | SSE 只有 refusal.done 后 EOF，或存在损坏帧 | 不认定整次响应已确定结束，不对未知/部分生成作完整退款 |
 | 下载内容不是支持的图片字节 | `/api/proxy-image` 返回 415 |
@@ -53,6 +61,7 @@
 ## 5. Good / Base / Bad
 
 - Good：先选历史图 A，再上传 B，审核两图后仍按 A、B 入队；失败重试继续保留两图。
+- Good：本机确认拒绝A，立即停止；不再调用远程审核/生成，记录本地模型；本机允许则继续现有远程审核。
 - Base：纯文生图无参考图，原请求格式与计费规则保持不变。
 - Bad：放宽成整个 CDN 都可下载；只审核提示词却提交 Canvas 图片；用当前草稿覆盖失败任务的参数。
 
@@ -62,6 +71,8 @@
 - `generate-route-security.test.ts`、`canvas-generate-route.test.ts`：实际参考字节送审、拒绝后不入队/扣费、混合参考图最终顺序。
 - `proxy-image-route.test.ts`：已授权旧图下载与内容识别；`moderation-check.test.ts`：关审、缺项、coverage、负面词、分数上限、损坏响应和无害正例。
 - `moderation-images.test.ts`：真实静态四格式、动画/伪装/损坏拒绝、8～20 MiB 普通图片允许且 Canvas 原限额保持；`moderation-config.test.ts`：首次 PATCH 保留环境开关。
+- `local-image-moderation.test.ts`：阈值边界、五类完整性、原图/顺序、16张串行、全局单例、队列/256MiB预算、排队/活动截止、晚到ready/result、线程退出前禁止重建、故障后预算回收；阻止分数使用合成响应，不收集违法图片。
+- `moderation-check.test.ts` 与 `external-generation-service.test.ts`：真实共享入口在本地拒绝/错误后无fetch/存图/扣费/入队；纯文本不调本地，拒绝记录真实模型。`scripts/tests/moderation-image-worker.test.mjs`：真实模型无害正例、解码/透明RGB边界、像素上限，在目标Node24/Alpine且无网络容器内通过。
 - `external-source-images.test.ts`：DNS 重绑定与挂起取消、逐跳公网、慢正文/未声明超大正文有界退出、无正文状态销毁；不依赖真实外网。
 - `worker/internal/worker/provider_safety_test.go`：HTTP/JSON/SSE 安全拒绝、普通错误不误判、部分结果和未完整终结不误退款。
 - `generator-studio-origins.test.tsx`、`parse-generate-request.test.ts`：原参数重试、混合输入、切换会话与提示词下限。
@@ -83,4 +94,11 @@ if (!cfg.isEnabled) return { allowed: true };
 
 // Correct：先维护站内强制审核，再处理其他渠道的可选行为。
 if (builtIn && (!cfg.isEnabled || !cfg.aiEnabled)) return unavailable;
+
+// Wrong：同一主进程 require 大模型，或本机放行后跳过远程检查。
+// Correct：独立、未被打包改写的 Worker 原生导入；结果仅作为前置门禁。
+await assertModerationImages(images);
+const local = images.length ? await checkLocalImages(images) : { blocked: false };
+if (local.blocked) return local;
+// 然后才构造和发送完整远程审核请求。
 ```

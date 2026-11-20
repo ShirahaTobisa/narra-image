@@ -3,6 +3,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import { resolveModerationConfig } from "@/lib/moderation/config";
 import { assertModerationImages } from "@/lib/moderation/images";
+import { checkLocalImages } from "@/lib/moderation/local-images";
 import { matchSensitiveWords } from "@/lib/moderation/sensitive-words";
 import { moderationResponseSchema } from "@/lib/validators";
 
@@ -41,7 +42,7 @@ export type ModerationCheckResult =
 
 type AiModerationOutcome =
   | { blocked: false }
-  | { blocked: true; score: number; category: string | null };
+  | { blocked: true; score: number; category: string | null; model?: string };
 
 /**
  * 内容审核：敏感词命中或 AI 判定违规 → 记录 ContentReview 并阻断。
@@ -113,7 +114,7 @@ export async function checkGenerationInput(
     if (outcome.blocked) {
       await db.contentReview.create({
         data: {
-          aiModel: cfg.aiModel,
+          aiModel: outcome.model ?? cfg.aiModel,
           aiScore: outcome.score,
           category: outcome.category,
           kind: "ai_moderation",
@@ -177,12 +178,16 @@ async function callModerationAi(
   images: ModerationImage[],
   builtIn: boolean,
 ): Promise<AiModerationOutcome> {
+  await assertModerationImages(images);
+  if (images.length > 0) {
+    const outcome = await checkLocalImages(images);
+    if (outcome.blocked) return outcome;
+  }
+
   const url = new URL(`${cfg.aiBaseUrl?.trim().replace(/\/+$/, "")}/moderations`);
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error("审核接口地址无效");
   }
-  await assertModerationImages(images);
-
   const input = images.length === 0
     ? text
     : [

@@ -1,24 +1,31 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { canvasPng } from "./helpers/canvas-api-fixtures";
 
 const {
   mockAssertApiRateLimit,
   mockAssertModeration,
+  mockCheckLocalImages,
+  mockCreateReview,
   mockCreateGenerationJob,
   mockFailGenerationJobAndRefund,
   mockFindGenerationJob,
   mockGetActiveChannels,
   mockPersistGeneratedImage,
+  mockResolveModerationConfig,
   mockTopLevelGenerationJobUpdate,
   mockTransaction,
   mockUserUpdateMany,
 } = vi.hoisted(() => ({
   mockAssertApiRateLimit: vi.fn(),
   mockAssertModeration: vi.fn(),
+  mockCheckLocalImages: vi.fn(),
+  mockCreateReview: vi.fn(),
   mockCreateGenerationJob: vi.fn(),
   mockFailGenerationJobAndRefund: vi.fn(),
   mockFindGenerationJob: vi.fn(),
   mockGetActiveChannels: vi.fn(),
   mockPersistGeneratedImage: vi.fn(),
+  mockResolveModerationConfig: vi.fn(),
   mockTopLevelGenerationJobUpdate: vi.fn(),
   mockTransaction: vi.fn(),
   mockUserUpdateMany: vi.fn(),
@@ -31,11 +38,15 @@ vi.mock("@/lib/api-config", () => ({
 vi.mock("@/lib/moderation/check", () => ({
   assertExternalGenerationAllowed: mockAssertModeration,
 }));
+vi.mock("@/lib/moderation/config", () => ({ resolveModerationConfig: mockResolveModerationConfig }));
+vi.mock("@/lib/moderation/local-images", () => ({ checkLocalImages: mockCheckLocalImages }));
 
 vi.mock("@/lib/db", () => ({
   db: {
     $transaction: mockTransaction,
+    contentReview: { create: mockCreateReview },
     generationJob: {
+      count: vi.fn(async () => 0),
       findFirst: mockFindGenerationJob,
       update: mockTopLevelGenerationJobUpdate,
     },
@@ -79,6 +90,7 @@ const tx = {
 };
 
 describe("外部 API 生成服务", () => {
+  afterEach(() => vi.restoreAllMocks());
   beforeEach(() => {
     process.env.AUTH_SECRET = "unit-test-secret";
     process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/test";
@@ -87,6 +99,12 @@ describe("外部 API 生成服务", () => {
 
     mockAssertApiRateLimit.mockReset();
     mockAssertModeration.mockReset().mockResolvedValue(undefined);
+    mockCheckLocalImages.mockReset().mockResolvedValue({ blocked: false });
+    mockCreateReview.mockReset();
+    mockResolveModerationConfig.mockReset().mockResolvedValue({
+      aiApiKey: "moderation-test-key", aiBaseUrl: "https://moderation.invalid/v1", aiEnabled: true,
+      aiModel: "omni-moderation-latest", aiThreshold: 0.5, isEnabled: true, sensitiveWordsEnabled: true,
+    });
     mockCreateGenerationJob.mockReset();
     mockFailGenerationJobAndRefund.mockReset();
     mockFindGenerationJob.mockReset();
@@ -132,6 +150,33 @@ describe("外部 API 生成服务", () => {
         name: "备用渠道",
       },
     ]);
+  });
+
+  it.each(["blocked", "unavailable"])("真实共享本机图片检查 %s 时不远程请求、不扣费、不上传或建任务", async (outcome) => {
+    const { assertExternalGenerationAllowed } = await vi.importActual<typeof import("@/lib/moderation/check")>("@/lib/moderation/check");
+    mockAssertModeration.mockImplementation(assertExternalGenerationAllowed);
+    if (outcome === "blocked") {
+      mockCheckLocalImages.mockResolvedValue({ blocked: true, category: "sexual", score: 0.8, model: "nsfwjs/MobileNetV2Mid@4.4.0" });
+    } else {
+      mockCheckLocalImages.mockRejectedValue(new Error("本机检查超时"));
+      vi.spyOn(console, "error").mockImplementation(() => {});
+    }
+    const remoteFetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("unexpected remote request"));
+    const sourceImages = [{ data: canvasPng(), mimeType: "image/png", fileName: "reference.png" }];
+
+    await expect(runExternalGeneration({
+      apiKeyId: "key_1", user: { credits: 500, id: "user_1" },
+      input: {
+        count: 1, generationType: "image_to_image", model: "gpt-image-2", moderation: "auto",
+        outputFormat: "png", prompt: "a blue landscape", quality: "auto", size: "auto", sourceImages,
+      },
+    })).rejects.toMatchObject({ code: "content_policy_violation", status: 400 });
+    expect(mockCheckLocalImages).toHaveBeenCalledWith(sourceImages);
+    expect(remoteFetch).not.toHaveBeenCalled();
+    expect(mockPersistGeneratedImage).not.toHaveBeenCalled();
+    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(mockCreateGenerationJob).not.toHaveBeenCalled();
+    expect(mockUserUpdateMany).not.toHaveBeenCalled();
   });
 
   it("按请求模型匹配渠道并交给 Worker", async () => {

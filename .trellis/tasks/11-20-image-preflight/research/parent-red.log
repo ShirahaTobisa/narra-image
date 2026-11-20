@@ -1,0 +1,214 @@
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.12 D:/tools/codex/projects/narra-image
+
+ ❯ src/tests/unit/local-image-moderation.test.ts (29 tests | 28 failed) 14ms
+     × 等待固定模型就绪，复用线程，并在空闲时 unref 2ms
+     × 按明确阈值拒绝 'Porn'=0.2，不只看最高类别 0ms
+     × 按明确阈值拒绝 'Hentai'=0.2，不只看最高类别 0ms
+     × 按明确阈值拒绝 'Sexy'=0.8，不只看最高类别 0ms
+     × 按明确阈值拒绝 'Porn'=0.199，不只看最高类别 0ms
+     × 按明确阈值拒绝 'Hentai'=0.199，不只看最高类别 0ms
+     × 按明确阈值拒绝 'Sexy'=0.799，不只看最高类别 0ms
+     × 五类分数缺失或无效时不可用，不放行：{} 0ms
+     × 五类分数缺失或无效时不可用，不放行：{"Drawing":0,"Hentai":0,"Neutral":1,"Porn":0} 0ms
+     × 五类分数缺失或无效时不可用，不放行：{"Drawing":0.01,"Hentai":0.01,"Neutral":0.96,"Porn":null,"Sexy":0.01} 0ms
+     × 五类分数缺失或无效时不可用，不放行：{"Drawing":0.01,"Hentai":null,"Neutral":0.96,"Porn":0.01,"Sexy":0.01} 0ms
+     × 五类分数缺失或无效时不可用，不放行：{"Drawing":0.01,"Hentai":0.01,"Neutral":0.96,"Porn":0.01,"Sexy":-0.1} 0ms
+     × 五类分数缺失或无效时不可用，不放行：{"Drawing":1.1,"Hentai":0.01,"Neutral":0.96,"Porn":0.01,"Sexy":0.01} 0ms
+     × 五类分数缺失或无效时不可用，不放行：{"Drawing":0.01,"Hentai":0.01,"Neutral":0.96,"Porn":"0","Sexy":0.01} 0ms
+     × 16张逐图检查，末张命中也会整批拒绝 0ms
+     × 复制当前视图的精确字节，既不 detach 原图也不发送周围字节 0ms
+     × 最多一个活动加两个等待请求，完成后按顺序释放许可 0ms
+     × 整请求预算含全部图片，256MiB可接纳、超量不创建或复制，失败后释放 1ms
+     × 8秒截止包括冷加载和排队，不在开始推理时重新计时 3ms
+     × 活动超时真实终止，旧线程退出前不能再建；迟到结果不影响新请求 0ms
+     × error 清理所有请求，不留挂起或失效预算 0ms
+     × messageerror 清理所有请求，不留挂起或失效预算 0ms
+     × exit-zero 清理所有请求，不留挂起或失效预算 0ms
+     × exit-one 清理所有请求，不留挂起或失效预算 0ms
+     × reply-error 清理所有请求，不留挂起或失效预算 0ms
+     × wrong-model 清理所有请求，不留挂起或失效预算 0ms
+     × 创建和发送的同步异常也释放许可 0ms
+     × 上一张重复消息不能跳过下一张检查 0ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 28 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/tests/unit/local-image-moderation.test.ts > 本机图片审核管理器 > 等待固定模型就绪，复用线程，并在空闲时 unref
+TypeError: Cannot read properties of undefined (reading '0')
+ ❯ src/tests/unit/local-image-moderation.test.ts:78:43
+     76|     const first = check();
+     77|     const worker = instances[0];
+     78|     expect(workerConstructor.mock.calls[0][0]).toBe(path.resolve("scri…
+       |                                           ^
+     79|     expect(worker.sent).toEqual([]);
+     80|     worker.ready();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/28]⎯
+
+ FAIL  src/tests/unit/local-image-moderation.test.ts > 本机图片审核管理器 > 按明确阈值拒绝 'Porn'=0.2，不只看最高类别
+ FAIL  src/tests/unit/local-image-moderation.test.ts > 本机图片审核管理器 > 按明确阈值拒绝 'Hentai'=0.2，不只看最高类别
+ FAIL  src/tests/unit/local-image-moderation.test.ts > 本机图片审核管理器 > 按明确阈值拒绝 'Sexy'=0.8，不只看最高类别
+ FAIL  src/tests/unit/local-image-moderation.test.ts > 本机图片审核管理器 > 按明确阈值拒绝 'Porn'=0.199，不只看最高类别
+ FAIL  src/tests/unit/local-image-moderation.test.ts > 本机图片审核管理器 > 按明确阈值拒绝 'Hentai'=0.199，不只看最高类别
+ FAIL  src/tests/unit/local-image-moderation.test.ts > 本机图片审核管理器 > 按明确阈值拒绝 'Sexy'=0.799，不只看最高类别
+TypeError: Cannot read properties of undefined (reading 'ready')
+ ❯ src/tests/unit/local-image-moderation.test.ts:101:18
+     99|   ])("按明确阈值拒绝 $category=$score，不只看最高类别", async ({ category, score, blo…
+    100|     const result = check();
+    101|     instances[0].ready();
+       |                  ^
+    102|     instances[0].reply({ ...safeScores, [category]: score });
+    103|     expect(await result).toEqual(blocked
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/28]⎯
+
+ FAIL  src/tests/unit/local-image-moderation.test.ts > 本机图片审核管理器 > 五类分数缺失或无效时不可用，不放行：{}
+ FAIL  src/tests/unit/local-image-moderation.test.ts > 本机图片审核管理器 > 五类分数缺失或无效时不可用，不放行：{"Drawing":0,"Hentai":0,"Neutral":1,"Porn":0}
+ FAIL  src/tests/unit/local-image-moderation.test.ts > 本机图片审核管理器 > 五类分数缺失或无效时不可用，不放行：{"Drawing":0.01,"Hentai":0.01,"Neutral":0.96,"Porn":null,"Sexy":0.01}
+ FAIL  src/tests/unit/local-image-moderation.test.ts > 本机图片审核管理器 > 五类分数缺失或无效时不可用，不放行：{"Drawing":0.01,"Hentai":null,"Neutral":0.96,"Porn":0.01,"Sexy":0.01}
+ FAIL  src/tests/unit/local-image-moderation.test.ts > 本机图片审核管理器 > 五类分数缺失或无效时不可用，不放行：{"Drawing":0.01,"Hentai":0.01,"Neutral":0.96,"Porn":0.01,"Sexy":-0.1}
+ FAIL  src/tests/unit/local-image-moderation.test.ts > 本机图片审核管理器 > 五类分数缺失或无效时不可用，不放行：{"Drawing":1.1,"Hentai":0.01,"Neutral":0.96,"Porn":0.01,"Sexy":0.01}
+ FAIL  src/tests/unit/local-image-moderation.test.ts > 本机图片审核管理器 > 五类分数缺失或无效时不可用，不放行：{"Drawing":0.01,"Hentai":0.01,"Neutral":0.96,"Porn":"0","Sexy":0.01}
+TypeError: Cannot read properties of undefined (reading 'ready')
+ ❯ src/tests/unit/local-image-moderation.test.ts:118:18
+    116|   ])("五类分数缺失或无效时不可用，不放行：%j", async (scores) => {
+    117|     const result = check();
+    118|     instances[0].ready();
+       |                  ^
+    119|     instances[0].reply(scores);
+    120|     expect(await result).toBe("unavailable");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/28]⎯
+
+ FAIL  src/tests/unit/local-image-moderation.test.ts > 本机图片审核管理器 > 16张逐图检查，末张命中也会整批拒绝
+TypeError: Cannot read properties of undefined (reading 'ready')
+ ❯ src/tests/unit/local-image-moderation.test.ts:126:12
+    124|     const result = check(Array.from({ length: 16 }, (_, i) => image(i)…
+    125|     const worker = instances[0];
+    126|     worker.ready();
+       |            ^
+    127|     for (let index = 0; index < 16; index += 1) {
+    128|       expect(worker.sent).toHaveLength(index + 1);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/28]⎯
+
+ FAIL  src/tests/unit/local-image-moderation.test.ts > 本机图片审核管理器 > 复制当前视图的精确字节，既不 detach 原图也不发送周围字节
+TypeError: Cannot read properties of undefined (reading 'ready')
+ ❯ src/tests/unit/local-image-moderation.test.ts:141:12
+    139|     const result = check([{ data: view, mimeType: "image/png" }, { dat…
+    140|     const worker = instances[0];
+    141|     worker.ready();
+       |            ^
+    142|     expect(Array.from(worker.sent[0].data)).toEqual([1, 2, 3]);
+    143|     expect(worker.sent[0].data.buffer.byteLength).toBe(3);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/28]⎯
+
+ FAIL  src/tests/unit/local-image-moderation.test.ts > 本机图片审核管理器 > 最多一个活动加两个等待请求，完成后按顺序释放许可
+TypeError: Cannot read properties of undefined (reading 'ready')
+ ❯ src/tests/unit/local-image-moderation.test.ts:157:12
+    155|     expect(await check([image(4)])).toBe("unavailable");
+    156|     const worker = instances[0];
+    157|     worker.ready();
+       |            ^
+    158|     for (const value of [1, 2, 3]) {
+    159|       expect(Array.from(worker.sent.at(-1)!.data)).toEqual([value]);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/28]⎯
+
+ FAIL  src/tests/unit/local-image-moderation.test.ts > 本机图片审核管理器 > 整请求预算含全部图片，256MiB可接纳、超量不创建或复制，失败后释放
+TypeError: Cannot read properties of undefined (reading 'sent')
+ ❯ src/tests/unit/local-image-moderation.test.ts:177:25
+    175|     const full = check(Array(4).fill(large));
+    176|     expect(await check()).toBe("unavailable");
+    177|     expect(instances[0].sent).toEqual([]);
+       |                         ^
+    178|     instances[0].emit("error", new Error("mock crash"));
+    179|     expect(await full).toBe("unavailable");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/28]⎯
+
+ FAIL  src/tests/unit/local-image-moderation.test.ts > 本机图片审核管理器 > 8秒截止包括冷加载和排队，不在开始推理时重新计时
+TypeError: Cannot read properties of undefined (reading 'ready')
+ ❯ src/tests/unit/local-image-moderation.test.ts:192:12
+    190|     await vi.advanceTimersByTimeAsync(7_000);
+    191|     const worker = instances[0];
+    192|     worker.ready();
+       |            ^
+    193|     worker.reply();
+    194|     expect(await first).toEqual({ blocked: false });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/28]⎯
+
+ FAIL  src/tests/unit/local-image-moderation.test.ts > 本机图片审核管理器 > 活动超时真实终止，旧线程退出前不能再建；迟到结果不影响新请求
+TypeError: Cannot set properties of undefined (setting 'autoExit')
+ ❯ src/tests/unit/local-image-moderation.test.ts:203:12
+    201|     const timedOut = check();
+    202|     const worker = instances[0];
+    203|     worker.autoExit = false;
+       |            ^
+    204|     worker.ready();
+    205|     const oldId = worker.sent[0].id;
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/28]⎯
+
+ FAIL  src/tests/unit/local-image-moderation.test.ts > 本机图片审核管理器 > error 清理所有请求，不留挂起或失效预算
+ FAIL  src/tests/unit/local-image-moderation.test.ts > 本机图片审核管理器 > messageerror 清理所有请求，不留挂起或失效预算
+ FAIL  src/tests/unit/local-image-moderation.test.ts > 本机图片审核管理器 > exit-zero 清理所有请求，不留挂起或失效预算
+ FAIL  src/tests/unit/local-image-moderation.test.ts > 本机图片审核管理器 > exit-one 清理所有请求，不留挂起或失效预算
+ FAIL  src/tests/unit/local-image-moderation.test.ts > 本机图片审核管理器 > reply-error 清理所有请求，不留挂起或失效预算
+TypeError: Cannot read properties of undefined (reading 'ready')
+ ❯ src/tests/unit/local-image-moderation.test.ts:227:14
+    225|     if (failure === "wrong-model") worker.ready("different-model");
+    226|     else {
+    227|       worker.ready();
+       |              ^
+    228|       if (failure === "exit-zero") worker.exit(0);
+    229|       else if (failure === "exit-one") worker.exit(1);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/28]⎯
+
+ FAIL  src/tests/unit/local-image-moderation.test.ts > 本机图片审核管理器 > wrong-model 清理所有请求，不留挂起或失效预算
+TypeError: Cannot read properties of undefined (reading 'ready')
+ ❯ src/tests/unit/local-image-moderation.test.ts:225:43
+    223|     const pending = [check(), check(), check()];
+    224|     const worker = instances[0];
+    225|     if (failure === "wrong-model") worker.ready("different-model");
+       |                                           ^
+    226|     else {
+    227|       worker.ready();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/28]⎯
+
+ FAIL  src/tests/unit/local-image-moderation.test.ts > 本机图片审核管理器 > 创建和发送的同步异常也释放许可
+TypeError: Cannot read properties of undefined (reading 'postMessage')
+ ❯ src/tests/unit/local-image-moderation.test.ts:248:18
+    246|     await vi.advanceTimersByTimeAsync(1_001);
+    247|     const sendFailure = check();
+    248|     instances[0].postMessage.mockImplementationOnce(() => { throw new …
+       |                  ^
+    249|     instances[0].ready();
+    250|     expect(await sendFailure).toBe("unavailable");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/28]⎯
+
+ FAIL  src/tests/unit/local-image-moderation.test.ts > 本机图片审核管理器 > 上一张重复消息不能跳过下一张检查
+TypeError: Cannot read properties of undefined (reading 'ready')
+ ❯ src/tests/unit/local-image-moderation.test.ts:261:12
+    259|     const result = check([image(1), image(2)]);
+    260|     const worker = instances[0];
+    261|     worker.ready();
+       |            ^
+    262|     const firstId = worker.sent[0].id;
+    263|     worker.reply();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/28]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  28 failed | 1 passed (29)
+   Start at  20:40:11
+   Duration  877ms (transform 56ms, setup 345ms, import 40ms, tests 14ms, environment 0ms)

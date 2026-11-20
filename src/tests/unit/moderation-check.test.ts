@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { canvasPng } from "./helpers/canvas-api-fixtures";
 
-const { mockDb, mockResolveConfig, mockMatchWords } = vi.hoisted(() => {
+const { mockDb, mockResolveConfig, mockMatchWords, mockCheckLocalImages } = vi.hoisted(() => {
   const contentReview = { create: vi.fn() };
   const generationJob = { count: vi.fn() };
   const resolveConfig = vi.fn();
   const matchWords = vi.fn();
   return {
     mockDb: { contentReview, generationJob },
+    mockCheckLocalImages: vi.fn(),
     mockMatchWords: matchWords,
     mockResolveConfig: resolveConfig,
   };
@@ -17,6 +18,10 @@ vi.mock("server-only", () => ({}));
 vi.mock("@/lib/db", () => ({ db: mockDb }));
 vi.mock("@/lib/moderation/config", () => ({
   resolveModerationConfig: mockResolveConfig,
+}));
+vi.mock("@/lib/moderation/local-images", () => ({
+  checkLocalImages: mockCheckLocalImages,
+  LOCAL_IMAGE_MODEL: "nsfwjs/MobileNetV2Mid@4.4.0",
 }));
 vi.mock("@/lib/moderation/sensitive-words", () => ({
   matchSensitiveWords: mockMatchWords,
@@ -28,6 +33,7 @@ import {
   MODERATION_UNAVAILABLE_MESSAGE,
   PROVIDER_COOLDOWN_MESSAGE,
 } from "@/lib/moderation/check";
+import { LOCAL_IMAGE_MODEL } from "@/lib/moderation/local-images";
 
 function baseConfig(overrides: Record<string, unknown> = {}) {
   return {
@@ -72,6 +78,7 @@ describe("内容审核 checkGenerationInput", () => {
     vi.clearAllMocks();
     vi.restoreAllMocks();
     global.fetch = vi.fn();
+    mockCheckLocalImages.mockReset().mockResolvedValue({ blocked: false });
     mockMatchWords.mockReturnValue([]);
     mockDb.generationJob.count.mockResolvedValue(0);
   });
@@ -226,6 +233,81 @@ describe("内容审核 checkGenerationInput", () => {
       ],
       model: "omni-moderation-latest",
     });
+  });
+
+  it("纯文本不启动本机图片检查", async () => {
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    mockModerationResponse([moderationResult()]);
+    mockCheckLocalImages.mockRejectedValue(new Error("本机图片模型不可用"));
+
+    expect(await checkGenerationInput({ builtIn: true, prompt: "a blue landscape", userId: "u1" })).toEqual({ allowed: true });
+    expect(mockCheckLocalImages).not.toHaveBeenCalled();
+    expect(global.fetch).toHaveBeenCalledOnce();
+  });
+
+  it("本机拒绝图片时不发送远程请求，并记录实际本机模型", async () => {
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    mockModerationResponse([moderationResult()]);
+    mockCheckLocalImages.mockResolvedValue({ blocked: true, category: "sexual", score: 0.81, model: LOCAL_IMAGE_MODEL });
+
+    expect(await checkGenerationInput({
+      builtIn: true, prompt: "a blue landscape", negativePrompt: "avoid blur", images: [pngImage()], userId: "u1",
+    })).toEqual({ allowed: false, message: MODERATION_BLOCK_MESSAGE });
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(mockDb.contentReview.create).toHaveBeenCalledWith({ data: {
+      aiModel: LOCAL_IMAGE_MODEL, aiScore: 0.81, category: "sexual", kind: "ai_moderation",
+      prompt: "a blue landscape", negativePrompt: "avoid blur", userId: "u1",
+    } });
+  });
+
+  it("本机检查失败时不请求远程服务，也不记录用户违规", async () => {
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    mockModerationResponse([moderationResult()]);
+    mockCheckLocalImages.mockRejectedValue(new Error("private image details"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    expect(await checkGenerationInput({ builtIn: true, images: [pngImage()], userId: "u1" })).toEqual({
+      allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE,
+    });
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(mockDb.contentReview.create).not.toHaveBeenCalled();
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain("private image details");
+  });
+
+  it("等待全部 16 张原图通过本机检查后才按原字节顺序送审", async () => {
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    mockModerationResponse([moderationResult()]);
+    const images = Array.from({ length: 16 }, (_, index) => ({ data: canvasPng(index), mimeType: "image/png" }));
+    const originalBytes = images.map((image) => Buffer.from(image.data));
+    let allow!: (value: { blocked: false }) => void;
+    mockCheckLocalImages.mockReturnValue(new Promise<{ blocked: false }>((resolve) => { allow = resolve; }));
+
+    const pending = checkGenerationInput({ builtIn: true, prompt: "a blue landscape", images, userId: "u1" });
+    await vi.waitFor(() => expect(mockCheckLocalImages).toHaveBeenCalledOnce());
+    expect(mockCheckLocalImages.mock.calls[0][0]).toBe(images);
+    expect(global.fetch).not.toHaveBeenCalled();
+    allow({ blocked: false });
+
+    expect(await pending).toEqual({ allowed: true });
+    expect(images.map((image) => image.data)).toEqual(originalBytes);
+    expect(sentModerationBody().input).toEqual([
+      { type: "text", text: "a blue landscape" },
+      ...originalBytes.map((bytes) => ({ type: "image_url", image_url: { url: `data:image/png;base64,${bytes.toString("base64")}` } })),
+    ]);
+  });
+
+  it("本机通过后仍执行远程审核，远程拒绝记录远程模型", async () => {
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    mockModerationResponse([moderationResult({ category_scores: { sexual: 0.9, "sexual/minors": 0 }, flagged: true })]);
+
+    expect(await checkGenerationInput({ builtIn: true, prompt: "a blue landscape", images: [pngImage()], userId: "u1" })).toEqual({
+      allowed: false, message: MODERATION_BLOCK_MESSAGE,
+    });
+    expect(mockCheckLocalImages).toHaveBeenCalledOnce();
+    expect(global.fetch).toHaveBeenCalledOnce();
+    expect(mockDb.contentReview.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      aiModel: "omni-moderation-latest", category: "sexual", aiScore: 0.9,
+    }) });
   });
 
   it("只有参考图、没有提示词时也会审图", async () => {
@@ -464,6 +546,7 @@ describe("内容审核 checkGenerationInput", () => {
     expect(await checkGenerationInput({
       builtIn: true, prompt: "a cat", images: [{ data: Buffer.from("not a PNG"), mimeType: "image/png" }], userId: "u1",
     })).toEqual({ allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE });
+    expect(mockCheckLocalImages).not.toHaveBeenCalled();
     expect(global.fetch).not.toHaveBeenCalled();
     expect(mockDb.contentReview.create).not.toHaveBeenCalled();
   });

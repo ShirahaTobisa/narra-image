@@ -1,0 +1,37 @@
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.12 D:/tools/codex/projects/narra-image
+
+ ❯ src/tests/unit/local-image-moderation.test.ts (30 tests | 1 failed) 21ms
+     × 定时器尚未执行时，超过截止的就绪/结果也不能被接受 5ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/tests/unit/local-image-moderation.test.ts > 本机图片审核管理器 > 定时器尚未执行时，超过截止的就绪/结果也不能被接受
+AssertionError: expected { blocked: false } to be 'unavailable' // Object.is equality
+
+- Expected:
+"unavailable"
+
++ Received:
+{
+  "blocked": false,
+}
+
+ ❯ src/tests/unit/local-image-moderation.test.ts:206:26
+    204|     vi.setSystemTime(8_001);
+    205|     worker.reply();
+    206|     expect(await result).toBe("unavailable");
+       |                          ^
+    207|     expect(worker.terminate).toHaveBeenCalledTimes(1);
+    208|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 29 passed (30)
+   Start at  20:42:11
+   Duration  366ms (transform 44ms, setup 156ms, import 38ms, tests 21ms, environment 0ms)

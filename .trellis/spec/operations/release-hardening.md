@@ -61,6 +61,8 @@ docker compose -f docker-compose.e2e.yml config --quiet
 ```
 
 - 每个单元测试进程约 57s 独立截止；全量 vitest 进程独立 300s（单用例 30s）；migration/DB runner 与 E2E 使用各自更长独立截止，禁止嵌套进 60s 父截止。
+- Windows独立运行Node脚本测试也应带 `--test-timeout=57000`。环境限制若令超时测试无法结束自己的子进程，只能按已核实PID/父链清理本次fixture，再在具备相应权限的环境复测；手动结束后显示通过不能作为超时清理验证。
+- Turbopack子进程错误应保留首次日志；若授权环境重试立即重现，先验证并归档本轮生成的`.next`后干净构建，区分缓存重放与代码问题。不得为消除环境错误放宽产品检查、直接改CSS，或把尚未定位的首次退出原因写成已证明。
 - GitHub Actions 的验证阶段只调用仓库内 wrapper（`.github/workflows/verify.yml`），不复制场景命令；安装依赖及明确的基础镜像准备仍在独立 prerequisite 步骤完成。
 - `verify:ci` 显式生成 Prisma Client 后才做 tsc；只有最后生产 build stage 注入合成 APP_URL/DB/auth/provider 环境，不能污染默认环境测试。安装依赖或后续 `pnpm build` 不能代替 typecheck 前的生成前置。
 - shared disposable PostgreSQL 的 ready probe 显式连接容器内 TCP 127.0.0.1:5432；默认 Unix socket 可能命中 init 临时服务，并在第一次 CREATE DATABASE 时遇到 shutting down。保留原20s ready/1s probe、owner与清理约束，不用盲目sleep增加时限。
