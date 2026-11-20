@@ -9,6 +9,7 @@
 - `resolveGenerationCount({ generationType, count }) -> number`：文生图使用请求张数，其余类型固定 1；扣费、限额、输出预留和任务必须共用该值。
 - `calculateGenerationCost({ providerMode, builtInCreditCost, count })` 与 `hasEnoughCredits({ ...同前, credits })` 的 `count` 必填且为实际输出数；内置单价乘张数，自填渠道为 0。
 - `assertGenerationRateLimit(userId, count)`：同步检查并占用每用户滚动 60 秒 5 张额度，超额抛 `ApiRateLimitError`（429）。底层 `tryRecord(key, count = 1)` 超额不写入。
+- `startExternalGeneration(args) -> Promise<{ result: Promise<Job> }>`：先完成 API/图片限额准入，再启动生成；流式入口先 await 此包装，再开始响应并等待 result。普通 `runExternalGeneration` 复用它，不提供跳过限额参数。
 - `readSiteImage(url, ownerId, options?) -> Promise<SiteImage | null>`：客户端传入的 URL 必须经过授权读取；`null` 表示不属于允许的本站图片。
 - `readCanonicalSiteImage(url, options?) -> Promise<SiteImage>`：仅供 `readCanvasRunInputs(ownerId, run)` 已核验拥有权后的内部结果使用，不能直接接收客户端 URL。
 - `SiteImage = { data: Buffer; mimeType: string }`；`options = { maximumBytes?: number; signal?: AbortSignal }`。
