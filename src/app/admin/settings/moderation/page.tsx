@@ -32,7 +32,7 @@ export default async function AdminModerationSettingsPage() {
           eyebrow="Moderation / Rules"
           icon={ShieldAlert}
           title="内容审核规则与敏感词库"
-          description="配置全站敏感词匹配与 AI 审核端点阈值；AI 审核超时或异常时会自动降级放行，不阻塞正常生成。"
+          description="配置全站敏感词匹配与 AI 审核端点阈值；站内生图必须通过 AI 审核，审核关闭、超时或异常时拒绝本次生成，不扣积分。"
         />
 
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">

@@ -1,25 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockDecryptProviderSecret, mockFindUnique } = vi.hoisted(() => ({
+const { mockDecryptProviderSecret, mockFindUnique, mockUpsert, mockEnv } = vi.hoisted(() => ({
   mockDecryptProviderSecret: vi.fn(),
   mockFindUnique: vi.fn(),
+  mockUpsert: vi.fn(),
+  mockEnv: {
+    AUTH_SECRET: "unit-test-secret", MODERATION_AI_ENABLED: false, MODERATION_API_KEY: "",
+    MODERATION_BASE_URL: "", MODERATION_ENABLED: false, MODERATION_MODEL: "omni-moderation-latest",
+    MODERATION_SENSITIVE_WORDS_ENABLED: true, MODERATION_THRESHOLD: 0.5,
+  },
 }));
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/db", () => ({
-  db: { moderationConfig: { findUnique: mockFindUnique } },
+  db: { moderationConfig: { findUnique: mockFindUnique, upsert: mockUpsert } },
 }));
 vi.mock("@/lib/env", () => ({
-  getEnv: () => ({
-    AUTH_SECRET: "unit-test-secret",
-    MODERATION_AI_ENABLED: false,
-    MODERATION_API_KEY: "",
-    MODERATION_BASE_URL: "",
-    MODERATION_ENABLED: false,
-    MODERATION_MODEL: "text-moderation-latest",
-    MODERATION_SENSITIVE_WORDS_ENABLED: true,
-    MODERATION_THRESHOLD: 0.5,
-  }),
+  getEnv: () => mockEnv,
 }));
 vi.mock("@/lib/providers/provider-secret", () => ({
   decryptProviderSecret: mockDecryptProviderSecret,
@@ -29,11 +26,13 @@ vi.mock("@/lib/providers/provider-secret", () => ({
 import {
   getModerationConfigMeta,
   resolveModerationConfig,
+  updateModerationConfig,
 } from "@/lib/moderation/config";
 
 describe("审核配置", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.assign(mockEnv, { MODERATION_ENABLED: false, MODERATION_AI_ENABLED: false, MODERATION_API_KEY: "", MODERATION_BASE_URL: "" });
   });
 
   it("resolveModerationConfig：DB 优先且解密 key", async () => {
@@ -76,10 +75,30 @@ describe("审核配置", () => {
       aiApiKey: null,
       aiBaseUrl: null,
       aiEnabled: false,
-      aiModel: "text-moderation-latest",
+      aiModel: "omni-moderation-latest",
       aiThreshold: 0.5,
       isEnabled: false,
       sensitiveWordsEnabled: true,
+    });
+  });
+
+  it("首次仅调整阈值不会把环境中已启用的审核关掉", async () => {
+    Object.assign(mockEnv, {
+      MODERATION_ENABLED: true, MODERATION_AI_ENABLED: true,
+      MODERATION_API_KEY: "env-key", MODERATION_BASE_URL: "https://moderation.example/v1",
+    });
+    mockFindUnique.mockResolvedValue(null);
+    mockUpsert.mockImplementation(async ({ create }: { create: Record<string, unknown> }) => {
+      const saved = { isEnabled: false, aiEnabled: false, sensitiveWordsEnabled: true,
+        aiModel: "text-moderation-latest", aiThreshold: 0.5, ...create };
+      mockFindUnique.mockResolvedValue(saved);
+      return saved;
+    });
+    await updateModerationConfig({ aiThreshold: 0.3 });
+    expect(await resolveModerationConfig()).toMatchObject({
+      isEnabled: true, aiEnabled: true, sensitiveWordsEnabled: true,
+      aiBaseUrl: "https://moderation.example/v1", aiApiKey: "env-key",
+      aiModel: "omni-moderation-latest", aiThreshold: 0.3,
     });
   });
 

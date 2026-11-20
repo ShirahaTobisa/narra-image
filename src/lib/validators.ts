@@ -45,8 +45,15 @@ export const generationModerationSchema = z.enum(["auto", "low"]).default("auto"
 export const moderationResponseSchema = z.object({
   results: z.array(z.object({
     flagged: z.boolean(),
-    category_scores: z.record(z.string(), z.number().min(0).max(1))
-      .refine((scores) => Object.keys(scores).length > 0, "审核结果缺少分类分数"),
+    categories: z.object({
+      sexual: z.boolean(),
+      "sexual/minors": z.boolean(),
+    }).catchall(z.boolean()),
+    category_scores: z.object({
+      sexual: z.number().min(0).max(1),
+      "sexual/minors": z.number().min(0).max(1),
+    }).catchall(z.number().min(0).max(1)),
+    category_applied_input_types: z.record(z.string(), z.array(z.enum(["text", "image"]))).optional(),
   })).min(1),
 });
 export const generationOutputCompressionSchema = z.number().int().min(0).max(100).optional().nullable();

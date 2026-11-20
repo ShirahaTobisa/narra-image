@@ -56,6 +56,15 @@ describe("敏感词库", () => {
     expect(hits).toContainEqual({ category: "NSFW", word: "色情" });
   });
 
+  it.each(["ｐｏｒｎ", "p\u200bo\u200cr\u200dn", "p\u2060or\u00adn"])("识别全角或不可见格式字符拆开的词：%s", (text) => {
+    expect(matchSensitiveWords(text)).toContainEqual({ category: "NSFW", word: "porn" });
+  });
+
+  it("规范化中文与负向词，同时保留英文词边界", () => {
+    expect(matchSensitiveWords("平静的风景", "色\ufeff情")).toContainEqual({ category: "NSFW", word: "色情" });
+    expect(matchSensitiveWords("ａｎａｌｙｓｉｓ", "p\u200bornstar biography")).toEqual([]);
+  });
+
   it("prompt 与 negativePrompt 一并检查", () => {
     const hits = matchSensitiveWords("平静的风景", "禁止出现 gore 场面");
     expect(hits).toContainEqual({ category: "VIOLENCE", word: "gore" });

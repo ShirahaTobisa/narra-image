@@ -171,8 +171,8 @@ function verifyWebpChunks(bytes: Buffer, start: number, end: number, frame = fal
 // Walk the complete container, not just a MIME label or dimension header. This
 // checks framing/CRCs and derives dimensions from the same verified segments;
 // it does not allocate decoded pixels or impose the legacy header reader's limits.
-export function verifyCanvasImage(bytes: Buffer, declaredType: string): ImageDimensions {
-  if (bytes.length < 1 || bytes.length > CANVAS_LIMITS.importBytes) throw new CanvasContractError("CANVAS_LIMIT_EXCEEDED");
+export function verifyCanvasImage(bytes: Buffer, declaredType: string, maximumBytes: number = CANVAS_LIMITS.importBytes): ImageDimensions {
+  if (bytes.length < 1 || bytes.length > maximumBytes) throw new CanvasContractError("CANVAS_LIMIT_EXCEEDED");
   if (bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
     if (declaredType !== "image/png") invalid();
     return verifyPng(bytes);

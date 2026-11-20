@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { canvasPng } from "./helpers/canvas-api-fixtures";
 
 const { mockDb, mockResolveConfig, mockMatchWords } = vi.hoisted(() => {
   const contentReview = { create: vi.fn() };
@@ -23,6 +24,7 @@ vi.mock("@/lib/moderation/sensitive-words", () => ({
 
 import {
   checkGenerationInput,
+  MODERATION_BLOCK_MESSAGE,
   MODERATION_UNAVAILABLE_MESSAGE,
   PROVIDER_COOLDOWN_MESSAGE,
 } from "@/lib/moderation/check";
@@ -42,6 +44,19 @@ function baseConfig(overrides: Record<string, unknown> = {}) {
 
 const aiConfig = () =>
   baseConfig({ aiApiKey: "key", aiBaseUrl: "https://x/v1", aiEnabled: true, aiModel: "omni-moderation-latest" });
+
+const pngBase64 = canvasPng().toString("base64");
+const pngImage = () => ({ data: Buffer.from(pngBase64, "base64"), mimeType: "image/png" });
+
+function moderationResult(overrides: Record<string, unknown> = {}) {
+  return {
+    categories: { sexual: false, "sexual/minors": false, hate: false },
+    category_scores: { sexual: 0.01, "sexual/minors": 0, hate: 0 },
+    category_applied_input_types: { sexual: ["text", "image"], "sexual/minors": ["text"], hate: ["text"] },
+    flagged: false,
+    ...overrides,
+  };
+}
 
 function mockModerationResponse(results: unknown[]) {
   global.fetch = vi.fn().mockResolvedValue({ json: async () => ({ results }), ok: true });
@@ -100,7 +115,7 @@ describe("内容审核 checkGenerationInput", () => {
     mockResolveConfig.mockResolvedValue(
       baseConfig({ aiApiKey: "key", aiBaseUrl: "https://x/v1", aiEnabled: true }),
     );
-    mockModerationResponse([{ category_scores: { sexual: 0.9, hate: 0.1 }, flagged: false }]);
+    mockModerationResponse([moderationResult({ category_scores: { sexual: 0.9, "sexual/minors": 0, hate: 0.1 } })]);
 
     const result = await checkGenerationInput({ prompt: "some prompt", userId: "u1" });
 
@@ -120,7 +135,9 @@ describe("内容审核 checkGenerationInput", () => {
 
   it("AI 判定通过时放行", async () => {
     mockResolveConfig.mockResolvedValue(aiConfig());
-    mockModerationResponse([{ category_scores: { sexual: 0.1 }, flagged: false }]);
+    mockModerationResponse([moderationResult({
+      category_applied_input_types: { sexual: ["text"], "sexual/minors": ["text"] },
+    })]);
 
     const result = await checkGenerationInput({ prompt: "a cute cat", userId: "u1" });
 
@@ -130,7 +147,7 @@ describe("内容审核 checkGenerationInput", () => {
 
   it("AI 审核异常时拒绝本次生成（不放行、不当违规记录）", async () => {
     mockResolveConfig.mockResolvedValue(aiConfig());
-    global.fetch = vi.fn().mockRejectedValue(new Error("timeout"));
+    global.fetch = vi.fn().mockRejectedValue(new Error("Bearer secret-key https://private-host/ user-content"));
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const result = await checkGenerationInput({ prompt: "ok prompt", userId: "u1" });
@@ -138,6 +155,8 @@ describe("内容审核 checkGenerationInput", () => {
     expect(result).toEqual({ allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE });
     expect(mockDb.contentReview.create).not.toHaveBeenCalled();
     expect(errorSpy).toHaveBeenCalled();
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toMatch(/secret-key|private-host|user-content/);
+    expect(errorSpy.mock.calls.flat().every((value) => typeof value === "string")).toBe(true);
   });
 
   it("审核接口返回空结果时拒绝，不当成通过", async () => {
@@ -158,6 +177,13 @@ describe("内容审核 checkGenerationInput", () => {
     { flagged: false, category_scores: { sexual: "unknown" } },
     { flagged: false, category_scores: { sexual: -0.1 } },
     { flagged: false, category_scores: { sexual: 1.1 } },
+    moderationResult({ category_scores: { hate: 0 } }),
+    moderationResult({ category_scores: { sexual: 0.01 } }),
+    moderationResult({ category_scores: { "sexual/minors": 0 } }),
+    moderationResult({ categories: undefined }),
+    moderationResult({ categories: { hate: false } }),
+    moderationResult({ categories: { sexual: false } }),
+    moderationResult({ categories: { sexual: "false", "sexual/minors": false } }),
   ])("审核结果结构或分数无效时拒绝，而不是放行：%j", async (invalid) => {
     mockResolveConfig.mockResolvedValue(aiConfig());
     mockModerationResponse([invalid]);
@@ -183,10 +209,11 @@ describe("内容审核 checkGenerationInput", () => {
 
   it("参考图和提示词一起送审", async () => {
     mockResolveConfig.mockResolvedValue(aiConfig());
-    mockModerationResponse([{ category_scores: { sexual: 0.01 }, flagged: false }]);
+    mockModerationResponse([moderationResult()]);
 
     const result = await checkGenerationInput({
-      images: [{ data: Buffer.from("png"), mimeType: "image/png" }],
+      builtIn: true,
+      images: [pngImage()],
       prompt: "make it blue",
       userId: "u1",
     });
@@ -195,7 +222,7 @@ describe("内容审核 checkGenerationInput", () => {
     expect(sentModerationBody()).toEqual({
       input: [
         { text: "make it blue", type: "text" },
-        { image_url: { url: "data:image/png;base64,cG5n" }, type: "image_url" },
+        { image_url: { url: `data:image/png;base64,${pngBase64}` }, type: "image_url" },
       ],
       model: "omni-moderation-latest",
     });
@@ -203,24 +230,29 @@ describe("内容审核 checkGenerationInput", () => {
 
   it("只有参考图、没有提示词时也会审图", async () => {
     mockResolveConfig.mockResolvedValue(aiConfig());
-    mockModerationResponse([{ category_scores: { sexual: 0.97 }, flagged: true }]);
+    mockModerationResponse([moderationResult({
+      category_scores: { sexual: 0.97, "sexual/minors": 0 },
+      category_applied_input_types: { sexual: ["image"], "sexual/minors": [] },
+      flagged: true,
+    })]);
 
     const result = await checkGenerationInput({
-      images: [{ data: Buffer.from("png"), mimeType: "image/png" }],
+      builtIn: true,
+      images: [pngImage()],
       prompt: "",
       userId: "u1",
     });
 
     expect(result.allowed).toBe(false);
     expect(sentModerationBody().input).toEqual([
-      { image_url: { url: "data:image/png;base64,cG5n" }, type: "image_url" },
+      { image_url: { url: `data:image/png;base64,${pngBase64}` }, type: "image_url" },
     ]);
   });
 
   it("涉及未成年人的分数超过 0.02 就拒，即使没标记、也低于通用阈值", async () => {
     mockResolveConfig.mockResolvedValue(aiConfig());
     mockModerationResponse([
-      { category_scores: { sexual: 0.2, "sexual/minors": 0.03 }, flagged: false },
+      moderationResult({ category_scores: { sexual: 0.2, "sexual/minors": 0.03 } }),
     ]);
 
     const result = await checkGenerationInput({ prompt: "borderline", userId: "u1" });
@@ -245,7 +277,8 @@ describe("内容审核 checkGenerationInput", () => {
   });
 
   it("站内渠道拦截次数未到上限时照常审核；自填渠道不查拦截次数", async () => {
-    mockResolveConfig.mockResolvedValue(baseConfig({ isEnabled: false }));
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    mockModerationResponse([moderationResult()]);
     mockDb.generationJob.count.mockResolvedValue(2);
 
     await expect(
@@ -266,5 +299,193 @@ describe("内容审核 checkGenerationInput", () => {
 
     expect(result.allowed).toBe(true);
     expect(mockDb.contentReview.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { isEnabled: false },
+    { aiEnabled: false },
+    { aiApiKey: null },
+    { aiApiKey: "   " },
+    { aiBaseUrl: null },
+    { aiBaseUrl: "not-a-url" },
+    { aiBaseUrl: "file:///tmp/moderation" },
+    { aiModel: null },
+    { aiModel: "   " },
+    { aiThreshold: Number.NaN },
+    { aiThreshold: 2 },
+  ])("站内渠道配置不完整时拒绝，不能只靠关键词：%j", async (overrides) => {
+    mockResolveConfig.mockResolvedValue({ ...aiConfig(), ...overrides });
+    mockModerationResponse([moderationResult()]);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    expect(await checkGenerationInput({ builtIn: true, prompt: "a cat", userId: "u1" })).toEqual({
+      allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE,
+    });
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(mockDb.contentReview.create).not.toHaveBeenCalled();
+  });
+
+  it("配置读取或解密失败时返回审核不可用，不泄漏错误详情", async () => {
+    mockResolveConfig.mockRejectedValue(new Error("decrypt secret-key private-db-url"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(checkGenerationInput({ builtIn: true, prompt: "a cat", userId: "u1" })).resolves.toEqual({
+      allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE,
+    });
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(mockDb.contentReview.create).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalled();
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toMatch(/secret-key|private-db-url/);
+    expect(errorSpy.mock.calls.flat().every((value) => typeof value === "string")).toBe(true);
+  });
+
+  it.each([
+    { label: "只有负面提示词", prompt: "" },
+    { label: "长正面提示词", prompt: "a cat".repeat(12_000) },
+  ])("负面提示词以排除内容标签完整送审：$label", async ({ prompt }) => {
+    const negativePrompt = "avoid blur ".repeat(90);
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    mockModerationResponse([moderationResult()]);
+
+    expect(await checkGenerationInput({ builtIn: true, prompt, negativePrompt, userId: "u1" })).toEqual({ allowed: true });
+    expect(sentModerationBody().input).toBe(`Prompt:\n${prompt}\n\nNegative prompt (content to avoid):\n${negativePrompt}`);
+  });
+
+  it("站内没有任何可送审文本或图片时不放行", async () => {
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await checkGenerationInput({ builtIn: true, userId: "u1" })).toEqual({
+      allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE,
+    });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    undefined,
+    {},
+    { sexual: ["text"], "sexual/minors": ["text"] },
+    { sexual: ["image"], "sexual/minors": ["text"] },
+  ])("图文请求缺少 sexual 实际图片/文本覆盖时拒绝：%j", async (coverage) => {
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    mockModerationResponse([moderationResult({ category_applied_input_types: coverage })]);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    expect(await checkGenerationInput({ builtIn: true, prompt: "a cat", images: [pngImage()], userId: "u1" })).toEqual({
+      allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE,
+    });
+    expect(mockDb.contentReview.create).not.toHaveBeenCalled();
+  });
+
+  it("纯图片响应 sexual 覆盖 image 即可，不要求 minors 支持图片", async () => {
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    mockModerationResponse([moderationResult({
+      category_applied_input_types: { sexual: ["image"], "sexual/minors": [] },
+    })]);
+
+    expect(await checkGenerationInput({ builtIn: true, images: [pngImage()], userId: "u1" })).toEqual({ allowed: true });
+  });
+
+  it.each([
+    {},
+    { sexual: ["image"], "sexual/minors": ["text"] },
+    { sexual: ["text"], "sexual/minors": [] },
+  ])("明确返回的覆盖范围未审核全部文本分类时拒绝：%j", async (coverage) => {
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    mockModerationResponse([moderationResult({ category_applied_input_types: coverage })]);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    expect(await checkGenerationInput({ builtIn: true, prompt: "a cat", userId: "u1" })).toEqual({
+      allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE,
+    });
+    expect(mockDb.contentReview.create).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])("负面文字和图文请求也必须包含 minors 的 text 覆盖（附图=%s）", async (withImage) => {
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    mockModerationResponse([moderationResult({ category_applied_input_types: { sexual: ["text", "image"] } })]);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    expect(await checkGenerationInput({
+      builtIn: true, negativePrompt: "avoid blur", images: withImage ? [pngImage()] : [], userId: "u1",
+    })).toEqual({ allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE });
+    expect(mockDb.contentReview.create).not.toHaveBeenCalled();
+  });
+
+  it("有效旧版纯文本响应不需要图片覆盖字段", async () => {
+    mockResolveConfig.mockResolvedValue({ ...aiConfig(), aiModel: "text-moderation-latest" });
+    mockModerationResponse([moderationResult({ category_applied_input_types: undefined })]);
+
+    expect(await checkGenerationInput({ builtIn: true, prompt: "a cat", userId: "u1" })).toEqual({ allowed: true });
+  });
+
+  it.each(["sexual", "sexual/minors", "hate"])("分类 %s 已标记时拒绝，即使总 flagged 为 false 且分数低", async (category) => {
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    mockModerationResponse([moderationResult({
+      categories: { sexual: false, "sexual/minors": false, hate: false, [category]: true },
+    })]);
+
+    expect(await checkGenerationInput({ builtIn: true, prompt: "a cat", userId: "u1" })).toEqual({
+      allowed: false, message: MODERATION_BLOCK_MESSAGE,
+    });
+    expect(mockDb.contentReview.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ kind: "ai_moderation", category }),
+    });
+  });
+
+  it.each([
+    { builtIn: true, threshold: 0.7, score: 0.2, allowed: false },
+    { builtIn: true, threshold: 0.7, score: 0.199, allowed: true },
+    { builtIn: true, threshold: 0.1, score: 0.1, allowed: false },
+    { builtIn: false, threshold: 0.7, score: 0.2, allowed: true },
+  ])("站内 sexual 采用不高于 0.2 的站点策略，同时保留自填渠道配置：%j", async ({ builtIn, threshold, score, allowed }) => {
+    mockResolveConfig.mockResolvedValue({ ...aiConfig(), aiThreshold: threshold });
+    mockModerationResponse([moderationResult({ category_scores: { sexual: score, "sexual/minors": 0 } })]);
+
+    expect((await checkGenerationInput({ builtIn, prompt: "a cat", userId: "u1" })).allowed).toBe(allowed);
+    if (!allowed) {
+      expect(mockDb.contentReview.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ category: "sexual", aiScore: score }),
+      });
+    }
+  });
+
+  it("其他分类不套 sexual 的 0.2 阈值", async () => {
+    mockResolveConfig.mockResolvedValue({ ...aiConfig(), aiThreshold: 0.7 });
+    mockModerationResponse([moderationResult({ category_scores: { sexual: 0.01, "sexual/minors": 0, hate: 0.2 } })]);
+
+    expect(await checkGenerationInput({ builtIn: true, prompt: "a cat", userId: "u1" })).toEqual({ allowed: true });
+  });
+
+  it("图片格式校验失败时不发审核请求，不当成内容违规", async () => {
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    mockModerationResponse([moderationResult()]);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    expect(await checkGenerationInput({
+      builtIn: true, prompt: "a cat", images: [{ data: Buffer.from("not a PNG"), mimeType: "image/png" }], userId: "u1",
+    })).toEqual({ allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE });
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(mockDb.contentReview.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { messages: ["MODERATION_BLOCKED", "content_policy_violation", "safety system"], allowed: false },
+    { messages: ["provider busy", "video polling failed", "bad image dimensions"], allowed: true },
+  ])("冷却只统计明确内容拒绝，不把通用 PROVIDER_POLICY_REJECTED 当违规：%j", async ({ messages, allowed }) => {
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    mockModerationResponse([moderationResult()]);
+    mockDb.generationJob.count.mockImplementation(({ where }: {
+      where: { OR: Array<{ errorCode?: string; errorMessage?: { contains: string; mode?: string } }> };
+    }) => Promise.resolve(messages.filter((message) => where.OR.some((condition) => {
+      if (condition.errorCode) return condition.errorCode === "PROVIDER_POLICY_REJECTED";
+      const filter = condition.errorMessage;
+      return filter && (filter.mode === "insensitive"
+        ? message.toLowerCase().includes(filter.contains.toLowerCase())
+        : message.includes(filter.contains));
+    })).length));
+
+    expect(await checkGenerationInput({ builtIn: true, prompt: "a cat", userId: "u1" })).toEqual({
+      allowed, ...(!allowed ? { message: PROVIDER_COOLDOWN_MESSAGE } : {}),
+    });
   });
 });

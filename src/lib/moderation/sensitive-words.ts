@@ -90,7 +90,7 @@ export function matchSensitiveWords(
   const combined = texts.filter((text): text is string => Boolean(text)).join("\n");
   if (!combined) return [];
 
-  const lower = combined.toLowerCase();
+  const lower = combined.normalize("NFKC").replace(/\p{Cf}/gu, "").toLowerCase();
   const hits: SensitiveHit[] = [];
   const seen = new Set<string>();
 

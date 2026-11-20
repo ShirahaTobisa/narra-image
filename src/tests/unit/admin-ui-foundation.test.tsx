@@ -12,6 +12,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { AdminFrame } from "@/components/admin/admin-frame";
+import { ModerationConfigForm } from "@/components/admin/moderation-config-form";
 import {
   ADMIN_NAV_GROUPS,
   isAdminNavItemActive,
@@ -37,6 +38,20 @@ function ToastTriggerHarness() {
 }
 
 describe("后台基础 UI 原语与路由契约", () => {
+  it("准确说明站内审核暂停、失败拒绝和独立风险阈值", () => {
+    render(<ModerationConfigForm config={{
+      aiBaseUrl: "https://moderation.invalid/v1", aiConfigured: false, aiEnabled: false,
+      aiModel: null, aiThreshold: 0.5, isEnabled: false, sensitiveWordsEnabled: true, updatedAt: null,
+    }} words={[]} />);
+
+    expect(screen.getByText(/关闭后站内生图将暂停/)).toBeInTheDocument();
+    expect(screen.getByText(/关闭 AI 审核或审核失败时.*拒绝站内生图/)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("omni-moderation-latest")).toBeInTheDocument();
+    expect(screen.getByText(/色情内容拦截阈值最高为 0\.20.*未成年人色情文本为 0\.02/)).toBeInTheDocument();
+    expect(screen.getByText(/不能据此判断图片中的年龄/)).toBeInTheDocument();
+    expect(screen.queryByText(/降级放行/)).not.toBeInTheDocument();
+  });
+
   it("准确解析全部关键后台路由的多级面包屑（修复 /admin/moderation 与设置子页）", () => {
     expect(resolveAdminBreadcrumb("/admin").title).toBe("控制台概览");
     expect(resolveAdminBreadcrumb("/admin/moderation")).toMatchObject({

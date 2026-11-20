@@ -112,7 +112,10 @@ pnpm dev
 - 内容审核：`MODERATION_ENABLED`（总开关，默认关闭）、
   `MODERATION_SENSITIVE_WORDS_ENABLED`、`MODERATION_AI_ENABLED`、
   `MODERATION_BASE_URL`、`MODERATION_API_KEY`、`MODERATION_MODEL`、
-  `MODERATION_THRESHOLD`。命中违规描述时拒绝生成并记录触发事件。
+  `MODERATION_THRESHOLD`。默认模型为支持图文的 `omni-moderation-latest`。
+  站内渠道要求总开关、AI 审核和有效接口同时就绪；关闭、异常或审核结果不完整时暂停本次生成，不扣积分。
+  色情分类的站内拦截阈值最高为 0.2，涉及未成年人色情的文本分类最高为 0.02；配置可以更严，不能放宽这两个上限。
+  命中违规描述时拒绝生成并记录触发事件。图片审核不等于确认图片中人物的年龄。
 - 外部生成等待：`EXTERNAL_GENERATION_POLL_INTERVAL_MS`、
   `EXTERNAL_GENERATION_WAIT_TIMEOUT_SECONDS`。
 - Go 生成网关：`GATEWAY_ENABLED` 默认关闭（关闭时 Next `/v1` 走 legacy 路径）；

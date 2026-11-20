@@ -865,7 +865,7 @@
       "name": "MODERATION_MODEL",
       "owner": "next",
       "type": "string",
-      "default": "text-moderation-latest",
+      "default": "omni-moderation-latest",
       "requiredInProduction": false,
       "secret": false,
       "phase": "runtime",

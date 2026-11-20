@@ -2,12 +2,13 @@ import "server-only";
 
 import { db } from "@/lib/db";
 import { resolveModerationConfig } from "@/lib/moderation/config";
+import { assertModerationImages } from "@/lib/moderation/images";
 import { matchSensitiveWords } from "@/lib/moderation/sensitive-words";
 import { moderationResponseSchema } from "@/lib/validators";
 
 const MODERATION_TIMEOUT_MS = 8_000;
-/** OpenAI 审核接口单张图片上限 */
-const MODERATION_IMAGE_MAX_BYTES = 20 * 1024 * 1024;
+/** 站内 NSFW 的保守拒绝策略，不代表模型分数已经校准为风险概率。 */
+const BUILT_IN_SEXUAL_THRESHOLD = 0.2;
 /** 涉及未成年人的色情：不跟通用阈值走，分数稍高就拒 */
 const MINORS_THRESHOLD = 0.02;
 /** 24 小时内被上游（OpenAI）拦截达到这个次数，就暂停该用户使用内置渠道 */
@@ -30,7 +31,7 @@ type ModerationCheckInput = {
   negativePrompt?: string | null;
   /** 参考图原始字节（上传的文件、API 请求里带的图），和提示词一起送审 */
   images?: ModerationImage[];
-  /** 这次会用站内渠道（站长的 key）出图：额外检查该用户最近是否被上游拦截过多次 */
+  /** 使用站长的 key：必须完成 AI 审核，且检查最近的上游内容拒绝次数 */
   builtIn?: boolean;
 };
 
@@ -53,7 +54,16 @@ export async function checkGenerationInput(
     return { allowed: false, message: PROVIDER_COOLDOWN_MESSAGE };
   }
 
-  const cfg = await resolveModerationConfig();
+  let cfg: Awaited<ReturnType<typeof resolveModerationConfig>>;
+  try {
+    cfg = await resolveModerationConfig();
+  } catch {
+    console.error("[moderation] 无法读取审核配置，拒绝本次生成");
+    return { allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE };
+  }
+  if (input.builtIn && (!cfg.isEnabled || !cfg.aiEnabled)) {
+    return { allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE };
+  }
   if (!cfg.isEnabled) {
     return { allowed: true };
   }
@@ -76,19 +86,27 @@ export async function checkGenerationInput(
     }
   }
 
-  // 2. AI 审核：提示词 + 参考图
+  // 2. AI 审核覆盖实际输入，负面提示词保留“排除内容”的含义。
+  const text = input.negativePrompt
+    ? `Prompt:\n${input.prompt ?? ""}\n\nNegative prompt (content to avoid):\n${input.negativePrompt}`
+    : input.prompt ?? "";
   const images = input.images ?? [];
-  if (cfg.aiEnabled && (input.prompt || images.length > 0)) {
-    if (!cfg.aiBaseUrl || !cfg.aiApiKey) {
-      console.error("[moderation] AI 审核已开启但缺少接口地址或密钥，拒绝本次生成");
+  if (input.builtIn && !text && images.length === 0) {
+    return { allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE };
+  }
+  if (cfg.aiEnabled && (text || images.length > 0)) {
+    if (!cfg.aiBaseUrl?.trim() || !cfg.aiApiKey?.trim()
+      || (input.builtIn && !cfg.aiModel?.trim())
+      || !Number.isFinite(cfg.aiThreshold) || cfg.aiThreshold < 0 || cfg.aiThreshold > 1) {
+      console.error("[moderation] AI 审核配置无效，拒绝本次生成");
       return { allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE };
     }
 
     let outcome: AiModerationOutcome;
     try {
-      outcome = await callModerationAi(cfg, input.prompt ?? "", images);
-    } catch (error) {
-      console.error("[moderation] AI 审核异常，拒绝本次生成:", error);
+      outcome = await callModerationAi(cfg, text, images, input.builtIn === true);
+    } catch {
+      console.error("[moderation] AI 审核未完成，拒绝本次生成");
       return { allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE };
     }
 
@@ -142,8 +160,9 @@ async function countRecentProviderBlocks(userId: string) {
     where: {
       createdAt: { gte: new Date(Date.now() - PROVIDER_BLOCK_WINDOW_MS) },
       OR: [
-        { errorMessage: { contains: "moderation_blocked" } },
-        { errorMessage: { contains: "safety system" } },
+        { errorMessage: { contains: "moderation_blocked", mode: "insensitive" } },
+        { errorMessage: { contains: "content_policy_violation", mode: "insensitive" } },
+        { errorMessage: { contains: "safety system", mode: "insensitive" } },
       ],
       providerMode: "BUILT_IN",
       status: "FAILED",
@@ -156,10 +175,13 @@ async function callModerationAi(
   cfg: Awaited<ReturnType<typeof resolveModerationConfig>>,
   text: string,
   images: ModerationImage[],
+  builtIn: boolean,
 ): Promise<AiModerationOutcome> {
-  if (images.some((image) => image.data.byteLength > MODERATION_IMAGE_MAX_BYTES)) {
-    throw new Error("参考图超过审核接口 20MB 上限");
+  const url = new URL(`${cfg.aiBaseUrl?.trim().replace(/\/+$/, "")}/moderations`);
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("审核接口地址无效");
   }
+  await assertModerationImages(images);
 
   const input = images.length === 0
     ? text
@@ -173,8 +195,7 @@ async function callModerationAi(
         })),
       ];
 
-  const baseUrl = (cfg.aiBaseUrl ?? "").replace(/\/+$/, "");
-  const response = await fetch(`${baseUrl}/moderations`, {
+  const response = await fetch(url.toString(), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -196,15 +217,29 @@ async function callModerationAi(
   const data = moderationResponseSchema.parse(await response.json());
 
   for (const result of data.results) {
+    const appliedTypes = result.category_applied_input_types;
+    // 旧纯文本接口可不返回覆盖字段；明确返回时必须覆盖所有文本分类。
+    if ((images.length > 0 && !appliedTypes?.sexual?.includes("image"))
+      || (text && appliedTypes && (!appliedTypes.sexual?.includes("text")
+        || !appliedTypes["sexual/minors"]?.includes("text")))) {
+      throw new Error("审核结果未覆盖全部输入类型");
+    }
     const scores = Object.entries(result.category_scores);
     const [topCategory, topScore] = scores.reduce<readonly [string | null, number]>(
       (top, entry) => (entry[1] > top[1] ? entry : top),
       [null, 0],
     );
-    const minorsScore = scores.find(([category]) => category === "sexual/minors")?.[1] ?? 0;
+    const minorsScore = result.category_scores["sexual/minors"];
 
     if (minorsScore >= MINORS_THRESHOLD) {
       return { blocked: true, category: "sexual/minors", score: minorsScore };
+    }
+    const flaggedCategory = Object.entries(result.categories).find(([, flagged]) => flagged)?.[0];
+    if (flaggedCategory) {
+      return { blocked: true, category: flaggedCategory, score: result.category_scores[flaggedCategory] ?? topScore };
+    }
+    if (builtIn && result.category_scores.sexual >= Math.min(cfg.aiThreshold, BUILT_IN_SEXUAL_THRESHOLD)) {
+      return { blocked: true, category: "sexual", score: result.category_scores.sexual };
     }
     if (result.flagged || topScore >= cfg.aiThreshold) {
       return { blocked: true, category: topCategory, score: topScore };

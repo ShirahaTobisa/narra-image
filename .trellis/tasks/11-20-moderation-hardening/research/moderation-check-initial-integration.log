@@ -1,0 +1,82 @@
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.12 D:/tools/codex/projects/narra-image
+
+stderr | src/tests/unit/moderation-check.test.ts > 内容审核 checkGenerationInput > 参考图和提示词一起送审
+[moderation] AI 审核未完成，拒绝本次生成
+
+stderr | src/tests/unit/moderation-check.test.ts > 内容审核 checkGenerationInput > 只有参考图、没有提示词时也会审图
+[moderation] AI 审核未完成，拒绝本次生成
+
+stderr | src/tests/unit/moderation-check.test.ts > 内容审核 checkGenerationInput > 纯图片响应 sexual 覆盖 image 即可，不要求 minors 支持图片
+[moderation] AI 审核未完成，拒绝本次生成
+
+ ❯ src/tests/unit/moderation-check.test.ts (59 tests | 3 failed) 30ms
+     × 参考图和提示词一起送审 6ms
+     × 只有参考图、没有提示词时也会审图 1ms
+     × 纯图片响应 sexual 覆盖 image 即可，不要求 minors 支持图片 2ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/tests/unit/moderation-check.test.ts > 内容审核 checkGenerationInput > 参考图和提示词一起送审
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/tests/unit/moderation-check.test.ts:218:28
+    216|     });
+    217|
+    218|     expect(result.allowed).toBe(true);
+       |                            ^
+    219|     expect(sentModerationBody()).toEqual({
+    220|       input: [
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  src/tests/unit/moderation-check.test.ts > 内容审核 checkGenerationInput > 只有参考图、没有提示词时也会审图
+TypeError: undefined is not iterable (cannot read property Symbol(Symbol.iterator))
+ ❯ sentModerationBody src/tests/unit/moderation-check.test.ts:65:20
+     63|
+     64| function sentModerationBody() {
+     65|   const [, init] = vi.mocked(global.fetch).mock.calls[0] as [string, R…
+       |                    ^
+     66|   return JSON.parse(String(init.body)) as { input: unknown; model?: st…
+     67| }
+ ❯ src/tests/unit/moderation-check.test.ts:244:12
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  src/tests/unit/moderation-check.test.ts > 内容审核 checkGenerationInput > 纯图片响应 sexual 覆盖 image 即可，不要求 minors 支持图片
+AssertionError: expected { allowed: false, …(1) } to deeply equal { allowed: true }
+
+- Expected
++ Received
+
+  {
+-   "allowed": true,
++   "allowed": false,
++   "message": "内容审核暂时无法完成，本次未生成，请稍后再试",
+  }
+
+ ❯ src/tests/unit/moderation-check.test.ts:382:95
+    380|     })]);
+    381|
+    382|     expect(await checkGenerationInput({ builtIn: true, images: [pngIma…
+       |                                                                                               ^
+    383|   });
+    384|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 56 passed (59)
+   Start at  17:31:14
+   Duration  1.66s (transform 124ms, setup 139ms, import 305ms, tests 30ms, environment 1.01s)
+

@@ -208,7 +208,7 @@ const envSchema = z.object({
   MODERATION_API_KEY: optionalString(),
   MODERATION_BASE_URL: optionalUrl(),
   MODERATION_ENABLED: booleanEnv(false),
-  MODERATION_MODEL: z.string().trim().min(1).default("text-moderation-latest"),
+  MODERATION_MODEL: z.string().trim().min(1).default("omni-moderation-latest"),
   MODERATION_SENSITIVE_WORDS_ENABLED: booleanEnv(true),
   MODERATION_THRESHOLD: floatEnv(0.5),
   S3_ACCESS_KEY_ID: optionalString(),

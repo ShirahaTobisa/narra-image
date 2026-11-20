@@ -122,17 +122,26 @@ export async function assertPublicHttpUrl(
 export type PublicHttpFetchOptions = SafeRemoteUrlOptions & {
   headers?: HeadersInit;
   signal?: AbortSignal;
+  /** 只有自行逐跳重新校验的下载器才可读取重定向响应；默认仍拒绝。 */
+  redirect?: "manual";
 };
 
 /**
  * 使用已经校验过的公网 IP 建立连接，避免校验后再次 DNS 解析造成重绑定。
- * 当前安全代理场景只需要 GET，并且明确拒绝所有重定向。
+ * 只执行 GET，默认拒绝重定向；manual 调用方必须对下一跳重新调用本函数。
  */
 export async function fetchPublicHttpUrl(
   raw: string,
   options: PublicHttpFetchOptions = {},
 ): Promise<Response> {
-  const { addresses, hostname, url } = await resolvePublicHttpUrl(raw, options);
+  options.signal?.throwIfAborted();
+  const { addresses, hostname, url } = await new Promise<Awaited<ReturnType<typeof resolvePublicHttpUrl>>>((resolve, reject) => {
+    const onAbort = () => reject(options.signal?.reason);
+    options.signal?.addEventListener("abort", onAbort, { once: true });
+    resolvePublicHttpUrl(raw, options).then(resolve, reject)
+      .finally(() => options.signal?.removeEventListener("abort", onAbort));
+  });
+  options.signal?.throwIfAborted();
   const headers = new Headers(options.headers);
   headers.set("Host", url.host);
 
@@ -147,25 +156,31 @@ export async function fetchPublicHttpUrl(
       signal: options.signal,
     }, (upstream) => {
       const status = upstream.statusCode ?? 502;
-      if (status >= 300 && status < 400) {
-        upstream.resume();
+      if (status >= 300 && status < 400 && options.redirect !== "manual") {
+        upstream.destroy();
         reject(new Error("远程地址不允许重定向"));
         return;
       }
 
-      const responseHeaders = new Headers();
-      for (const [name, value] of Object.entries(upstream.headers)) {
-        if (Array.isArray(value)) {
-          value.forEach((item) => responseHeaders.append(name, item));
-        } else if (value !== undefined) {
-          responseHeaders.set(name, value);
+      try {
+        const responseHeaders = new Headers();
+        for (const [name, value] of Object.entries(upstream.headers)) {
+          if (Array.isArray(value)) {
+            value.forEach((item) => responseHeaders.append(name, item));
+          } else if (value !== undefined) {
+            responseHeaders.set(name, value);
+          }
         }
-      }
 
-      const body = status === 204 || status === 205
-        ? null
-        : Readable.toWeb(upstream) as ReadableStream<Uint8Array>;
-      resolve(new Response(body, { headers: responseHeaders, status }));
+        const body = status === 204 || status === 205 || status === 304
+          ? null
+          : Readable.toWeb(upstream) as ReadableStream<Uint8Array>;
+        if (!body) upstream.destroy();
+        resolve(new Response(body, { headers: responseHeaders, status }));
+      } catch {
+        upstream.destroy();
+        reject(new Error("远程图片响应无效"));
+      }
     });
 
     request.on("error", reject);

@@ -6,6 +6,13 @@ async function loadEnv() {
 }
 
 describe("环境变量安全校验", () => {
+  it("默认审核模型支持图片", async () => {
+    vi.stubEnv("NODE_ENV", "test");
+    vi.stubEnv("DATABASE_URL", "postgresql://localhost/test");
+    vi.stubEnv("AUTH_SECRET", "unit-test-secret");
+    vi.stubEnv("MODERATION_MODEL", undefined);
+    expect((await loadEnv()).MODERATION_MODEL).toBe("omni-moderation-latest");
+  });
   afterEach(() => {
     vi.unstubAllEnvs();
   });

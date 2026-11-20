@@ -116,6 +116,15 @@ export async function updateModerationConfig(patch: ModerationConfigPatch) {
   return db.moderationConfig.upsert({
     where: { scope: "default" },
     update: data,
-    create: { scope: "default", ...data },
+    create: {
+      scope: "default",
+      isEnabled: env.MODERATION_ENABLED,
+      sensitiveWordsEnabled: env.MODERATION_SENSITIVE_WORDS_ENABLED,
+      aiEnabled: env.MODERATION_AI_ENABLED,
+      aiBaseUrl: env.MODERATION_BASE_URL?.trim() || null,
+      aiModel: env.MODERATION_MODEL,
+      aiThreshold: env.MODERATION_THRESHOLD,
+      ...data,
+    },
   });
 }

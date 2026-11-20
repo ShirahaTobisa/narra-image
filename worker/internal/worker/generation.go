@@ -243,6 +243,12 @@ func generateWithResponsesImageTool(ctx context.Context, job GenerationJob, prov
 			responsesRequestID(job.ID, index),
 		)
 		if err != nil {
+			var failure ContractFailure
+			if len(results) > 0 && errors.As(err, &failure) {
+				// Earlier calls already produced images; do not refund the whole batch.
+				failure.ResolvedAfterSubmit = false
+				return imagePayload{}, failure
+			}
 			return imagePayload{}, err
 		}
 		if len(items) != 1 {
@@ -362,14 +368,18 @@ func createResponsesImageGeneration(ctx context.Context, provider ProviderConfig
 	}
 
 	if stream, ok := requestBody["stream"].(bool); ok && stream {
-		return collectResponsesStreamResults(body), nil
+		return collectResponsesStreamResults(body)
 	}
 
 	var payload any
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return nil, ResultPersistError{Cause: err}
 	}
-	return collectImageResults(payload), nil
+	results := collectImageResults(payload)
+	if providerPolicyRefusal(payload) {
+		return nil, providerPolicyRejection(len(results) == 0)
+	}
+	return results, nil
 }
 
 func responsesRequestID(jobID string, index int) string {
@@ -520,6 +530,9 @@ func doRequestWithClient(request *http.Request, client *http.Client) ([]byte, er
 		if err != nil {
 			return nil, err
 		}
+		if providerPolicyErrorBody(body) {
+			return nil, providerPolicyRejection(true)
+		}
 		summary := strings.TrimSpace(string(body))
 		if truncated {
 			summary += "…（错误响应已截断）"
@@ -574,9 +587,11 @@ func truncateGenerationErrorMessage(message string) string {
 	return validMessage[:cutoff] + "…（错误信息已截断）"
 }
 
-func collectResponsesStreamResults(body []byte) []string {
+func collectResponsesStreamResults(body []byte) ([]string, error) {
 	results := []string{}
 	seen := map[string]bool{}
+	refused := false
+	terminal, parseFailed := false, false
 	scanner := bufio.NewScanner(bytes.NewReader(body))
 	scanner.Buffer(make([]byte, 1024), 64*1024*1024)
 	for scanner.Scan() {
@@ -585,13 +600,25 @@ func collectResponsesStreamResults(body []byte) []string {
 			continue
 		}
 		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-		if payload == "" || payload == "[DONE]" {
+		if payload == "" {
+			continue
+		}
+		if payload == "[DONE]" {
+			terminal = true
 			continue
 		}
 		var value any
 		if err := json.Unmarshal([]byte(payload), &value); err != nil {
+			parseFailed = true
 			continue
 		}
+		if event, ok := value.(map[string]any); ok {
+			switch event["type"] {
+			case "response.completed", "response.failed", "response.incomplete":
+				terminal = true
+			}
+		}
+		refused = refused || providerPolicyRefusal(value)
 		for _, result := range collectImageResults(value) {
 			if !seen[result] {
 				seen[result] = true
@@ -599,7 +626,10 @@ func collectResponsesStreamResults(body []byte) []string {
 			}
 		}
 	}
-	return results
+	if refused {
+		return nil, providerPolicyRejection(terminal && !parseFailed && len(results) == 0 && scanner.Err() == nil)
+	}
+	return results, nil
 }
 
 func collectImageResults(value any) []string {

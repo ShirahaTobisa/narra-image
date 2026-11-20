@@ -1,0 +1,68 @@
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.12 D:/tools/codex/projects/narra-image
+
+ ❯ src/tests/unit/moderation-check.test.ts (64 tests | 5 failed) 33ms
+     × 明确返回的覆盖范围未审核全部文本分类时拒绝：{} 4ms
+     × 明确返回的覆盖范围未审核全部文本分类时拒绝：{"sexual":["image"],"sexual/minors":["text"]} 1ms
+     × 明确返回的覆盖范围未审核全部文本分类时拒绝：{"sexual":["text"],"sexual/minors":[]} 1ms
+     × 负面文字和图文请求也必须包含 minors 的 text 覆盖（附图=false） 0ms
+     × 负面文字和图文请求也必须包含 minors 的 text 覆盖（附图=true） 1ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/tests/unit/moderation-check.test.ts > 内容审核 checkGenerationInput > 明确返回的覆盖范围未审核全部文本分类时拒绝：{}
+ FAIL  src/tests/unit/moderation-check.test.ts > 内容审核 checkGenerationInput > 明确返回的覆盖范围未审核全部文本分类时拒绝：{"sexual":["image"],"sexual/minors":["text"]}
+ FAIL  src/tests/unit/moderation-check.test.ts > 内容审核 checkGenerationInput > 明确返回的覆盖范围未审核全部文本分类时拒绝：{"sexual":["text"],"sexual/minors":[]}
+AssertionError: expected { allowed: true } to deeply equal { allowed: false, …(1) }
+
+- Expected
++ Received
+
+  {
+-   "allowed": false,
+-   "message": "内容审核暂时无法完成，本次未生成，请稍后再试",
++   "allowed": true,
+  }
+
+ ❯ src/tests/unit/moderation-check.test.ts:397:90
+    395|     vi.spyOn(console, "error").mockImplementation(() => {});
+    396|
+    397|     expect(await checkGenerationInput({ builtIn: true, prompt: "a cat"…
+       |                                                                                          ^
+    398|       allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE,
+    399|     });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  src/tests/unit/moderation-check.test.ts > 内容审核 checkGenerationInput > 负面文字和图文请求也必须包含 minors 的 text 覆盖（附图=false）
+ FAIL  src/tests/unit/moderation-check.test.ts > 内容审核 checkGenerationInput > 负面文字和图文请求也必须包含 minors 的 text 覆盖（附图=true）
+AssertionError: expected { allowed: true } to deeply equal { allowed: false, …(1) }
+
+- Expected
++ Received
+
+  {
+-   "allowed": false,
+-   "message": "内容审核暂时无法完成，本次未生成，请稍后再试",
++   "allowed": true,
+  }
+
+ ❯ src/tests/unit/moderation-check.test.ts:410:9
+    408|     expect(await checkGenerationInput({
+    409|       builtIn: true, negativePrompt: "avoid blur", images: withImage ?…
+    410|     })).toEqual({ allowed: false, message: MODERATION_UNAVAILABLE_MESS…
+       |         ^
+    411|     expect(mockDb.contentReview.create).not.toHaveBeenCalled();
+    412|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  5 failed | 59 passed (64)
+   Start at  17:37:28
+   Duration  1.90s (transform 175ms, setup 124ms, import 653ms, tests 33ms, environment 916ms)
+

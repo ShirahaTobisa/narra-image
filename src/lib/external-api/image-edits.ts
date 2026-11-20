@@ -4,6 +4,7 @@ import { downloadExternalImage } from "@/lib/external-api/source-images";
 import { externalImageEditSchema } from "@/lib/validators";
 
 const MAX_EDIT_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_EDIT_REFERENCE_IMAGES = 4;
 const ALLOWED_EDIT_IMAGE_TYPES = new Set([
   "image/gif",
   "image/jpeg",
@@ -151,6 +152,9 @@ async function parseJsonEditBody(request: Request) {
   const record = raw as Record<string, unknown>;
   const body = externalImageEditSchema.parse(jsonBodyForSchema(record));
   const urls = readJsonImageUrls(record);
+  if (urls.length > MAX_EDIT_REFERENCE_IMAGES) {
+    throw new Error(`参考图最多支持 ${MAX_EDIT_REFERENCE_IMAGES} 张`);
+  }
   const sourceImages = await Promise.all(
     urls.map((url, index) => downloadExternalImage(url, index)),
   );
@@ -162,6 +166,9 @@ async function parseFormEditBody(request: Request) {
   const formData = await request.formData();
   const body = externalImageEditSchema.parse(formBodyForSchema(formData));
   const files = formFiles(formData);
+  if (files.length > MAX_EDIT_REFERENCE_IMAGES) {
+    throw new Error(`参考图最多支持 ${MAX_EDIT_REFERENCE_IMAGES} 张`);
+  }
   const sourceImages = await Promise.all(
     files.map((file, index) => fileToSourceImage(file, index)),
   );

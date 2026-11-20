@@ -124,7 +124,7 @@ export function ModerationConfigForm({
               <AdminSwitch
                 checked={isEnabled}
                 label="启用全站内容审核"
-                hint="总开关；关闭后生图请求不经过敏感词与 AI 审查。"
+                hint="总开关；关闭后站内生图将暂停，避免未经审核的请求使用站内渠道。"
                 onCheckedChange={setIsEnabled}
               />
             </div>
@@ -142,7 +142,7 @@ export function ModerationConfigForm({
               <AdminSwitch
                 checked={aiEnabled}
                 label="启用上游 AI 语义审核"
-                hint="调用 OpenAI Moderations 兼容接口；上游异常或超时将自动降级放行，不阻塞生图。"
+                hint="调用支持图文的 OpenAI Moderations 兼容接口；关闭 AI 审核或审核失败时，拒绝站内生图，不扣积分。"
                 onCheckedChange={setAiEnabled}
               />
             </div>
@@ -195,7 +195,7 @@ export function ModerationConfigForm({
                   type="text"
                   value={aiModel}
                   onChange={(event) => setAiModel(event.target.value)}
-                  placeholder="text-moderation-latest"
+                  placeholder="omni-moderation-latest"
                   className="w-full rounded-xl border border-[var(--line)] bg-white px-3.5 py-2.5 font-mono text-sm text-[var(--ink)] outline-none"
                 />
               </div>
@@ -222,6 +222,9 @@ export function ModerationConfigForm({
                 />
               </div>
             </div>
+            <p className="text-xs leading-relaxed text-[var(--ink-soft)]">
+              站内色情内容拦截阈值最高为 0.20，未成年人色情文本为 0.02，不随通用阈值放宽。未成年人分类仅支持文本，不能据此判断图片中的年龄。
+            </p>
           </div>
 
           {message ? (
