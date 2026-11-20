@@ -36,10 +36,27 @@
 
 | 文件 | 字节 | SHA-256 |
 | --- | ---: | --- |
-| narra-opening-package.cjs | 3819 | `765f145e7a7fd325752acc0b6bd50d25ef6e60e76cf94efc4d97caa5e87d6a09` |
-| narra-opening-baseline.py | 688 | `00f930ce50ea09f66ae57138648a27e1a3726c10399372728241c0f18ee2af1b` |
-| narra-opening-release.py | 22345 | `4cd1d521a2fdd44f6de9430fcf403d4e50b94cbc4aff34c8ca145482eb34349a` |
-| narra-opening-runtime-check.py | 4588 | `2eb0ad69f6b827e54d46832236539154aa7073fb3013465f958857ac2c5a3a2f` |
-| narra-opening-db.py | 23730 | `d38c4a92e9f36cd11a7cd6702f0b1bb73221a425ac658914f6f372055e378b69` |
+| narra-opening-package.cjs | 3691 | `09d17be1447a9ccc827f476b0a4a0acfa8598aade3d37ed733e2669a5e0a3a9e` |
+| narra-opening-baseline.py | 949 | `a25d092192347387be22affa2d22038c558feae65207461598020b67e97d74c8` |
+| narra-opening-release.py | 22409 | `04e1550fa604467eba8021864b0974eb665f1d8d79f7f3cb295a876cf82d9fc1` |
+| narra-opening-runtime-check.py | 4972 | `30397695d33ff3e5e9e0861c81fdbadba4ebc277032231e5830d6176c21f3593` |
+| narra-opening-db.py | 23799 | `2d1f6cf1069aa45875962461bbea437f5bd717299c721b26038dbe3d8564d607` |
+| narra-opening-http.py | 3938 | `ba8b8b48d2db162dc88965c90d1a7917d0338277303eef5f452d1b0bdd120225` |
 
 node --check 验证 package；Python ast.parse 验证四份 Python 脚本，全部通过。只解析，没有 import/run 主体，没有访问生产服务。能否实际发布仍以受审脚本执行的 DB/runtime、迁移、候选和切换回执为准。
+
+## 追加复核：Windows tar 的方括号路径
+
+2026-11-21 02:04：主代理实跑发现 Windows tar 把 `[id]` 路径当成 pattern。现 baseline.py 的 `--details` 一次按 tar 成员字面名称读取固定基线 archive，返回 raw hashes 与仅 CRLF→LF 的 normalizedHashes；package 用后者对照 Git blob，不再逐文件执行 tar。release 消费的 baseFiles 仍是原始字节摘要，不能拿规范化摘要检查线上文件。新 archive 的普通参数模式仍只返回 raw sourceFiles；原 archive 固定摘要、成员类型及路径 guard 保留。两个 helper 再次完成静态检查、ast.parse/node --check，通过；上表已更新为新字节。没有重跑打包或改动 release 主脚本。
+
+## 追加复核：Discord-only HTTP smoke
+
+2026-11-21 02:12：按已定稿 auth 路由/页面检查新的 narra-opening-http.py，未发现契约不符。公开 `/login` 服务端含 Discord 链接、无 auth-email；`/login?admin=1` 保留原表单；register/invite-claim/create 的未登录分支跳转 `/login`。helper 同时接受 HTTP redirect 和 Next 流式 meta redirect，校验登录脚本可读；禁用 LinuxDo 两端与邮箱注册/领码返回 403，未登录历史为 401，login 空体同源为 400、跨域为 proxy 的 403。
+
+helper 不携带 cookie/账号密码，不请求实际 Discord authorize/callback，不尝试生图；唯一 POST 为无字段的登录/已关闭注册/已关闭领码校验，不能创建账号或消耗生成。静态审查及 ast.parse 通过，没有执行 smoke 或任何真实请求。release.py:136/319 已同时切换为远端 `/tmp/narra-opening-http.py`；上表更新相应 release 摘要。主代理明确初批 57b5cf5 仅 prepare，最终新 SHA 会重新上传全部 helpers，不能继续用旧远端 copy 的回执。
+
+## 最后增量：固定 PostgreSQL 镜像与政策测试
+
+只读核对新字节：db.py:336 在 release-helper 模式直接使用同一 manifest 的 `containers[2].image` 精确 PostgreSQL ID；release.py:82 要求 DB 回执的 postgresImageId 与该 ID 相同，避免验收使用浮动 postgres:17-alpine。这里只复用经过核实的镜像，仍启动随机 localhost/tmpfs 实例，不使用线上容器或数据卷。
+
+runtime-check 清单由 16 套增为 24 套，新增 moderation-check、public-auth-policy、public-login-page、discord-oauth、admin-user-ban-route、public-work-visibility、featured-route、work-like-route；执行/隔离/精确 owner 清理方式未变。release、DB、runtime 三份新 SHA-256 与主代理给定摘要逐项一致，HTTP 摘要未变；四份 Python ast.parse 通过。上表已更新。此增量未运行产品测试或 harness 主体。

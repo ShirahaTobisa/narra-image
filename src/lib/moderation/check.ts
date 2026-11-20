@@ -12,14 +12,14 @@ const MODERATION_TIMEOUT_MS = 8_000;
 const BUILT_IN_SEXUAL_THRESHOLD = 0.2;
 /** 涉及未成年人的色情：不跟通用阈值走，分数稍高就拒 */
 const MINORS_THRESHOLD = 0.02;
-/** 24 小时内被上游（OpenAI）拦截达到这个次数，就暂停该用户使用内置渠道 */
-const PROVIDER_BLOCK_LIMIT = 3;
-const PROVIDER_BLOCK_WINDOW_MS = 24 * 60 * 60 * 1000;
+/** 站内审核和上游安全拒绝合计达到上限，暂停后续站内提交。 */
+const MODERATION_BLOCK_LIMIT = 3;
+const MODERATION_BLOCK_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export const MODERATION_BLOCK_MESSAGE = "提交内容包含违规描述，已拒绝生成";
 export const MODERATION_UNAVAILABLE_MESSAGE = "内容审核暂时无法完成，本次未生成，请稍后再试";
 export const PROVIDER_COOLDOWN_MESSAGE =
-  "近 24 小时内多次被模型方拒绝生成，已暂停使用站内渠道，请稍后再试";
+  "近 24 小时内站内内容审核或模型方安全审核累计拒绝已达 3 次，已暂停提交，请稍后再试";
 
 export type ModerationImage = {
   data: Buffer | Uint8Array;
@@ -32,7 +32,7 @@ type ModerationCheckInput = {
   negativePrompt?: string | null;
   /** 参考图原始字节（上传的文件、API 请求里带的图），和提示词一起送审 */
   images?: ModerationImage[];
-  /** 使用站长的 key：必须完成 AI 审核，且检查最近的上游内容拒绝次数 */
+  /** 站内强制审核：必须完成 AI 审核，且检查用户最近的内容拒绝次数 */
   builtIn?: boolean;
 };
 
@@ -51,15 +51,14 @@ type AiModerationOutcome =
 export async function checkGenerationInput(
   input: ModerationCheckInput,
 ): Promise<ModerationCheckResult> {
-  if (input.builtIn && (await countRecentProviderBlocks(input.userId)) >= PROVIDER_BLOCK_LIMIT) {
-    return { allowed: false, message: PROVIDER_COOLDOWN_MESSAGE };
-  }
-
   let cfg: Awaited<ReturnType<typeof resolveModerationConfig>>;
   try {
+    if (input.builtIn && (await countRecentModerationBlocks(input.userId)) >= MODERATION_BLOCK_LIMIT) {
+      return { allowed: false, message: PROVIDER_COOLDOWN_MESSAGE };
+    }
     cfg = await resolveModerationConfig();
   } catch {
-    console.error("[moderation] 无法读取审核配置，拒绝本次生成");
+    console.error("[moderation] 无法读取审核配置或违规记录，拒绝本次提交");
     return { allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE };
   }
   if (input.builtIn && (!cfg.isEnabled || !cfg.aiEnabled)) {
@@ -155,21 +154,28 @@ export async function assertExternalGenerationAllowed(
   }
 }
 
-/** 该用户 24 小时内用站内渠道出图、被上游内容审核拦下（OpenAI 返回 moderation_blocked）的次数 */
-async function countRecentProviderBlocks(userId: string) {
-  return db.generationJob.count({
-    where: {
-      createdAt: { gte: new Date(Date.now() - PROVIDER_BLOCK_WINDOW_MS) },
-      OR: [
-        { errorMessage: { contains: "moderation_blocked", mode: "insensitive" } },
-        { errorMessage: { contains: "content_policy_violation", mode: "insensitive" } },
-        { errorMessage: { contains: "safety system", mode: "insensitive" } },
-      ],
-      providerMode: "BUILT_IN",
-      status: "FAILED",
-      userId,
-    },
-  });
+/** 预审拒绝后不建生成任务，两个来源不会重复记录同一次生成；故障不计入。 */
+async function countRecentModerationBlocks(userId: string) {
+  const createdAt = { gte: new Date(Date.now() - MODERATION_BLOCK_WINDOW_MS) };
+  const [siteBlocks, providerBlocks] = await Promise.all([
+    db.contentReview.count({
+      where: { createdAt, kind: { in: ["sensitive_word", "ai_moderation"] }, userId },
+    }),
+    db.generationJob.count({
+      where: {
+        createdAt,
+        OR: [
+          { errorMessage: { contains: "moderation_blocked", mode: "insensitive" } },
+          { errorMessage: { contains: "content_policy_violation", mode: "insensitive" } },
+          { errorMessage: { contains: "safety system", mode: "insensitive" } },
+        ],
+        providerMode: "BUILT_IN",
+        status: "FAILED",
+        userId,
+      },
+    }),
+  ]);
+  return siteBlocks + providerBlocks;
 }
 
 async function callModerationAi(

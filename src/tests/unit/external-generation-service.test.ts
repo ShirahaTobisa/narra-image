@@ -53,7 +53,7 @@ vi.mock("@/lib/moderation/local-images", () => ({ checkLocalImages: mockCheckLoc
 vi.mock("@/lib/db", () => ({
   db: {
     $transaction: mockTransaction,
-    contentReview: { create: mockCreateReview },
+    contentReview: { count: vi.fn(async () => 0), create: mockCreateReview },
     generationJob: {
       count: vi.fn(async () => 0),
       findFirst: mockFindGenerationJob,

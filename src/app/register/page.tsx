@@ -1,77 +1,7 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
-
-import { AuthForm } from "@/components/marketing/auth-form";
-import { AuthShell } from "@/components/marketing/auth-shell";
-import { getEnabledOAuthProviders } from "@/lib/auth/oauth-config";
-import { getPublicTurnstileConfig } from "@/lib/auth/turnstile";
-import { fromPrismaRole } from "@/lib/prisma-mappers";
-import { getCurrentUserRecord } from "@/lib/server/current-user";
-import { getAuthCover } from "@/lib/server/auth-cover";
 
 export const dynamic = "force-dynamic";
 
-type RegisterPageProps = {
-  searchParams?: Promise<{
-    error?: string;
-    inviteCode?: string;
-  }>;
-};
-
-export default async function RegisterPage({ searchParams }: RegisterPageProps) {
-  const user = await getCurrentUserRecord();
-  if (user) {
-    redirect(fromPrismaRole(user.role) === "admin" ? "/admin" : "/create");
-  }
-
-  const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const initialInviteCode =
-    typeof resolvedSearchParams?.inviteCode === "string"
-      ? resolvedSearchParams.inviteCode
-      : "";
-  const oauthError =
-    typeof resolvedSearchParams?.error === "string"
-      ? resolvedSearchParams.error
-      : null;
-
-  const [oauthProviders, turnstile, coverProps] = await Promise.all([
-    getEnabledOAuthProviders(),
-    getPublicTurnstileConfig(),
-    getAuthCover(),
-  ]);
-
-  return (
-    <AuthShell
-      eyebrow="Join Narra"
-      title="First in line."
-      description="第一批用户值得被认真对待。注册成功默认 500 积分；邀请码由后台生成，可前往邀请码领取页申领。"
-      {...coverProps}
-      coverCaption="Welcome Aboard"
-      footnote={
-        <span className="inline-flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
-          <span>已经有账号？</span>
-          <Link href="/login" className="font-medium text-[var(--accent)]">
-            直接登录
-          </Link>
-          <span className="text-[var(--ink-soft)]/50">/</span>
-          <Link href="/invite-claim" className="font-medium text-[var(--accent)]">
-            申领邀请码
-          </Link>
-        </span>
-      }
-    >
-      <AuthForm
-        mode="register"
-        initialInviteCode={initialInviteCode}
-        oauthProviders={oauthProviders}
-        oauthError={oauthError}
-        turnstile={{
-          isEnabled: turnstile.isEnabled,
-          siteKey: turnstile.siteKey,
-          protectLogin: turnstile.protectLogin,
-          protectRegister: turnstile.protectRegister,
-        }}
-      />
-    </AuthShell>
-  );
+export default async function RegisterPage() {
+  redirect("/login");
 }

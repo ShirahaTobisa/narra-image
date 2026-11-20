@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { db } from "@/lib/db";
+import { canUsePasswordLogin, DISCORD_ONLY_MESSAGE } from "@/lib/auth/access-policy";
 import { verifyPassword } from "@/lib/auth/password";
 import { isLoginLocked, recordLoginFailure } from "@/lib/auth/login-throttle";
 import { attachSessionCookie } from "@/lib/auth/session";
@@ -49,6 +50,10 @@ export async function POST(request: Request) {
     if (!isValid) {
       recordLoginFailure(email);
       return jsonError("邮箱或密码错误", 401);
+    }
+
+    if (!canUsePasswordLogin(user.role)) {
+      return jsonError(DISCORD_ONLY_MESSAGE, 403);
     }
 
     const response = NextResponse.json({

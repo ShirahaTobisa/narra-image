@@ -4,6 +4,7 @@ import { SiteHeader } from "@/components/marketing/site-header";
 import { ProfileForm } from "@/components/settings/profile-form";
 import { db } from "@/lib/db";
 import { getEnabledOAuthProviders } from "@/lib/auth/oauth-config";
+import { canUsePasswordLogin } from "@/lib/auth/access-policy";
 import { OAUTH_PROVIDER_LABELS } from "@/lib/constants";
 import { serializeUser } from "@/lib/prisma-mappers";
 import { getCurrentUserRecord } from "@/lib/server/current-user";
@@ -53,14 +54,14 @@ export default async function SettingsPage({
             个人设置
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[var(--ink-soft)]">
-            管理你的昵称、头像等个人资料。设置昵称后，公开作品和画廊中将优先显示昵称。
+            管理你的昵称、头像等个人资料。投稿时可选择公开当前昵称，已投稿署名不会随个人资料变化。
           </p>
         </div>
 
         <ProfileForm
           user={currentUser}
           oauthProvider={user.oauthProvider}
-          hasPassword={hasPassword}
+          canUnlinkOAuth={hasPassword && canUsePasswordLogin(user.role)}
           oauthProviders={oauthProviders}
           queryNotice={queryNotice}
         />

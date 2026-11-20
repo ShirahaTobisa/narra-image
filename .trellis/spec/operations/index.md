@@ -12,6 +12,7 @@
 | [Image Publishing](./image-publishing.md) | 三项验证门禁、GHCR 固定镜像身份/公开校验、latest 提升与镜像版 Compose | Active |
 | [Media Storage](./media-storage.md) | 生成结果媒体持久化策略、存储形态元数据、失败语义与历史回填 | Active |
 | [Generation Inputs](./generation-inputs.md) | 旧图授权读取、参考图顺序、Canvas 送审、原参数重试与取消任务统计 | Active |
+| [Public Access](./public-access.md) | Discord群成员登录、管理员恢复、关闭公开邀请码注册与旧账号改绑 | Active |
 | [Image Storage](./image-storage.md) | 图片 LOCAL/S3 清单、5GB 预留、管理清理/读者租约、源副本退休与 Canvas 存储修订 | Active |
 | [Canvas Contracts](./canvas-contracts.md) | 画布账户/CAS、幂等单节点生成、原图 roots/GC、Node/Go 存储能力与安全验证 | Active |
 | [Prompt Sync](./prompt-sync.md) | 提示词来源清单单一事实来源、三入口同步、并发/幂等与调度 | Active |
@@ -24,6 +25,7 @@
 - 修改启动脚本、migration 入口、探针、Compose、环境 manifest 或验证 wrapper 前，先读 [Release Hardening](./release-hardening.md)。
 - 修改 GHCR 发布 job、registry helper、镜像身份/公开访问或镜像版更新文档前，同时读 [Image Publishing](./image-publishing.md)。
 - 修改媒体写入路径、媒体表列或回填工具前，先读 [Media Storage](./media-storage.md)。
+- 修改登录、注册、邀请码领取和OAuth绑定前，先读 [Public Access](./public-access.md)。
 - 修改受管理图片写入/读取/额度/引用与本地卷时，同时读 [Image Storage](./image-storage.md)。
 - 修改提示词来源清单、同步实现或调度前，先读 [Prompt Sync](./prompt-sync.md)。
 - 修改外部 `/v1` 生成入口、内部网关 envelope/签名或 `GATEWAY_*` 开关前，先读 [Go 生成网关](./gateway.md)。

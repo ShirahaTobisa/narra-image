@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { AuthForm } from "@/components/marketing/auth-form";
 import { AuthShell } from "@/components/marketing/auth-shell";
+import { DiscordLogin } from "@/components/marketing/discord-login";
 import { getEnabledOAuthProviders } from "@/lib/auth/oauth-config";
 import { getPublicTurnstileConfig } from "@/lib/auth/turnstile";
 import { fromPrismaRole } from "@/lib/prisma-mappers";
@@ -14,6 +15,7 @@ export const dynamic = "force-dynamic";
 type LoginPageProps = {
   searchParams?: Promise<{
     error?: string;
+    admin?: string;
   }>;
 };
 
@@ -26,10 +28,11 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const resolvedParams = searchParams ? await searchParams : undefined;
   const oauthError =
     typeof resolvedParams?.error === "string" ? resolvedParams.error : null;
+  const adminRecovery = resolvedParams?.admin === "1";
 
   const [oauthProviders, turnstile, coverProps] = await Promise.all([
-    getEnabledOAuthProviders(),
-    getPublicTurnstileConfig(),
+    adminRecovery ? [] : getEnabledOAuthProviders(),
+    adminRecovery ? getPublicTurnstileConfig() : null,
     getAuthCover(),
   ]);
 
@@ -37,33 +40,29 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
     <AuthShell
       eyebrow="Secure Access"
       title="WelcomeBack"
-      description="使用你的账户继续进入 Narra Image 创作台。我们会自动同步积分与作品。"
+      description={adminRecovery ? "仅供现有管理员使用邮箱和密码恢复登录。" : "使用 Discord 进入 Narra Image 创作台，积分与作品保存在你的账号中。"}
       {...coverProps}
       coverCaption="Featured Vision"
       footnote={
-        <span className="inline-flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
-          <span>还没有账号？</span>
-          <Link href="/register" className="font-medium text-[var(--accent)]">
-            使用邀请码注册
-          </Link>
-          <span className="text-[var(--ink-soft)]/50">/</span>
-          <Link href="/invite-claim" className="font-medium text-[var(--accent)]">
-            前往邀请码领取
-          </Link>
-        </span>
+        <Link href={adminRecovery ? "/login" : "/login?admin=1"} className="font-medium text-[var(--accent)]">
+          {adminRecovery ? "返回 Discord 登录" : "管理员恢复登录"}
+        </Link>
       }
     >
-      <AuthForm
-        mode="login"
-        oauthProviders={oauthProviders}
-        oauthError={oauthError}
-        turnstile={{
-          isEnabled: turnstile.isEnabled,
-          siteKey: turnstile.siteKey,
-          protectLogin: turnstile.protectLogin,
-          protectRegister: turnstile.protectRegister,
-        }}
-      />
+      {adminRecovery ? (
+        <AuthForm
+          mode="login"
+          oauthError={oauthError}
+          turnstile={turnstile ? {
+            isEnabled: turnstile.isEnabled,
+            siteKey: turnstile.siteKey,
+            protectLogin: turnstile.protectLogin,
+            protectRegister: turnstile.protectRegister,
+          } : null}
+        />
+      ) : (
+        <DiscordLogin enabled={oauthProviders.some(({ type }) => type === "discord")} error={oauthError} />
+      )}
     </AuthShell>
   );
 }

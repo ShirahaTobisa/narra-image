@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { canvasPng } from "./helpers/canvas-api-fixtures";
 
 const { mockDb, mockResolveConfig, mockMatchWords, mockCheckLocalImages } = vi.hoisted(() => {
-  const contentReview = { create: vi.fn() };
+  const contentReview = { count: vi.fn(), create: vi.fn() };
   const generationJob = { count: vi.fn() };
   const resolveConfig = vi.fn();
   const matchWords = vi.fn();
@@ -81,6 +81,8 @@ describe("内容审核 checkGenerationInput", () => {
     mockCheckLocalImages.mockReset().mockResolvedValue({ blocked: false });
     mockMatchWords.mockReturnValue([]);
     mockDb.generationJob.count.mockResolvedValue(0);
+    mockDb.contentReview.count.mockReset().mockResolvedValue(0);
+    mockDb.contentReview.create.mockReset().mockResolvedValue({});
   });
 
   it("审核未启用时直接放行", async () => {
@@ -372,6 +374,126 @@ describe("内容审核 checkGenerationInput", () => {
       checkGenerationInput({ builtIn: false, prompt: "a cat", userId: "u1" }),
     ).resolves.toEqual({ allowed: true });
     expect(mockDb.generationJob.count).toHaveBeenCalledTimes(1);
+    expect(mockDb.contentReview.count).toHaveBeenCalledTimes(1);
+  });
+
+  describe("站内与上游共用用户违规计数", () => {
+    type Review = { userId: string; createdAt: Date; kind: string };
+    type Job = { userId: string; createdAt: Date; status: string; providerMode: string; errorMessage: string };
+    const at = Date.parse("2026-11-21T00:00:00Z");
+    const review = (overrides: Partial<Review> = {}): Review => ({ userId: "u1", createdAt: new Date(at), kind: "ai_moderation", ...overrides });
+    const job = (overrides: Partial<Job> = {}): Job => ({ userId: "u1", createdAt: new Date(at), status: "FAILED", providerMode: "BUILT_IN", errorMessage: "moderation_blocked", ...overrides });
+
+    function history(reviews: Review[] = [], jobs: Job[] = []) {
+      vi.spyOn(Date, "now").mockReturnValue(at);
+      mockResolveConfig.mockResolvedValue(aiConfig());
+      mockModerationResponse([moderationResult()]);
+      mockDb.contentReview.count.mockImplementation(async ({ where }: {
+        where: { userId: string; createdAt: { gte: Date }; kind: { in: string[] } };
+      }) => reviews.filter((item) => item.userId === where.userId && item.createdAt >= where.createdAt.gte && where.kind.in.includes(item.kind)).length);
+      mockDb.contentReview.create.mockImplementation(async ({ data }: { data: { userId: string; kind: string } }) => {
+        reviews.push(review(data));
+        return reviews.at(-1);
+      });
+      mockDb.generationJob.count.mockImplementation(async ({ where }: {
+        where: { userId: string; createdAt: { gte: Date }; providerMode: string; status: string; OR: Array<{ errorMessage: { contains: string; mode: string } }> };
+      }) => jobs.filter((item) => item.userId === where.userId && item.createdAt >= where.createdAt.gte
+        && item.status === where.status && item.providerMode === where.providerMode
+        && where.OR.some(({ errorMessage }) => errorMessage.mode === "insensitive"
+          ? item.errorMessage.toLowerCase().includes(errorMessage.contains.toLowerCase())
+          : item.errorMessage.includes(errorMessage.contains))).length);
+      return { reviews, jobs };
+    }
+
+    it.each([
+      { label: "提示词", input: { prompt: "a blue landscape" } },
+      { label: "公开署名文字", input: { prompt: "Fixture Author" } },
+      { label: "头像等纯图片", input: { images: [pngImage()] } },
+    ])("两次站内明确拒绝加一次上游拒绝，下一次$label提交直接暂停", async ({ input }) => {
+      history([review({ kind: "sensitive_word" }), review()], [job()]);
+      expect(await checkGenerationInput({ builtIn: true, ...input, userId: "u1" }))
+        .toEqual({ allowed: false, message: PROVIDER_COOLDOWN_MESSAGE });
+      expect(mockResolveConfig).not.toHaveBeenCalled();
+      expect(mockCheckLocalImages).not.toHaveBeenCalled();
+      expect(global.fetch).not.toHaveBeenCalled();
+      expect(mockDb.contentReview.create).not.toHaveBeenCalled();
+    });
+
+    it("每次只记一条：词库、本机图片、远端预审分别拒绝后，第4次暂停", async () => {
+      const state = history();
+      const input = { builtIn: true, prompt: "fixture prompt", userId: "u1" };
+      mockMatchWords.mockReturnValue([{ category: "fixture", word: "fixture" }]);
+      expect(await checkGenerationInput(input)).toEqual({ allowed: false, message: MODERATION_BLOCK_MESSAGE });
+      expect(state.reviews).toHaveLength(1);
+      expect(mockCheckLocalImages).not.toHaveBeenCalled();
+      expect(global.fetch).not.toHaveBeenCalled();
+
+      mockMatchWords.mockReturnValue([]);
+      mockCheckLocalImages.mockResolvedValue({ blocked: true, category: "sexual", score: 0.8, model: LOCAL_IMAGE_MODEL });
+      expect(await checkGenerationInput({ ...input, images: [pngImage()] })).toEqual({ allowed: false, message: MODERATION_BLOCK_MESSAGE });
+      expect(state.reviews).toHaveLength(2);
+      expect(global.fetch).not.toHaveBeenCalled();
+
+      mockCheckLocalImages.mockResolvedValue({ blocked: false });
+      mockModerationResponse([moderationResult({ flagged: true }), moderationResult({ flagged: true })]);
+      expect(await checkGenerationInput({ ...input, images: [pngImage()] })).toEqual({ allowed: false, message: MODERATION_BLOCK_MESSAGE });
+      expect(state.reviews).toHaveLength(3);
+      expect(state.jobs).toHaveLength(0);
+      expect(global.fetch).toHaveBeenCalledOnce();
+
+      expect(await checkGenerationInput(input)).toEqual({ allowed: false, message: PROVIDER_COOLDOWN_MESSAGE });
+      expect(state.reviews).toHaveLength(3);
+      expect(global.fetch).toHaveBeenCalledOnce();
+    });
+
+    it("查询只计同一用户24小时内的明确拒绝，单条上游记录匹配多个标记仍只计一次", async () => {
+      const old = new Date(at - 25 * 60 * 60 * 1000);
+      const state = history([
+        review(), review({ kind: "sensitive_word" }), review({ userId: "other" }), review({ createdAt: old }),
+        review({ kind: "unavailable" }), review({ kind: "timeout" }),
+      ], [
+        job({ userId: "other" }), job({ createdAt: old }), job({ status: "SUCCEEDED" }), job({ providerMode: "CUSTOM" }),
+        job({ errorMessage: "upstream timeout" }), job({ errorMessage: "provider unavailable" }),
+      ]);
+      const input = { builtIn: true, prompt: "a blue landscape", userId: "u1" };
+      expect(await checkGenerationInput(input)).toEqual({ allowed: true });
+      state.jobs.push(job({ errorMessage: "MODERATION_BLOCKED content_policy_violation safety system" }));
+      expect(await checkGenerationInput(input)).toEqual({ allowed: false, message: PROVIDER_COOLDOWN_MESSAGE });
+      expect(mockDb.contentReview.count).toHaveBeenCalledWith({ where: {
+        createdAt: { gte: new Date(at - 24 * 60 * 60 * 1000) }, kind: { in: ["sensitive_word", "ai_moderation"] }, userId: "u1",
+      } });
+    });
+
+    it.each(["local", "timeout", "service", "config"])("已有两次违规时%s故障不凑成第三次，恢复后可继续审核", async (failure) => {
+      const state = history([review(), review({ kind: "sensitive_word" })]);
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      if (failure === "local") mockCheckLocalImages.mockRejectedValue(new Error("fixture model unavailable"));
+      if (failure === "timeout") global.fetch = vi.fn().mockRejectedValue(new DOMException("fixture timeout", "TimeoutError"));
+      if (failure === "service") global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 503 });
+      if (failure === "config") mockResolveConfig.mockRejectedValue(new Error("fixture config unavailable"));
+      const input = { builtIn: true, prompt: "a blue landscape", userId: "u1", images: [pngImage()] };
+      expect(await checkGenerationInput(input)).toEqual({ allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE });
+      expect(state.reviews).toHaveLength(2);
+      expect(mockDb.contentReview.create).not.toHaveBeenCalled();
+      mockCheckLocalImages.mockResolvedValue({ blocked: false });
+      mockResolveConfig.mockResolvedValue(aiConfig());
+      mockModerationResponse([moderationResult()]);
+      expect(await checkGenerationInput(input)).toEqual({ allowed: true });
+    });
+
+    it.each(["contentReview", "generationJob"] as const)("%s计数失败时停止审核，不泄漏详情或新增违规", async (table) => {
+      const state = history([review(), review({ kind: "sensitive_word" })]);
+      mockDb[table].count.mockRejectedValueOnce(new Error("fixture secret-key private-db-url"));
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      expect(await checkGenerationInput({ builtIn: true, prompt: "a blue landscape", userId: "u1" }))
+        .toEqual({ allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE });
+      expect(state.reviews).toHaveLength(2);
+      expect(mockDb.contentReview.create).not.toHaveBeenCalled();
+      expect(mockResolveConfig).not.toHaveBeenCalled();
+      expect(global.fetch).not.toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalled();
+      expect(JSON.stringify(errorSpy.mock.calls)).not.toMatch(/secret-key|private-db-url/);
+    });
   });
 
   it("均未命中时放行且不记录", async () => {

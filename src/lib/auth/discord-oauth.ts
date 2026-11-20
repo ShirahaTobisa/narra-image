@@ -4,6 +4,8 @@ import type { OAuthProfile } from "@/lib/auth/oauth-accounts";
 import { getOAuthProvider } from "@/lib/auth/oauth-config";
 import { getEnv } from "@/lib/env";
 
+export { parseDiscordGuildIds } from "@/lib/auth/access-policy";
+
 const DISCORD_AUTHORIZE_URL = "https://discord.com/oauth2/authorize";
 const DISCORD_API_URL = "https://discord.com/api/v10";
 
@@ -95,11 +97,6 @@ export async function fetchDiscordUser(accessToken: string): Promise<DiscordUser
   }
 
   return response.json() as Promise<DiscordUser>;
-}
-
-/** 后台填的限定服务器 ID：逗号、空格、换行都能隔开（库里存成逗号连起来的一串） */
-export function parseDiscordGuildIds(value: string | null | undefined) {
-  return [...new Set((value ?? "").split(/[\s,，、]+/).filter(Boolean))];
 }
 
 /**

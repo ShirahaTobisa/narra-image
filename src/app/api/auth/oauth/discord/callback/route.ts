@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { Role } from "@prisma/client";
+import { DISCORD_GUILD_UNAVAILABLE_MESSAGE } from "@/lib/auth/access-policy";
 
 import {
   discordProfile,
@@ -33,10 +34,9 @@ export async function GET(request: Request) {
       return loginError("缺少授权参数");
     }
 
-    // 验证 state 防 CSRF；同时取出邀请码并清理 cookie
+    // 验证 state 防 CSRF，并清理旧版本留下的邀请码 cookie。
     const cookieStore = await cookies();
     const savedState = cookieStore.get(OAUTH_STATE_COOKIE)?.value;
-    const inviteCode = cookieStore.get(OAUTH_INVITE_COOKIE)?.value || null;
     cookieStore.delete(OAUTH_STATE_COOKIE);
     cookieStore.delete(OAUTH_INVITE_COOKIE);
 
@@ -48,6 +48,10 @@ export async function GET(request: Request) {
     if (!config || !config.isEnabled) {
       return loginError("Discord 登录未启用");
     }
+    const guildIds = parseDiscordGuildIds(config.allowedGuildId);
+    if (guildIds.length === 0) {
+      return loginError(DISCORD_GUILD_UNAVAILABLE_MESSAGE);
+    }
 
     const accessToken = await exchangeDiscordToken(
       code,
@@ -57,9 +61,8 @@ export async function GET(request: Request) {
     );
     const discordUser = await fetchDiscordUser(accessToken);
 
-    // 限定服务器时每次登录都查：是其中任意一个服务器的成员才放行，被踢出就登不进来
-    const guildIds = parseDiscordGuildIds(config.allowedGuildId);
-    if (guildIds.length > 0 && !(await isDiscordGuildMember(accessToken, guildIds))) {
+    // 每次登录或绑定都验证指定服务器成员资格，邀请码不能替代。
+    if (!(await isDiscordGuildMember(accessToken, guildIds))) {
       return loginError("请先加入指定的 Discord 服务器再登录");
     }
 
@@ -82,10 +85,9 @@ export async function GET(request: Request) {
       return NextResponse.redirect(`${appUrl}/settings?linked=discord`);
     }
 
-    // 未登录：查找或创建用户（限定了服务器就免邀请码，否则新用户必须有有效邀请码）
+    // 未登录：群成员验证已通过，按 Discord 绑定查找或创建账号。
     const result = await findOrCreateOAuthAccount(profile, {
-      inviteCode,
-      inviteExempt: guildIds.length > 0,
+      inviteExempt: true,
     });
     if (!result.ok) {
       return loginError(oauthLoginErrorMessage(result.reason, "Discord"));
@@ -97,8 +99,8 @@ export async function GET(request: Request) {
       userId: result.user.id,
     });
     return response;
-  } catch (error) {
-    console.error("Discord OAuth callback error:", error);
+  } catch {
+    console.error("Discord OAuth callback failed");
     return loginError("第三方登录失败");
   }
 }

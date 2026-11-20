@@ -69,8 +69,7 @@ export function HomeMobileNav({ currentUser, links, activeHref, checkInSummary }
               </div>
             ) : (
               <div className={styles.drawerGuest}>
-                <Link href="/login" prefetch={false} onClick={onClose} className={styles.login}>登录账号</Link>
-                <Link href="/register" prefetch={false} onClick={onClose}>注册新账号</Link>
+                <Link href="/login" prefetch={false} onClick={onClose} className={styles.login}>Discord 登录</Link>
               </div>
             )}
           </motion.div>

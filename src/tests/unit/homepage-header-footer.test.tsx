@@ -127,7 +127,7 @@ describe("homepage header variant and account behavior", () => {
     const close = screen.getByRole("button", { name: "关闭导航菜单" });
     expect(close).toHaveFocus();
     await keyboard.tab({ shift: true });
-    expect(screen.getByRole("link", { name: "注册新账号" })).toHaveFocus();
+    expect(screen.getByRole("link", { name: "Discord 登录" })).toHaveFocus();
     await keyboard.tab();
     expect(close).toHaveFocus();
     await keyboard.keyboard("{Escape}");

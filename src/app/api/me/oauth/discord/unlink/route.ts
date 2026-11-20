@@ -1,4 +1,5 @@
 import { unlinkOAuthAccount } from "@/lib/auth/oauth-accounts";
+import { canUsePasswordLogin } from "@/lib/auth/access-policy";
 import { getCurrentUserRecord } from "@/lib/server/current-user";
 import { getErrorMessage, jsonError, jsonOk } from "@/lib/server/http";
 
@@ -7,6 +8,9 @@ export async function POST() {
     const user = await getCurrentUserRecord();
     if (!user) {
       return jsonError("未登录", 401);
+    }
+    if (!canUsePasswordLogin(user.role)) {
+      return jsonError("Discord 是当前唯一可用的登录方式，无法解绑", 403);
     }
 
     const result = await unlinkOAuthAccount(user.id, "discord");

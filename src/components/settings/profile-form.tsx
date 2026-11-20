@@ -19,7 +19,7 @@ type ProfileFormProps = {
     uid: number | null;
   };
   oauthProvider: string | null;
-  hasPassword: boolean;
+  canUnlinkOAuth: boolean;
   /** 已启用、可以绑定的登录源 */
   oauthProviders: Array<{ type: string; displayName: string }>;
   queryNotice: { hint: "linked" | "error"; message: string } | null;
@@ -28,7 +28,7 @@ type ProfileFormProps = {
 export function ProfileForm({
   user,
   oauthProvider,
-  hasPassword,
+  canUnlinkOAuth,
   oauthProviders,
   queryNotice,
 }: ProfileFormProps) {
@@ -186,8 +186,13 @@ export function ProfileForm({
         <div className="studio-card rounded-[1.8rem] p-6">
           <h3 className="font-semibold text-[var(--ink)]">账号绑定</h3>
           <p className="mt-1 text-xs text-[var(--ink-soft)]">
-            绑定后可使用第三方账号直接登录本账号。
+            绑定 Discord 后可继续使用本账号及其积分、作品。
           </p>
+          {linkedLabel && oauthProvider !== "discord" ? (
+            <p className="mt-1 text-xs text-[var(--ink-soft)]">
+              当前绑定 {linkedLabel}；改绑 Discord 会替换原登录绑定，账号数据保留。
+            </p>
+          ) : null}
 
           {queryNotice ? (
             <p
@@ -201,13 +206,13 @@ export function ProfileForm({
             </p>
           ) : null}
 
-          {linkedLabel ? (
-            hasPassword ? (
+          {oauthProvider === "discord" ? (
+            canUnlinkOAuth ? (
               <div className="mt-4 flex items-center justify-between gap-2 rounded-2xl border border-[var(--line)] bg-[var(--surface-strong)]/40 px-4 py-3">
                 <div>
                   <p className="text-sm font-medium text-[var(--ink)]">{linkedLabel}</p>
                   <p className="mt-0.5 text-xs text-[var(--ink-soft)]">
-                    可通过 {linkedLabel} 直接登录
+                    已绑定此账号
                   </p>
                 </div>
                 <button
@@ -222,7 +227,7 @@ export function ProfileForm({
               <div className="mt-4 rounded-2xl border border-[var(--line)] bg-[var(--surface-strong)]/40 px-4 py-3">
                 <p className="text-sm font-medium text-[var(--ink)]">{linkedLabel}</p>
                 <p className="mt-0.5 text-xs text-[var(--ink-soft)]">
-                  该账号仅通过 {linkedLabel} 登录，解绑需先设置密码。
+                  已绑定此账号。为保留可用的登录方式，普通账号不能解绑 Discord。
                 </p>
               </div>
             )
@@ -277,7 +282,7 @@ export function ProfileForm({
             个人资料
           </h2>
           <p className="mt-2 text-sm text-[var(--ink-soft)]">
-            设置昵称后，你的公开作品和首页画廊将优先展示昵称。
+            投稿默认匿名；选择公开昵称时保存当时署名，之后修改昵称不会改变已有投稿。
           </p>
 
           <div className="mt-6 grid gap-5">
@@ -300,8 +305,8 @@ export function ProfileForm({
               />
               <p className="mt-1.5 text-xs text-[var(--ink-soft)]">
                 {nickname.trim()
-                  ? `公开展示名称：${nickname.trim()}`
-                  : "未设置时将显示为「匿名创作者」"}
+                  ? `投稿时可选择署名：${nickname.trim()}`
+                  : "设置昵称后可在投稿时选择公开署名，也可继续匿名。"}
               </p>
             </div>
 
@@ -321,7 +326,7 @@ export function ProfileForm({
                 className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface-strong)]/50 px-4 py-3 text-sm text-[var(--ink-soft)] outline-none"
               />
               <p className="mt-1.5 text-xs text-[var(--ink-soft)]">
-                邮箱为登录凭证，暂不支持修改。
+                邮箱仅作账号记录展示，暂不支持修改。普通账号通过 Discord 登录，管理员可使用已设置的邮箱密码恢复登录。
               </p>
             </div>
           </div>

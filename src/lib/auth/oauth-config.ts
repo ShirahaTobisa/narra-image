@@ -1,6 +1,7 @@
 import "server-only";
 
 import { db } from "@/lib/db";
+import { parseDiscordGuildIds, PUBLIC_OAUTH_PROVIDER } from "@/lib/auth/access-policy";
 
 export type OAuthProviderInfo = {
   type: string;
@@ -13,7 +14,7 @@ export type OAuthProviderInfo = {
 
 export async function getEnabledOAuthProviders() {
   const providers = await db.oAuthProvider.findMany({
-    where: { isEnabled: true },
+    where: { isEnabled: true, type: PUBLIC_OAUTH_PROVIDER },
     select: {
       allowedGuildId: true,
       type: true,
@@ -22,11 +23,10 @@ export async function getEnabledOAuthProviders() {
     orderBy: { createdAt: "asc" },
   });
 
-  // 和 Discord 登录回调同一条规则：限定了服务器，服务器成员首次登录不用邀请码
-  return providers.map(({ allowedGuildId, ...provider }) => ({
-    ...provider,
-    inviteExempt: provider.type === "discord" && Boolean(allowedGuildId),
-  }));
+  // 登录和绑定必须配置群成员验证；后台仍可查看所有历史配置。
+  return providers
+    .filter(({ allowedGuildId }) => parseDiscordGuildIds(allowedGuildId).length > 0)
+    .map(({ type, displayName }) => ({ type, displayName, inviteExempt: true }));
 }
 
 export async function getOAuthProvider(type: string): Promise<OAuthProviderInfo | null> {

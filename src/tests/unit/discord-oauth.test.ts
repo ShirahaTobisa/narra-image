@@ -29,6 +29,7 @@ vi.mock("@/lib/auth/session", () => ({
 }));
 
 import { GET as callback } from "@/app/api/auth/oauth/discord/callback/route";
+import { GET as authorize } from "@/app/api/auth/oauth/discord/route";
 import { buildDiscordAuthorizeUrl, discordProfile, parseDiscordGuildIds } from "@/lib/auth/discord-oauth";
 
 const GUILD_ID = "111122223333444455";
@@ -139,12 +140,24 @@ describe("Discord 登录", () => {
   it("限定服务器：不是成员就不让登录，也不查账号", async () => {
     mockDb.oAuthProvider.findUnique.mockResolvedValue(providerConfig(GUILD_ID));
     mockDiscordApi({ status: 404 });
+    cookieJar.set("discord_invite_code", "legacy-valid-invite");
 
     const location = await runCallback();
 
     expect(location).toContain("/login?error=请先加入指定的 Discord 服务器再登录");
     expect(mockDb.user.findFirst).not.toHaveBeenCalled();
     expect(mockAttachSession).not.toHaveBeenCalled();
+  });
+
+  it("配置群限制时授权入口固定申请成员读取，清理旧邀请码并设置 state", async () => {
+    mockDb.oAuthProvider.findUnique.mockResolvedValue(providerConfig(GUILD_ID));
+    cookieJar.set("discord_invite_code", "legacy-invite");
+    const response = await authorize();
+    const target = new URL(response.headers.get("location")!);
+    expect(target.origin).toBe("https://discord.com");
+    expect(target.searchParams.get("scope")).toBe("identify guilds.members.read");
+    expect(target.searchParams.get("state")).toBe(cookieJar.get("discord_oauth_state"));
+    expect(cookieJar.has("discord_invite_code")).toBe(false);
   });
 
   it("限定服务器：还没通过入群验证（pending）也不算成员", async () => {
@@ -176,16 +189,56 @@ describe("Discord 登录", () => {
     expect(mockAttachSession).toHaveBeenCalledWith(expect.anything(), { role: "user", userId: "user_new" });
   });
 
-  it("未限定服务器：新用户没有邀请码时拒绝，也不查服务器成员", async () => {
-    mockDb.oAuthProvider.findUnique.mockResolvedValue(providerConfig(null));
-    mockDiscordApi({ status: 404 });
+  it.each([null, " , \n，"])("未配置有效服务器 %s：即使有邀请码也拒绝授权与回调", async (guild) => {
+    mockDb.oAuthProvider.findUnique.mockResolvedValue(providerConfig(guild));
+    global.fetch = vi.fn() as typeof fetch;
+    cookieJar.set("discord_invite_code", "valid-invite");
+
+    const start = await authorize();
+    expect(start.status).toBe(503);
 
     const location = await runCallback();
 
-    expect(location).toContain("首次使用 Discord 登录需要填写邀请码");
-    const calledUrls = vi.mocked(global.fetch).mock.calls.map(([url]) => String(url));
-    expect(calledUrls.some((url) => url.includes("/guilds/"))).toBe(false);
-    expect(calledUrls.some((url) => url.endsWith("/users/@me"))).toBe(true);
+    expect(location).toContain("Discord 群成员验证暂未配置");
+    expect(global.fetch).not.toHaveBeenCalled();
     expect(mockDb.user.create).not.toHaveBeenCalled();
+    expect(mockDb.$transaction).not.toHaveBeenCalled();
+    expect(mockAttachSession).not.toHaveBeenCalled();
+  });
+
+  it("已有 Discord 绑定登录原账号，更新资料不改积分", async () => {
+    mockDb.oAuthProvider.findUnique.mockResolvedValue(providerConfig(GUILD_ID));
+    mockDiscordApi({ body: { pending: false }, status: 200 });
+    const original = { id: "original", role: "USER", bannedAt: null, nickname: "Saved", credits: 123 };
+    mockDb.user.findFirst.mockResolvedValue(original);
+    mockDb.user.update.mockResolvedValue(original);
+    expect(await runCallback()).toBe("https://draw.example.com/create");
+    expect(mockAttachSession).toHaveBeenCalledWith(expect.anything(), { role: "user", userId: "original" });
+    expect(mockDb.user.create).not.toHaveBeenCalled();
+    expect(mockDb.user.update.mock.calls[0][0].data).not.toHaveProperty("credits");
+  });
+
+  it.each([null, "linuxdo"])("旧账号来源 %s 的有效会话可绑定 Discord，保留账号和积分且不新建用户", async (provider) => {
+    mockDb.oAuthProvider.findUnique.mockResolvedValue(providerConfig(GUILD_ID));
+    mockDiscordApi({ body: { pending: false }, status: 200 });
+    mockReadSession.mockResolvedValue({ userId: "email-user", role: "user" });
+    mockDb.user.findUnique.mockResolvedValue({ id: "email-user", bannedAt: null, nickname: "Existing", oauthProvider: provider });
+    expect(await runCallback()).toBe("https://draw.example.com/settings?linked=discord");
+    expect(mockDb.user.update).toHaveBeenCalledWith({
+      where: { id: "email-user" },
+      data: { oauthId: DISCORD_USER.id, oauthProvider: "discord", avatarUrl: expect.any(String) },
+    });
+    expect(mockDb.user.create).not.toHaveBeenCalled();
+    expect(mockAttachSession).not.toHaveBeenCalled();
+  });
+
+  it("没有旧会话时不凭邮箱合并已有普通账号", async () => {
+    mockDb.oAuthProvider.findUnique.mockResolvedValue(providerConfig(GUILD_ID));
+    mockDiscordApi({ body: { pending: false }, status: 200 });
+    mockDb.user.findUnique.mockResolvedValue({ id: "email-user", bannedAt: null, passwordHash: "existing-hash", oauthId: null });
+    expect(await runCallback()).toContain("这个账号已被占用");
+    expect(mockDb.user.update).not.toHaveBeenCalled();
+    expect(mockDb.user.create).not.toHaveBeenCalled();
+    expect(mockAttachSession).not.toHaveBeenCalled();
   });
 });

@@ -225,14 +225,7 @@ function DefaultMobileNav({
                     onClick={() => setOpen(false)}
                     className="flex w-full items-center justify-center rounded-2xl bg-[#21170f] py-3.5 text-sm font-semibold text-white shadow-md hover:bg-[var(--accent)] transition-all duration-200"
                   >
-                    登录账号
-                  </Link>
-                  <Link
-                    href="/register"
-                    onClick={() => setOpen(false)}
-                    className="flex w-full items-center justify-center rounded-2xl border border-[var(--line)] bg-[#fffaf2]/50 py-3.5 text-sm font-semibold text-[var(--ink)] hover:bg-[#fffaf2]/90 transition-all duration-200"
-                  >
-                    注册新账号
+                    Discord 登录
                   </Link>
                 </div>
               )}

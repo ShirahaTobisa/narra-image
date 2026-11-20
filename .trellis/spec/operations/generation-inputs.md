@@ -35,6 +35,8 @@
 - 预备失败使用 `failGenerationJobAndRefund({ onlyUnmanagedPending:true })`；占位回执丢失按预分配 jobId 检查，启用回执丢失不得退款或关闭已交付任务的预留。部分上传失败不等于能立即删除未知或仍有引用的图片对象。
 - Worker 首次上游发送前检查账号封禁，确定未发送时按 `GENERATION_CANCELLED` 收尾和一次补偿。批次首张已发送后不再以新封禁错误退整个任务；取消和参考图输入错误不计入渠道失败连续次数。
 - 站内渠道必须启用总开关和 AI，且配置、密钥、模型、阈值有效；关闭审核表示暂停站内生成，不能降级成只查词库。自定义渠道保留原有可选开关语义。
+- 同一用户最近24小时的 `ContentReview` 明确违规（仅 `sensitive_word` / `ai_moderation`）与内置渠道 FAILED `GenerationJob` 的明确安全拒绝合计达到3次后，后续站内审核入口直接暂停；不再调用审核或新增违规记录。两个查询共用时间边界，按各记录 `createdAt` 计算；任何计数查询故障均返回审核不可用，不透传异常。
+- `ContentReview` 没有渠道字段，不能假称只计内置来源：该用户的头像、公开署名和可选自填渠道审核产生的明确违规也计入。头像与署名使用同一强制审核入口；自填生成仍保持原有开关语义。预审拒绝立即返回、不创建生成任务，每次仅写一条审核记录，因此不会与上游拒绝重复计次。
 - AI 输入包含完整 prompt 与 negativePrompt，后者标明“需要排除的内容”；敏感词仅做 NFKC 和不可见格式字符归一化，不能靠词库替代 AI。
 - 审核 `results` 至少一项；每项 `flagged`、`categories.sexual` 和 `categories["sexual/minors"]` 必须是 boolean；两个对应分数必须存在，所有分数均为有限 0～1 数字。任一分类 true 都拒绝，不能仅依赖总 flagged。
 - 图像必须明确被 `category_applied_input_types.sexual` 的 `image` 覆盖；有文字且返回覆盖字段时，sexual 和 sexual/minors 都必须含 `text`。旧纯文本响应可以省略整个覆盖字段。官方 omni 的 sexual/minors 仅支持文字，不能声称它识别了图片人物年龄，也不能要求该分类返回 image。
@@ -67,7 +69,8 @@
 | 审核字段缺失、类型错误或越界 | 审核不可用；不入队、不扣费、不增加违规计数 |
 | 站内审核关闭、密钥无效、图片覆盖缺失、动画图或超时 | 同样按审核不可用拒绝；后台文案不得称“降级放行” |
 | 本机队列/字节超额、解码超限、分数缺项、线程启动/推理失败或整批超时 | 同样按审核不可用拒绝；不发外部请求、不记用户违规；实际超时须终止线程 |
-| 明确分类/分数/词库命中 | 记录 ContentReview 并拒绝；上游明确安全拒绝另纳入24小时冷却统计 |
+| 明确分类/分数/词库命中 | 记录一条 ContentReview 并拒绝；与上游明确安全拒绝合计，24小时达到3次后暂停后续站内提交 |
+| 违规计数查询失败 | 审核不可用，不放行、不新增违规，不泄漏数据库异常 |
 | SSE 只有 refusal.done 后 EOF，或存在损坏帧 | 不认定整次响应已确定结束，不对未知/部分生成作完整退款 |
 | 下载内容不是支持的图片字节 | `/api/proxy-image` 返回 415 |
 
@@ -88,6 +91,7 @@
 - `generate-route-admission.test.ts`：满队列不预留/上传、并发最后名额、预备不可领取、取消/封禁与两种回执丢失；`job-refund.test.ts` 覆盖只退款尚未交付的预备任务。真实 Worker DB suites 覆盖 legacy/v1 封禁前零上游请求、一次退款，以及首张发送后正常完成。
 - `avatar-route.test.ts`：每用户5次/60秒限频先于解析，200 KiB头像的原始字节经同一严格图片审核后才存储；审核拒绝/故障不得更新头像。公开作品仍不展示账号头像。
 - `proxy-image-route.test.ts`：已授权旧图下载与内容识别；`moderation-check.test.ts`：关审、缺项、coverage、负面词、分数上限、损坏响应和无害正例。
+- `moderation-check.test.ts` 还需覆盖真实查询过滤条件、站内2次加上游1次、三次分别明确拒绝后第四次暂停、纯图片/署名文字同一门禁、单次多结果不重复记录、过期/其他用户/未知kind/普通失败排除，以及计数/模型/配置/服务故障不记违规。
 - `moderation-images.test.ts`：真实静态四格式、动画/伪装/损坏拒绝、8～20 MiB 普通图片允许且 Canvas 原限额保持；`moderation-config.test.ts`：首次 PATCH 保留环境开关。
 - `local-image-moderation.test.ts`：阈值边界、五类完整性、原图/顺序、16张串行、全局单例、队列/256MiB预算、排队/活动截止、晚到ready/result、线程退出前禁止重建、故障后预算回收；阻止分数使用合成响应，不收集违法图片。
 - `moderation-check.test.ts` 与 `external-generation-service.test.ts`：真实共享入口在本地拒绝/错误后无fetch/存图/扣费/入队；纯文本不调本地，拒绝记录真实模型。`scripts/tests/moderation-image-worker.test.mjs`：真实模型无害正例、解码/透明RGB边界、像素上限，在目标Node24/Alpine且无网络容器内通过。

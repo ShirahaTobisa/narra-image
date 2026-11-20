@@ -50,18 +50,7 @@ vi.mock("@/lib/auth/session", () => ({
 
 import { POST } from "@/app/api/auth/register/route";
 
-function registerRequest() {
-  return new Request("http://localhost/api/auth/register", {
-    method: "POST",
-    body: JSON.stringify({
-      email: "new-user@example.com",
-      inviteCode: "",
-      password: "password123",
-    }),
-  });
-}
-
-describe("注册接口初始邀请码", () => {
+describe("关闭公开邮箱注册", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockEnv.BOOTSTRAP_INVITE_CODE = "";
@@ -70,25 +59,23 @@ describe("注册接口初始邀请码", () => {
     mockTransaction.mockImplementation(async (callback) => callback({}));
   });
 
-  it("未显式配置时不创建公开默认邀请码", async () => {
-    const response = await POST(registerRequest());
+  it("无邀请码时明确拒绝，不验证验证码或创建账号", async () => {
+    const response = await POST();
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: expect.stringContaining("Discord") });
     expect(mockInviteUpsert).not.toHaveBeenCalled();
+    expect(mockRequireTurnstile).not.toHaveBeenCalled();
+    expect(mockHashPassword).not.toHaveBeenCalled();
+    expect(mockTransaction).not.toHaveBeenCalled();
   });
 
-  it("仅在显式配置时创建初始邀请码", async () => {
+  it("显式初始邀请码也不能重新开放公开邮箱注册", async () => {
     mockEnv.BOOTSTRAP_INVITE_CODE = "private-bootstrap-code";
 
-    await POST(registerRequest());
-
-    expect(mockInviteUpsert).toHaveBeenCalledWith({
-      where: { code: "private-bootstrap-code" },
-      update: {},
-      create: {
-        code: "private-bootstrap-code",
-        note: "初始管理员邀请码",
-      },
-    });
+    const response = await POST();
+    expect(response.status).toBe(403);
+    expect(mockInviteUpsert).not.toHaveBeenCalled();
+    expect(mockRegisterUser).not.toHaveBeenCalled();
   });
 });
