@@ -219,7 +219,7 @@ INSERT INTO "GenerationJob" (
 							return
 						}
 					}
-					_, _ = fmt.Fprint(response, `{"output":[{"type":"image_generation_call","result":"harmless-fixture"}]}`)
+					_, _ = fmt.Fprintf(response, `{"output":[{"type":"image_generation_call","result":%q}]}`, base64.StdEncoding.EncodeToString(minimalPNG(1, 1)))
 				}))
 				defer server.Close()
 				payload, cause := generateWithResponsesImageTool(w.withJobProviderLifecycle(ctx, job), job,

@@ -66,3 +66,11 @@ runtime-check 清单由 16 套增为 24 套，新增 moderation-check、public-a
 首次隔离 DB 检查在创建任何容器前停止：服务器 `/usr/bin/docker` 动态依赖 glibc，原脚本只接受静态客户端。仅调整临时 harness：动态分支限定系统 Docker、x86_64 加载器和 libc，解析真实路径、所有者、写权限、ELF 与实际依赖；两个固定库文件只读挂载，挂载前后重核字节。没有安装软件、放开生产数据或修改产品镜像。原失败日志保留为 `db-tests.log`，后续执行使用 `db-tests-final.log`。
 
 DB helper 新 SHA256 为 `dea9eb4e6f7595991292134c293a21efc342ead6e10675cc496e8f946b8cb129`；实施代理完成语法、15项解析正反例和计划模式，主代理复核实际分支与挂载范围。成功回执另存 `dockerCliRuntime.files` 的客户端/运行库原始路径、目标路径和摘要。最终部署核查脚本也在读取 manifest 前取得同一个发布锁，持锁至回执和精确临时文件清理结束，避免并行发布交错。
+
+## 最终数据库基线复核
+
+第二次隔离检查实际执行到 OAuth 群限制迁移时，发现原 Worker 最小夹具没有 `OAuthProvider`；失败后临时容器和目录均已清理。`6d80fa6` 只在该夹具补入初始迁移中的原表和唯一索引，已独立比对一致，迁移计划相关7项测试通过。线上没有执行该失败尝试中的任何迁移。
+
+最终临时 harness 分成两种明确模式：`original-minimal` 使用原部分夹具并执行全部后续迁移、原 TS/Go 数据库测试，写 `db-minimal-checks.json`；`full-prefix` 使用13份历史迁移原字节和原历史记录，再执行剩余迁移、旧作品署名兼容、Prisma diff0与同套 TS/Go，写 `db-checks.json`。完整模式记录每份原 SQL、原夹具、未变历史段和拼接结果的摘要；没有改写发布过的迁移，没有将部分夹具误作完整结构证明。
+
+最终三份脚本经独立只读审查、语法检查：DB `5f76c81202371853b743e15583f300b4f5dfab1312d7f16b484745883dc7d084`，release `b71e658348df5a965e4da20caa4fd53bf496f57f5a82f7a4681429e2aa02c270`，final-audit `2d4e4004318004a945a890f35a963a66c46ab0f67f5d8ab7f0f14b3e710dcaad`。发布要求两种数据库回执及运行时回执同时通过，并匹配最终源码与精确镜像；最终清理检查两次测试各自的 owner。
