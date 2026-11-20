@@ -10,14 +10,14 @@ import {
   isGatewayEnabled,
   runExternalGenerationViaGateway,
 } from "@/lib/generation/gateway-client";
-import { runExternalGeneration } from "@/lib/generation/external-api";
+import { startExternalGeneration } from "@/lib/generation/external-api";
 import { requireApiUser } from "@/lib/server/api-auth";
 
 export async function POST(request: Request) {
   try {
     const auth = await requireApiUser(request);
     const { body, sourceImages } = await parseExternalImageEditRequest(request);
-    // 内容审核（含参考图）在 runExternalGeneration / runExternalGenerationViaGateway 里统一做
+    // 内容审核（含参考图）在共享生成服务里统一做
 
     if (isGatewayEnabled()) {
       const gatewayResponse = await runExternalGenerationViaGateway({
@@ -47,26 +47,27 @@ export async function POST(request: Request) {
       return gatewayResponse;
     }
 
+    const generation = await startExternalGeneration({
+      apiKeyId: auth.apiKey.id,
+      input: {
+        count: body.count,
+        generationType: "image_to_image",
+        model: body.model,
+        moderation: body.moderation,
+        negativePrompt: body.negativePrompt,
+        outputCompression: body.outputCompression,
+        outputFormat: body.outputFormat,
+        prompt: body.prompt,
+        quality: body.quality,
+        seed: body.seed,
+        size: body.size,
+        sourceImages,
+      },
+      signal: request.signal,
+      user: auth.user,
+    });
     return await openAiImageJsonResponse(request, async () => {
-      const job = await runExternalGeneration({
-        apiKeyId: auth.apiKey.id,
-        input: {
-          count: body.count,
-          generationType: "image_to_image",
-          model: body.model,
-          moderation: body.moderation,
-          negativePrompt: body.negativePrompt,
-          outputCompression: body.outputCompression,
-          outputFormat: body.outputFormat,
-          prompt: body.prompt,
-          quality: body.quality,
-          seed: body.seed,
-          size: body.size,
-          sourceImages,
-        },
-        signal: request.signal,
-        user: auth.user,
-      });
+      const job = await generation.result;
       const data = await formatImageGenerationData(job.images, body.responseFormat);
 
       return {

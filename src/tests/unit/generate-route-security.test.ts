@@ -49,10 +49,14 @@ vi.mock("@/lib/db", () => ({
 }));
 
 // 站内渠道会把引用的本站图读出来送审；这里只关心绑定流程，读图直接给假数据
-vi.mock("@/lib/storage/managed-image-storage", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/storage/managed-image-storage")>()),
-  readManagedImage: vi.fn(async () => Buffer.from("reference-image")),
-}));
+vi.mock("@/lib/storage/managed-image-storage", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/storage/managed-image-storage")>();
+  return {
+    ...actual,
+    readManagedImage: vi.fn(async () => Buffer.from("reference-image")),
+    reserveManagedImageOutputs: vi.fn(actual.reserveManagedImageOutputs),
+  };
+});
 
 vi.mock("@/lib/moderation/check", () => ({
   checkGenerationInput: mockCheckGenerationInput,
@@ -60,9 +64,17 @@ vi.mock("@/lib/moderation/check", () => ({
 
 const rateLimit = vi.hoisted(() => ({ limited: false }));
 
-vi.mock("@/lib/server/rate-limit", () => ({
-  createRateLimiter: () => ({ isLimited: () => rateLimit.limited, record: () => undefined }),
-}));
+vi.mock("@/lib/server/rate-limit", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/server/rate-limit")>();
+  return {
+    ...actual,
+    createRateLimiter: (options: Parameters<typeof actual.createRateLimiter>[0]) => ({
+      ...actual.createRateLimiter(options),
+      isLimited: () => rateLimit.limited,
+      record: () => undefined,
+    }),
+  };
+});
 
 const env = vi.hoisted(() => ({ VIDEO_ENABLED: true }));
 
@@ -86,12 +98,6 @@ vi.mock("@/lib/generation/parse-generate-request", async (importOriginal) => {
     parseGenerateRequest: mockParseGenerateRequest,
   };
 });
-
-vi.mock("@/lib/credits", () => ({
-  calculateGenerationCost: vi.fn(() => 5),
-  hasEnoughCredits: vi.fn(() => true),
-  resolveCreditCost: vi.fn(() => 5),
-}));
 
 vi.mock("@/lib/prisma-mappers", () => ({
   serializeGeneration: vi.fn((job) => job),
@@ -132,6 +138,7 @@ vi.mock("@/lib/generation/job-refund", () => ({
 import { POST } from "@/app/api/generate/route";
 import { imageLocalLocation, type ManagedImage } from "@/lib/storage/image-contract";
 import { ImageRepository } from "@/lib/storage/image-repository";
+import { reserveManagedImageOutputs } from "@/lib/storage/managed-image-storage";
 
 function readyManagedInput(): ManagedImage {
   const id = "11111111-1111-4111-8111-111111111111";
@@ -180,10 +187,27 @@ function buildRequestBody(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function submissionTransaction() {
+  const create = vi.fn(async ({ data }) => ({ ...data, id: "new-job", images: [], videos: [] }));
+  const charge = vi.fn().mockResolvedValue({ count: 1 });
+  const tx = {
+    $executeRaw: vi.fn().mockResolvedValue(0), $queryRaw: mockRawQuery,
+    generationJob: { count: vi.fn().mockResolvedValue(0), create },
+    user: { updateMany: charge }, imageUrlAlias: { findMany: vi.fn().mockResolvedValue([]) },
+  };
+  mockDbTransaction.mockImplementation(async (operation: (client: typeof tx) => Promise<unknown>) => operation(tx));
+  mockPersistGeneratedImage.mockResolvedValue("https://app.unit.invalid/upload.png");
+  return { create, charge };
+}
+
 describe("生成接口安全校验顺序", () => {
-  afterEach(() => { vi.restoreAllMocks(); });
+  afterEach(() => {
+    Reflect.deleteProperty(globalThis, Symbol.for("narra.generation-rate-limit"));
+    vi.restoreAllMocks();
+  });
   beforeEach(() => {
     vi.clearAllMocks();
+    Reflect.deleteProperty(globalThis, Symbol.for("narra.generation-rate-limit"));
     mockRawQuery.mockImplementation(async (query: Prisma.Sql) => {
       if (query.text !== "SELECT image_resolve_url($1::text,$2::text) AS result" || query.values[1] !== null) {
         throw new Error("Unexpected generation-security fixture query");
@@ -326,7 +350,7 @@ describe("生成接口安全校验顺序", () => {
     const response = await POST(new Request("https://example.com/api/generate", { method: "POST" }));
 
     expect(response.status).toBe(429);
-    await expect(response.json()).resolves.toMatchObject({ error: expect.stringContaining("每分钟最多生成 5 次") });
+    await expect(response.json()).resolves.toMatchObject({ error: expect.stringContaining("请求太频繁") });
     expect(mockParseGenerateRequest).not.toHaveBeenCalled();
     expect(mockCheckGenerationInput).not.toHaveBeenCalled();
   });
@@ -479,5 +503,71 @@ describe("生成接口安全校验顺序", () => {
     expect(String(executeRaw.mock.calls[0][0].join("?"))).toContain("FOR UPDATE");
     expect(create).not.toHaveBeenCalled();
     expect(charge).not.toHaveBeenCalled();
+  });
+
+  it.each([19, 20])("文生图4张单价5，余额%s时按20积分校验与扣费", async (credits) => {
+    const { create, charge } = submissionTransaction();
+    mockRequireCurrentUserRecord.mockResolvedValue({ credits, id: "user_1" });
+    mockParseGenerateRequest.mockResolvedValue(buildRequestBody({ generationType: "text_to_image", count: 4, images: [], imageUrls: [] }));
+    const response = await POST(new Request("https://app.unit.invalid/api/generate", { method: "POST" }));
+    expect(response.status).toBe(credits === 19 ? 402 : 200);
+    if (credits === 19) {
+      expect(create).not.toHaveBeenCalled();
+      expect(charge).not.toHaveBeenCalled();
+      expect(reserveManagedImageOutputs).not.toHaveBeenCalled();
+      return;
+    }
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ count: 4, creditsSpent: 20 }) }));
+    expect(charge).toHaveBeenCalledWith({ where: { id: "user_1", credits: { gte: 20 } }, data: { credits: { decrement: 20 } } });
+    expect(reserveManagedImageOutputs).toHaveBeenCalledWith(expect.objectContaining({ count: 4 }));
+  });
+
+  it("图生图多张参考图且篡改count=4仍只预留、扣费和保存1张输出", async () => {
+    const { create, charge } = submissionTransaction();
+    const reference = new File(["image"], "source.png", { type: "image/png" });
+    mockParseGenerateRequest.mockResolvedValue(buildRequestBody({ count: 4, images: [reference, reference], imageUrls: [] }));
+    const response = await POST(new Request("https://app.unit.invalid/api/generate", { method: "POST" }));
+    expect(response.status).toBe(200);
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ count: 1, creditsSpent: 5 }) }));
+    expect(charge).toHaveBeenCalledWith({ where: { id: "user_1", credits: { gte: 5 } }, data: { credits: { decrement: 5 } } });
+    expect(reserveManagedImageOutputs).toHaveBeenCalledWith(expect.objectContaining({ count: 1 }));
+  });
+
+  it("先提交4张后拒绝2张，剩余1张仍可用且超额不验证码、送审或扣费", async () => {
+    const { create, charge } = submissionTransaction();
+    const submit = async (count: number) => {
+      mockParseGenerateRequest.mockResolvedValue(buildRequestBody({ generationType: "text_to_image", count, images: [], imageUrls: [] }));
+      return POST(new Request("https://app.unit.invalid/api/generate", { method: "POST" }));
+    };
+    expect((await submit(4)).status).toBe(200);
+    const denied = await submit(2);
+    expect(denied.status).toBe(429);
+    expect(await denied.json()).toMatchObject({ error: expect.stringContaining("5 张") });
+    expect(mockRequireTurnstile).toHaveBeenCalledTimes(1);
+    expect(mockCheckGenerationInput).toHaveBeenCalledTimes(1);
+    expect(charge).toHaveBeenCalledTimes(1);
+    expect((await submit(1)).status).toBe(200);
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(charge.mock.calls.map(([input]) => input.data.credits.decrement)).toEqual([20, 5]);
+  });
+
+  it("不同用户的图片额度互不占用", async () => {
+    const { create } = submissionTransaction();
+    mockParseGenerateRequest.mockResolvedValue(buildRequestBody({ generationType: "text_to_image", count: 4, images: [], imageUrls: [] }));
+    for (const userId of ["user_1", "user_2"]) {
+      mockRequireCurrentUserRecord.mockResolvedValue({ credits: 100, id: userId });
+      expect((await POST(new Request("https://app.unit.invalid/api/generate", { method: "POST" }))).status).toBe(200);
+    }
+    expect(create).toHaveBeenCalledTimes(2);
+  });
+
+  it("同用户并发提交4+4只接受一次，不超过5张", async () => {
+    const { create, charge } = submissionTransaction();
+    mockParseGenerateRequest.mockResolvedValue(buildRequestBody({ generationType: "text_to_image", count: 4, images: [], imageUrls: [] }));
+    const responses = await Promise.all([1, 2].map(() => POST(new Request("https://app.unit.invalid/api/generate", { method: "POST" }))));
+    expect(responses.map(({ status }) => status).sort()).toEqual([200, 429]);
+    expect(mockCheckGenerationInput).toHaveBeenCalledTimes(1);
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(charge).toHaveBeenCalledTimes(1);
   });
 });

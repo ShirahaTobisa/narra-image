@@ -46,6 +46,7 @@ vi.mock("@/lib/server/api-auth", () => ({
 
 vi.mock("@/lib/generation/external-api", () => ({
   runExternalGeneration: mockRunExternalGeneration,
+  startExternalGeneration: async (input: unknown) => ({ result: mockRunExternalGeneration(input) }),
 }));
 
 vi.mock("@/lib/generation/gateway-client", () => ({
@@ -140,9 +141,9 @@ function multipartRequest(path: string, formData: FormData) {
 
 describe("OpenAI 兼容外部 API", () => {
   beforeEach(() => {
-    process.env.AUTH_SECRET = "unit-test-secret";
-    process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/test";
-    process.env.GATEWAY_ENABLED = "false";
+    vi.stubEnv("AUTH_SECRET", "unit-test-secret");
+    vi.stubEnv("DATABASE_URL", "postgresql://user:pass@127.0.0.1:1/test");
+    vi.stubEnv("GATEWAY_ENABLED", "false");
 
     mockDownloadExternalImage.mockReset();
     mockFindGeneration.mockReset();

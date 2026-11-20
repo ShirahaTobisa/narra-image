@@ -24,7 +24,7 @@ import {
   normalizeProviderModels,
 } from "@/lib/generation/contracts";
 import { parseGenerateRequest } from "@/lib/generation/parse-generate-request";
-import { calculateGenerationCost, hasEnoughCredits, resolveCreditCost } from "@/lib/credits";
+import { calculateGenerationCost, hasEnoughCredits, resolveCreditCost, resolveGenerationCount } from "@/lib/credits";
 import {
   serializeGeneration,
   toPrismaGenerationType,
@@ -39,6 +39,8 @@ import { decryptProviderSecret, encryptProviderSecret } from "@/lib/providers/pr
 import { requireTurnstile } from "@/lib/auth/turnstile";
 import { getCurrentUserRecord, requireCurrentUserRecord } from "@/lib/server/current-user";
 import { createRateLimiter } from "@/lib/server/rate-limit";
+import { assertGenerationRateLimit } from "@/lib/server/generation-rate-limit";
+import { ApiRateLimitError } from "@/lib/api-errors";
 import { checkGenerationInput } from "@/lib/moderation/check";
 import { getErrorMessage, jsonError, jsonOk } from "@/lib/server/http";
 import { assertPublicHttpUrl } from "@/lib/server/safe-remote-url";
@@ -97,7 +99,7 @@ export async function POST(request: Request) {
     if (canvasTransport) await requireCanvasOwner({ getUser: async () => user });
     if (!user) throw new CanvasContractError("CANVAS_UNAUTHENTICATED");
     if (generateRequests.isLimited(user.id)) {
-      return jsonError(`请求太频繁：每分钟最多生成 ${MAX_GENERATE_REQUESTS_PER_MINUTE} 次，请稍后再试`, 429);
+      return jsonError("请求太频繁，请稍后再试", 429);
     }
     generateRequests.record(user.id);
     const body = await parseGenerateRequest(request);
@@ -113,6 +115,8 @@ export async function POST(request: Request) {
     if (body.generationType.endsWith("_video") && !getEnv().VIDEO_ENABLED) {
       return rejectPreparationResponse(jsonError("本站暂不支持视频生成", 403));
     }
+    const count = resolveGenerationCount({ generationType: body.generationType, count: body.count });
+    assertGenerationRateLimit(user.id, count);
     await requireTurnstile("generate", body.turnstileToken);
 
     const fileSourceImages = await Promise.all(
@@ -164,6 +168,7 @@ export async function POST(request: Request) {
 
     const cost = calculateGenerationCost({
       builtInCreditCost,
+      count,
       providerMode: body.providerMode,
     });
 
@@ -171,6 +176,7 @@ export async function POST(request: Request) {
       body.providerMode === "built_in" &&
       !hasEnoughCredits({
         builtInCreditCost,
+        count,
         credits: user.credits,
         providerMode: body.providerMode,
       })
@@ -245,7 +251,7 @@ export async function POST(request: Request) {
       outputReservation = await reserveManagedImageOutputs({
         ownerId: user.id,
         intentKey: canvasPreparation ? `canvas-output:${canvasPreparation.run.runId}:${canvasPreparation.intentHash}` : `output:${reservedJobId}`,
-        count: body.generationType === "image_to_image" ? 1 : body.count,
+        count,
       });
     }
 
@@ -291,7 +297,7 @@ export async function POST(request: Request) {
         data: {
           ...(outputReservation ? { id: reservedJobId } : {}),
           ...(conversationToBind ? { conversationId: conversationToBind } : {}),
-          count: body.count,
+          count,
           contractVersion: contractFields.contractVersion,
           creditsSpent: body.providerMode === "built_in" ? cost : 0,
           generationType: toPrismaGenerationType(body.generationType),
@@ -397,7 +403,7 @@ export async function POST(request: Request) {
   } catch (error) {
     await closeManagedImageReservation(outputReservation).catch(() => undefined);
     if (canvasAttempt) {
-      const knownRollback = error instanceof CanvasContractError || error instanceof GenerationCreditError || error instanceof ImageStorageError || error instanceof SiteImageError || isCanvasTransactionRetryable(error);
+      const knownRollback = error instanceof CanvasContractError || error instanceof GenerationCreditError || error instanceof ApiRateLimitError || error instanceof ImageStorageError || error instanceof SiteImageError || isCanvasTransactionRetryable(error);
       if (canvasCommitted || (canvasCommitAttempted && !knownRollback)
         || (!canvasPreparation && !(error instanceof CanvasContractError))) {
         return recoverCanvasRunResponse(canvasAttempt);
@@ -406,8 +412,8 @@ export async function POST(request: Request) {
         const rejected = await rejectCanvasRun(canvasPreparation, error instanceof CanvasContractError ? error.code : "CANVAS_RUN_REJECTED");
         if (!rejected) return recoverCanvasRunResponse(canvasAttempt);
       }
-      if (error instanceof GenerationCreditError) {
-        const response = jsonError(error.message, 402);
+      if (error instanceof GenerationCreditError || error instanceof ApiRateLimitError) {
+        const response = jsonError(error.message, error instanceof ApiRateLimitError ? error.status : 402);
         response.headers.set("Cache-Control", "private, no-store");
         return response;
       }
@@ -423,6 +429,7 @@ export async function POST(request: Request) {
       }
       return canvasErrorResponse(error instanceof CanvasContractError ? error : new CanvasContractError("CANVAS_RUN_REJECTED"));
     }
+    if (error instanceof ApiRateLimitError) return jsonError(error.message, error.status);
     if (canvasTransport || error instanceof CanvasContractError) return canvasErrorResponse(error);
     if (jobId) {
       await failGenerationJobAndRefund({

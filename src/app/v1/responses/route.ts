@@ -9,7 +9,7 @@ import {
   isGatewayEnabled,
   runExternalGenerationViaGateway,
 } from "@/lib/generation/gateway-client";
-import { runExternalGeneration } from "@/lib/generation/external-api";
+import { startExternalGeneration } from "@/lib/generation/external-api";
 import { requireApiUser } from "@/lib/server/api-auth";
 import { parseJsonBody } from "@/lib/server/http";
 import { externalResponsesSchema } from "@/lib/validators";
@@ -45,25 +45,26 @@ export async function POST(request: Request) {
       return gatewayResponse;
     }
 
-    const createPayload = async () => {
-      const job = await runExternalGeneration({
-        apiKeyId: auth.apiKey.id,
-        input: {
-          count: 1,
-          generationType: parsed.generationType,
-          model: body.model,
-          moderation: parsed.moderation,
-          outputCompression: parsed.outputCompression,
-          outputFormat: parsed.outputFormat,
-          prompt: parsed.prompt,
-          quality: parsed.quality,
-          size: parsed.size,
-          sourceImages: parsed.sourceImages,
-        },
-        signal: request.signal,
-        user: auth.user,
-      });
+    const generation = await startExternalGeneration({
+      apiKeyId: auth.apiKey.id,
+      input: {
+        count: 1,
+        generationType: parsed.generationType,
+        model: body.model,
+        moderation: parsed.moderation,
+        outputCompression: parsed.outputCompression,
+        outputFormat: parsed.outputFormat,
+        prompt: parsed.prompt,
+        quality: parsed.quality,
+        size: parsed.size,
+        sourceImages: parsed.sourceImages,
+      },
+      signal: request.signal,
+      user: auth.user,
+    });
 
+    const createPayload = async () => {
+      const job = await generation.result;
       const model = body.model ?? job.model;
 
       return await formatResponsesImageGenerationPayload({

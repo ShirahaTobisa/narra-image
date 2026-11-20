@@ -28,6 +28,7 @@ import {
   failGenerationJobAndRefund,
   failStalePendingGenerationJobs,
 } from "@/lib/generation/job-refund";
+import { calculateGenerationCost } from "@/lib/credits";
 
 function createRefundJob(
   input: Partial<{
@@ -135,6 +136,29 @@ describe("生成任务失败退款", () => {
     });
     expect(mockUpdateMany).not.toHaveBeenCalled();
     expect(mockUpdateUser).not.toHaveBeenCalled();
+  });
+
+  it("四张图确定失败后按实际20积分补偿，并发或重复退款也只退一次", async () => {
+    const job = createRefundJob({
+      contractVersion: 1, handoffState: "RESOLVED", status: GenerationStatus.FAILED,
+      creditsSpent: calculateGenerationCost({ providerMode: "built_in", builtInCreditCost: 5, count: 4 }),
+    });
+    mockFindUnique.mockImplementation(async () => ({ ...job }));
+    mockUpdateMany.mockImplementation(async ({ where, data }) => {
+      if (where.creditsSpent !== job.creditsSpent || job.refundAppliedAt !== null) return { count: 0 };
+      Object.assign(job, data);
+      return { count: 1 };
+    });
+    const fail = () => failGenerationJobAndRefund({ errorMessage: "确定生成失败", jobId: job.id });
+    const outcomes = await Promise.all([fail(), fail()]);
+    expect(outcomes.filter(({ updated }) => updated)).toHaveLength(1);
+    expect(outcomes.reduce((sum, outcome) => sum + outcome.refundedCredits, 0)).toBe(20);
+    await expect(fail()).resolves.toEqual({ refundedCredits: 0, updated: false });
+    expect(mockUpdateUser).toHaveBeenCalledExactlyOnceWith({
+      where: { id: "user_1" }, data: { credits: { increment: 20 } },
+    });
+    expect(job.creditsSpent).toBe(0);
+    expect(job.refundAppliedAt).toBeInstanceOf(Date);
   });
 
   it("读取后任务状态变化时不会退款", async () => {

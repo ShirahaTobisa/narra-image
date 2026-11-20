@@ -10,6 +10,8 @@ const {
   mockGetGenerationChannelForModel,
   mockIncrementUpdate,
   mockPersistGeneratedImage,
+  mockReserveOutputs,
+  mockCloseReservation,
   mockUpdateMany,
 } = vi.hoisted(() => ({
   mockAssertApiRateLimit: vi.fn(),
@@ -19,6 +21,8 @@ const {
   mockGetGenerationChannelForModel: vi.fn(),
   mockIncrementUpdate: vi.fn(),
   mockPersistGeneratedImage: vi.fn(),
+  mockReserveOutputs: vi.fn(),
+  mockCloseReservation: vi.fn(),
   mockUpdateMany: vi.fn(),
 }));
 
@@ -52,6 +56,10 @@ vi.mock("@/lib/providers/built-in-provider", () => ({
 
 vi.mock("@/lib/storage/persist-generated-image", () => ({
   persistGeneratedImage: mockPersistGeneratedImage,
+}));
+vi.mock("@/lib/storage/managed-image-storage", () => ({
+  reserveManagedImageOutputs: mockReserveOutputs,
+  closeManagedImageReservation: mockCloseReservation,
 }));
 
 import {
@@ -97,6 +105,7 @@ function envelopeBodyOf(fetchMock: ReturnType<typeof vi.fn>) {
 
 describe("gateway-client", () => {
   beforeEach(() => {
+    Reflect.deleteProperty(globalThis, Symbol.for("narra.generation-rate-limit"));
     setupEnv();
     mockAssertApiRateLimit.mockReset().mockResolvedValue(undefined);
     mockAssertModeration.mockReset().mockResolvedValue(undefined);
@@ -106,6 +115,8 @@ describe("gateway-client", () => {
     mockUpdateMany.mockReset().mockResolvedValue({ count: 1 });
     mockGetGenerationChannelForModel.mockReset().mockResolvedValue(provider);
     mockPersistGeneratedImage.mockReset().mockResolvedValue("https://cdn.test/source.png");
+    mockReserveOutputs.mockReset().mockResolvedValue(null);
+    mockCloseReservation.mockReset().mockResolvedValue(undefined);
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
@@ -119,7 +130,19 @@ describe("gateway-client", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    Reflect.deleteProperty(globalThis, Symbol.for("narra.generation-rate-limit"));
   });
+
+  const batchInput = {
+    count: 4,
+    generationType: "text_to_image" as const,
+    model: "gpt-image-2",
+    moderation: "auto" as const,
+    outputFormat: "png" as const,
+    prompt: "a blue landscape",
+    quality: "auto" as const,
+    size: "auto" as const,
+  };
 
   it("isGatewayEnabled 读取开关", () => {
     setupEnv({ GATEWAY_ENABLED: "true" });
@@ -158,7 +181,7 @@ describe("gateway-client", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("成功路径构造签名 envelope 并透传 Go 响应", async () => {
+  it("四张按单价5预扣20并签名完整计费与数量，再透传Go响应", async () => {
     const fetchMock = vi.mocked(globalThis.fetch as ReturnType<typeof vi.fn>);
     const response = await runExternalGenerationViaGateway({
       apiKeyId: "ck_1",
@@ -166,7 +189,7 @@ describe("gateway-client", () => {
       endpoint: "images.generations",
       responseFormat: "url",
       input: {
-        count: 2,
+        count: 4,
         generationType: "text_to_image",
         model: "gpt-image-2",
         moderation: "auto",
@@ -185,7 +208,7 @@ describe("gateway-client", () => {
     expect(body.schemaVersion).toBe(1);
     expect(body.endpoint).toBe("images.generations");
     expect(body.auth).toEqual({ apiKeyId: "ck_1", userId: "usr_1" });
-    expect(body.billing).toEqual({ creditsSpent: 5, charged: true });
+    expect(body.billing).toEqual({ creditsSpent: 20, charged: true });
     expect(body.provider).toEqual({
       channelId: "chn_1",
       channelModels: ["gpt-image-2", "gpt-image-2"],
@@ -193,7 +216,7 @@ describe("gateway-client", () => {
       providerMode: "BUILT_IN",
     });
     expect(body.payload).toMatchObject({
-      count: 2,
+      count: 4,
       generationType: "TEXT_TO_IMAGE",
       model: "gpt-image-2",
       prompt: "a red fox",
@@ -210,15 +233,51 @@ describe("gateway-client", () => {
     expect(headers["x-gateway-signature"]).toBe(expected);
 
     // 预扣只发生一次且金额正确
-    expect(mockUpdateMany).toHaveBeenCalledWith(
+    expect(mockUpdateMany).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
-        where: { credits: { gte: 5 }, id: "usr_1" },
-        data: { credits: { decrement: 5 } },
+        where: { credits: { gte: 20 }, id: "usr_1" },
+        data: { credits: { decrement: 20 } },
       }),
     );
+    expect(mockReserveOutputs).toHaveBeenCalledWith(expect.objectContaining({ count: 4, ownerId: "usr_1" }));
   });
 
-  it("预扣后参考图上传失败会补偿退款", async () => {
+  it("余额19不能提交四张，不转发、不误退款", async () => {
+    mockUpdateMany.mockImplementation(async ({ where }) => ({ count: 19 >= where.credits.gte ? 1 : 0 }));
+    await expect(runExternalGenerationViaGateway({
+      apiKeyId: "ck_1", user: { id: "usr_1", credits: 19 },
+      endpoint: "images.generations", input: batchInput,
+    })).rejects.toThrow("积分不足");
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(mockIncrementUpdate).not.toHaveBeenCalled();
+    expect(mockCloseReservation).toHaveBeenCalledOnce();
+  });
+
+  it("图生图多张参考图与count4仍只预留一张、扣5并传count1", async () => {
+    const sourceImages = [
+      { data: Buffer.from([1]), fileName: "a.png", mimeType: "image/png" },
+      { data: Buffer.from([2]), fileName: "b.png", mimeType: "image/png" },
+    ];
+    await runExternalGenerationViaGateway({
+      apiKeyId: "ck_1", user: { id: "usr_1", credits: 5 }, endpoint: "images.edits",
+      input: { ...batchInput, generationType: "image_to_image", sourceImages },
+    });
+    const { body } = envelopeBodyOf(vi.mocked(globalThis.fetch as ReturnType<typeof vi.fn>));
+    expect(body.payload).toMatchObject({ count: 1, generationType: "IMAGE_TO_IMAGE" });
+    expect(body.billing).toEqual({ creditsSpent: 5, charged: true });
+    expect(body.sourceImageUrls).toHaveLength(2);
+    expect(mockReserveOutputs).toHaveBeenCalledWith(expect.objectContaining({ count: 1 }));
+    expect(mockUpdateMany).toHaveBeenCalledExactlyOnceWith({
+      where: { credits: { gte: 5 }, id: "usr_1" }, data: { credits: { decrement: 5 } },
+    });
+    // 四张文生图仍能提交，说明参考图数量与伪造count没有多占图片额度。
+    expect((await runExternalGenerationViaGateway({
+      apiKeyId: "ck_2", user: { id: "usr_1", credits: 100 }, endpoint: "images.generations", input: batchInput,
+    })).status).toBe(200);
+  });
+
+  it("预扣20后参考图上传失败仅补偿20一次", async () => {
+    mockGetGenerationChannelForModel.mockResolvedValue({ ...provider, creditCost: 20 });
     mockPersistGeneratedImage.mockRejectedValue(new Error("s3 unavailable"));
     await expect(
       runExternalGenerationViaGateway({
@@ -226,7 +285,7 @@ describe("gateway-client", () => {
         user: { id: "usr_1", credits: 100 },
         endpoint: "images.edits",
         input: {
-          count: 1,
+          count: 4,
           generationType: "image_to_image",
           model: "gpt-image-2",
           moderation: "auto",
@@ -242,12 +301,14 @@ describe("gateway-client", () => {
       }),
     ).rejects.toThrow("s3 unavailable");
 
-    expect(mockIncrementUpdate).toHaveBeenCalledWith(
+    expect(mockIncrementUpdate).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         where: { id: "usr_1" },
-        data: { credits: { increment: 5 } },
+        data: { credits: { increment: 20 } },
       }),
     );
+    expect(mockUpdateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { credits: { decrement: 20 } } }));
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
   it("Go 明确失败且 job 未创建时退款", async () => {
@@ -267,7 +328,7 @@ describe("gateway-client", () => {
       user: { id: "usr_1", credits: 100 },
       endpoint: "chat.completions",
       input: {
-        count: 1,
+        count: 4,
         generationType: "text_to_image",
         model: "gpt-image-2",
         moderation: "auto",
@@ -279,8 +340,8 @@ describe("gateway-client", () => {
       },
     });
     expect(response.status).toBe(400);
-    expect(mockIncrementUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { credits: { increment: 5 } } }),
+    expect(mockIncrementUpdate).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ data: { credits: { increment: 20 } } }),
     );
   });
 
@@ -304,7 +365,7 @@ describe("gateway-client", () => {
       user: { id: "usr_1", credits: 100 },
       endpoint: "responses",
       input: {
-        count: 1,
+        count: 4,
         generationType: "text_to_image",
         model: "gpt-image-2",
         moderation: "auto",
@@ -316,6 +377,18 @@ describe("gateway-client", () => {
       },
     });
     expect(response.status).toBe(504);
+    expect(mockUpdateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { credits: { decrement: 20 } } }));
+    expect(mockIncrementUpdate).not.toHaveBeenCalled();
+  });
+
+  it("转发失败且任务状态查询也失败时不擅自退回20", async () => {
+    vi.mocked(globalThis.fetch).mockRejectedValue(new Error("upstream connection lost"));
+    mockFindUnique.mockRejectedValue(new Error("database unavailable"));
+    await expect(runExternalGenerationViaGateway({
+      apiKeyId: "ck_1", user: { id: "usr_1", credits: 100 },
+      endpoint: "images.generations", input: batchInput,
+    })).rejects.toThrow("database unavailable");
+    expect(mockUpdateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { credits: { decrement: 20 } } }));
     expect(mockIncrementUpdate).not.toHaveBeenCalled();
   });
 

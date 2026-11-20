@@ -4,11 +4,12 @@ import { lockImageReferenceEpoch } from "@/lib/storage/image-reference-lock";
 import { randomUUID } from "node:crypto";
 import { GenerationClientSource, GenerationStatus } from "@prisma/client";
 
-import { calculateGenerationCost } from "@/lib/credits";
+import { calculateGenerationCost, resolveGenerationCount } from "@/lib/credits";
 import { db } from "@/lib/db";
 import { imageAvailabilityInclude } from "@/lib/storage/image-availability";
 import { getEnv } from "@/lib/env";
 import { assertApiRateLimit } from "@/lib/api-config";
+import { assertGenerationRateLimit } from "@/lib/server/generation-rate-limit";
 import { ApiTimeoutError } from "@/lib/api-errors";
 import { persistGeneratedImage } from "@/lib/storage/persist-generated-image";
 import { failGenerationJobAndRefund } from "@/lib/generation/job-refund";
@@ -170,17 +171,29 @@ async function waitForExternalGeneration({
   }
 }
 
-export async function runExternalGeneration({
+/** Complete request admission before a route commits keep-alive/SSE headers. */
+export async function startExternalGeneration(args: RunExternalGenerationInput) {
+  await assertApiRateLimit(args.apiKeyId);
+  const count = resolveGenerationCount(args.input);
+  assertGenerationRateLimit(args.user.id, count);
+  return { result: runAcceptedExternalGeneration(args, count) };
+}
+
+export async function runExternalGeneration(args: RunExternalGenerationInput) {
+  const generation = await startExternalGeneration(args);
+  return generation.result;
+}
+
+async function runAcceptedExternalGeneration({
   apiKeyId,
   input,
   signal,
   user,
-}: RunExternalGenerationInput) {
+}: RunExternalGenerationInput, count: number) {
   let jobId: string | null = null;
   let handedToWorker = false;
   let outputReservation: ImageReservation | null = null;
   const reservedJobId = randomUUID();
-  await assertApiRateLimit(apiKeyId);
   await assertExternalGenerationAllowed(user.id, input);
 
   const env = getEnv();
@@ -189,10 +202,10 @@ export async function runExternalGeneration({
   const cost = calculateGenerationCost({
     builtInCreditCost: builtInProvider.creditCost,
     providerMode: "built_in",
+    count,
   });
   const sourceImages = input.sourceImages ?? [];
   const model = input.model || builtInProvider.defaultModel;
-  const count = input.generationType === "image_to_image" ? 1 : input.count;
   const contractFields = generationContractWriteFields(
     env.WORKER_CONTRACTS_V1_ENABLED,
   );

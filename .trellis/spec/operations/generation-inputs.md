@@ -2,10 +2,13 @@
 
 ## 1. 范围与触发条件
 
-修改参考图读取、普通创作台/Canvas 入队、审核响应或失败重试时使用。存储写入和生命周期仍遵循 [Image Storage](./image-storage.md) 与 [Media Storage](./media-storage.md)。
+修改参考图读取、普通创作台/Canvas 入队、按张计费与限额、审核响应或失败重试时使用。存储写入和生命周期仍遵循 [Image Storage](./image-storage.md) 与 [Media Storage](./media-storage.md)。
 
 ## 2. 签名
 
+- `resolveGenerationCount({ generationType, count }) -> number`：文生图使用请求张数，其余类型固定 1；扣费、限额、输出预留和任务必须共用该值。
+- `calculateGenerationCost({ providerMode, builtInCreditCost, count })` 与 `hasEnoughCredits({ ...同前, credits })` 的 `count` 必填且为实际输出数；内置单价乘张数，自填渠道为 0。
+- `assertGenerationRateLimit(userId, count)`：同步检查并占用每用户滚动 60 秒 5 张额度，超额抛 `ApiRateLimitError`（429）。底层 `tryRecord(key, count = 1)` 超额不写入。
 - `readSiteImage(url, ownerId, options?) -> Promise<SiteImage | null>`：客户端传入的 URL 必须经过授权读取；`null` 表示不属于允许的本站图片。
 - `readCanonicalSiteImage(url, options?) -> Promise<SiteImage>`：仅供 `readCanvasRunInputs(ownerId, run)` 已核验拥有权后的内部结果使用，不能直接接收客户端 URL。
 - `SiteImage = { data: Buffer; mimeType: string }`；`options = { maximumBytes?: number; signal?: AbortSignal }`。
@@ -18,6 +21,9 @@
 
 ## 3. 输入与边界
 
+- 网页、Canvas、外部 API legacy / gateway 用进程级共享用户图片限额；API Key / endpoint 不能拆分额度。Canvas replay 在图片限额之前返回。已有请求次数防刷和 API 每 Key / 每日限制仍独立保留。
+- 图片额度在有效请求解析和功能检查后、审核/存储/扣费前占用；已接纳但后续失败的尝试仍占本次窗口。限的是提交图片数，不是异步完成时刻；当前单进程部署重启清零，多实例前须换共享存储。
+- 文生图 `count=4`、单价 5 时预扣 20；参考图数量与输出数量无关，图生图即使 JSON 传 4 也统一输出 1、扣 5。视频沿用单任务价格。事务仍要求余额至少为总价，失败补偿只按记录的总额执行一次，不追扣历史任务。
 - 受管理图片继续使用现有签名、可用性、存储读取和校验规则，读取失败不得退回旧图片分支。
 - 历史 data URL 仅接受 PNG/JPEG/WebP/GIF；旧 S3 URL 必须匹配 `S3_PUBLIC_BASE_URL` 或 `S3_ENDPOINT/S3_BUCKET` 的完整 origin 和目录边界。拒绝凭据、query、fragment、编码路径穿越。
 - 旧图片还须精确匹配数据库：当前用户的成功结果、成功的精选结果，或当前用户的历史参考图。仅域名匹配不能授权。
@@ -46,6 +52,8 @@
 
 | 条件 | 结果 |
 | --- | --- |
+| 当前窗口已占 4 张，再请求 2 张 | 429，不扣费、不预留、不提交；剩余 1 张仍可提交 |
+| 总价 20，余额 19 | 网页 402；事务扣款同样校验总价，不留下已接受任务或扣款 |
 | 外部链接/他人的非公开旧图 | reader 返回 `null`；内置生图拒绝，下载返回 403 |
 | 图片超限 | `SiteImageError`，413 |
 | 本站对象响应失败/缺少 body | `SiteImageError`，502 |
@@ -62,11 +70,14 @@
 
 - Good：先选历史图 A，再上传 B，审核两图后仍按 A、B 入队；失败重试继续保留两图。
 - Good：本机确认拒绝A，立即停止；不再调用远程审核/生成，记录本地模型；本机允许则继续现有远程审核。
-- Base：纯文生图无参考图，原请求格式与计费规则保持不变。
+- Base：单张生成的请求格式与价格保持不变；多图总价按张相乘。
+- Good：4 张占 4 个图片名额、扣 4 倍单价；Bad：只给请求次数加 1 或把参考图数量当收费张数。
 - Bad：放宽成整个 CDN 都可下载；只审核提示词却提交 Canvas 图片；用当前草稿覆盖失败任务的参数。
 
 ## 6. 必测断言
 
+- `credits.test.ts`、`rate-limit.test.ts`、`generation-rate-limit.test.ts`：4 张总价、余额边界、图生图/视频单输出、自填零价，4+2 拒绝后再加 1、精确 60 秒过期、用户隔离、并发接纳和模块重载共用计数。
+- 网页/Canvas/API/gateway 路由与服务测试使用真实计费函数；断言任务总价、余额、输出数量和 429 无副作用，Canvas replay 不重复占图片额度，跨入口/跨 Key 共用用户额度。退款覆盖总额 20 和重复/未决状态。
 - `site-image.test.ts`：本人/精选/历史引用授权、非本站地址拒绝、读取限额、受管理错误不回退。
 - `generate-route-security.test.ts`、`canvas-generate-route.test.ts`：实际参考字节送审、拒绝后不入队/扣费、混合参考图最终顺序。
 - `proxy-image-route.test.ts`：已授权旧图下载与内容识别；`moderation-check.test.ts`：关审、缺项、coverage、负面词、分数上限、损坏响应和无害正例。
@@ -81,6 +92,12 @@
 ## 7. Wrong / Correct
 
 ```ts
+// Wrong：文生图 count=4 仍按一次请求收单价。
+// Correct：计费、任务和输出预留使用同一个实际张数。
+const count = resolveGenerationCount(body);
+const cost = calculateGenerationCost({ providerMode: body.providerMode, builtInCreditCost, count });
+assertGenerationRateLimit(user.id, count);
+
 // Wrong：丢失参考图顺序，也不能据此确认图片经过审核。
 const sources = [...uploadedUrls, ...body.imageUrls];
 

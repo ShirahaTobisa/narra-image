@@ -4,10 +4,11 @@ import { createHmac, randomUUID } from "node:crypto";
 
 import { NextResponse } from "next/server";
 
-import { calculateGenerationCost } from "@/lib/credits";
+import { calculateGenerationCost, resolveGenerationCount } from "@/lib/credits";
 import { db } from "@/lib/db";
 import { getEnv } from "@/lib/env";
 import { assertApiRateLimit } from "@/lib/api-config";
+import { assertGenerationRateLimit } from "@/lib/server/generation-rate-limit";
 import { assertExternalGenerationAllowed } from "@/lib/moderation/check";
 import { persistGeneratedImage } from "@/lib/storage/persist-generated-image";
 import {
@@ -241,6 +242,8 @@ export async function runExternalGenerationViaGateway(input: {
   tools?: unknown;
 }): Promise<Response> {
   await assertApiRateLimit(input.apiKeyId);
+  const count = resolveGenerationCount(input.input);
+  assertGenerationRateLimit(input.user.id, count);
   await assertExternalGenerationAllowed(input.user.id, input.input);
 
   const env = getEnv();
@@ -249,9 +252,9 @@ export async function runExternalGenerationViaGateway(input: {
   const cost = calculateGenerationCost({
     builtInCreditCost: provider.creditCost,
     providerMode: "built_in",
+    count,
   });
   const model = input.input.model || provider.defaultModel;
-  const count = input.input.generationType === "image_to_image" ? 1 : input.input.count;
 
   let charged = false;
   let forwarding = false;

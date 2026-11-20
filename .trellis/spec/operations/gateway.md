@@ -34,6 +34,8 @@
 ## 5. 计费与退款补偿
 
 - 顺序：认证 → 限流 → 解析/校验 → 渠道解析 → 预扣积分 → 上传参考图 → envelope → 转发。
+- 图片额度和计费使用 `resolveGenerationCount` 的同一个输出张数；`billing.creditsSpent = 单价 × count`。legacy 与 gateway 在审核前消费共享用户图片限额，不能按 API Key 各领一份；细则见 [Generation Inputs](./generation-inputs.md)。
+- legacy Kelivo JSON 保活和 responses SSE 必须在写出 HTTP 200 / 首段数据前完成限额准入，超额返回实际 HTTP 429。准入只消费一次；等待生成期间继续保活，不能用已开启的流内错误正文冒充 429。
 - Go 明确失败且 job 未创建（4xx/5xx、DB 无该 jobId）→ Next 补偿退款（increment）。
 - Go 超时（504 `GENERATION_WAIT_TIMEOUT`）或连接中断且 job 已存在 → 不退款，返回“稍后查询”语义。
 - 预扣只发生在首次转发前；同一 `jobId` 的重试由 Go 幂等兜底，不重复扣费。

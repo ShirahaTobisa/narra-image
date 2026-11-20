@@ -1,0 +1,4 @@
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"验证、测试隔离和构建规范"}
+{"file":".trellis/spec/operations/generation-inputs.md","reason":"输入张数与审核边界"}
+{"file":".trellis/spec/operations/gateway.md","reason":"网关计费和退款"}
+{"file":".trellis/spec/operations/canvas-contracts.md","reason":"Canvas 重放和事务边界"}
