@@ -89,6 +89,77 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("studio captured chat command ownership", () => {
+  it.each(["text_to_image", "image_to_image"] as const)("retries the original request parameters and references for %s", (generationType) => {
+    const failed = generation("failed", "conversation_a", {
+      status: "failed", generationType, model: "gpt-image-1", size: "3840x2160",
+      count: generationType === "image_to_image" ? 1 : 3, quality: "high", outputFormat: "webp", outputCompression: 82,
+      moderation: "low", negativePrompt: "no blur",
+      sourceImageUrls: generationType === "image_to_image" ? ["https://example.com/first.png", "https://example.com/second.png"] : [],
+    });
+    render(<GeneratorStudio {...baseProps} initialGenerationPage={page([failed])} />);
+    writePrompt("Keep this newer draft");
+    fireEvent.change(screen.getByRole("combobox", { name: "尺寸" }), { target: { value: "1024x1024" } });
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+
+    const body = findRequest("/api/generate").options?.body;
+    if (generationType === "image_to_image") {
+      expect(body).toBeInstanceOf(FormData);
+      const form = body as FormData;
+      expect(Object.fromEntries(form)).toMatchObject({
+        generationType, model: failed.model, size: failed.size, quality: failed.quality,
+        prompt: failed.prompt, outputFormat: "webp", outputCompression: "82", moderation: "low",
+        replaceGenerationId: failed.id, conversationId: "conversation_a", providerMode: "built_in",
+      });
+      expect(form.getAll("referenceImageUrls")).toEqual(failed.sourceImageUrls);
+    } else {
+      expect(JSON.parse(String(body))).toMatchObject({
+        generationType, model: failed.model, size: failed.size, quality: failed.quality,
+        prompt: failed.prompt, count: 3, outputFormat: "webp", outputCompression: 82, moderation: "low",
+        negativePrompt: "no blur", replaceGenerationId: failed.id, conversationId: "conversation_a", providerMode: "built_in",
+      });
+    }
+    expect(composer()).toHaveValue("Keep this newer draft");
+  });
+
+  it("shows lost references instead of retrying an image edit as text", () => {
+    const failed = generation("failed", "conversation_a", { status: "failed", generationType: "image_to_image" });
+    render(<GeneratorStudio {...baseProps} initialGenerationPage={page([failed])} />);
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("原任务的参考图已不可用，请重新添加参考图后生成");
+    expect(generates()).toHaveLength(0);
+  });
+
+  it("keeps the original custom provider mode when retrying from site mode", () => {
+    const failed = generation("failed", "conversation_a", { status: "failed", providerMode: "custom", model: "original-model" });
+    render(<GeneratorStudio {...baseProps} initialGenerationPage={page([failed])}
+      savedProvider={{ id: "saved", baseUrl: "https://custom.example/v1", model: "current-model", models: ["current-model", "original-model"], label: "My API", updatedAt: "2026-10-01T00:00:00.000Z" }} />);
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    expect(JSON.parse(String(findRequest("/api/generate").options?.body))).toMatchObject({ providerMode: "custom", model: "original-model" });
+  });
+
+  it("allows text generation after switching from a conversation with references", () => {
+    render(<GeneratorStudio {...baseProps} />);
+    dropFiles("old-reference.png");
+    selectChat("Chat B");
+    writePrompt("A new text request"); send();
+    expect(JSON.parse(String(findRequest("/api/generate").options?.body))).toMatchObject({ generationType: "text_to_image", conversationId: "conversation_b" });
+    expect(screen.queryByAltText("Reference")).toBeNull();
+  });
+
+  it("does not submit short prompts with or without reference images", () => {
+    render(<GeneratorStudio {...baseProps} />);
+    for (const withReference of [false, true]) {
+      if (withReference) dropFiles("reference.png");
+      for (const prompt of ["", " ", "画"]) {
+        writePrompt(prompt);
+        expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
+        fireEvent.keyDown(composer(), { key: "Enter" });
+        send();
+      }
+    }
+    expect(generates()).toHaveLength(0);
+  });
+
   it.each(["new", "switch", "delete", "owner"])("never appends/selects/submits a delayed provisional create after %s", async (operation) => {
     const { rerender } = render(<GeneratorStudio {...baseProps} />);
     newChat();

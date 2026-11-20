@@ -13,6 +13,7 @@ declare global {
           callback?: (token: string) => void;
           "expired-callback"?: () => void;
           "error-callback"?: () => void;
+          "timeout-callback"?: () => void;
           theme?: "light" | "dark" | "auto";
           size?: "normal" | "compact" | "flexible";
         },
@@ -24,6 +25,7 @@ declare global {
 }
 
 const SCRIPT_URL = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+const SCRIPT_TIMEOUT_MS = 15_000;
 
 let scriptPromise: Promise<void> | null = null;
 
@@ -36,22 +38,28 @@ function loadScript(): Promise<void> {
     const existing = document.querySelector<HTMLScriptElement>(
       `script[src^="https://challenges.cloudflare.com/turnstile/v0/api.js"]`,
     );
-    if (existing) {
-      if (window.turnstile) {
-        resolve();
-        return;
-      }
-      existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener("error", () => reject(new Error("脚本加载失败")), { once: true });
-      return;
+    const script = existing ?? document.createElement("script");
+    const finish = (error?: Error) => {
+      clearTimeout(timer);
+      script.removeEventListener("load", onLoad);
+      script.removeEventListener("error", onError);
+      scriptPromise = null;
+      if (error) {
+        script.remove();
+        reject(error);
+      } else resolve();
+    };
+    const onLoad = () => finish(window.turnstile ? undefined : new Error("验证脚本未就绪"));
+    const onError = () => finish(new Error("脚本加载失败"));
+    const timer = setTimeout(() => finish(new Error("脚本加载超时")), SCRIPT_TIMEOUT_MS);
+    script.addEventListener("load", onLoad);
+    script.addEventListener("error", onError);
+    if (!existing) {
+      script.src = SCRIPT_URL;
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
     }
-    const script = document.createElement("script");
-    script.src = SCRIPT_URL;
-    script.async = true;
-    script.defer = true;
-    script.addEventListener("load", () => resolve(), { once: true });
-    script.addEventListener("error", () => reject(new Error("脚本加载失败")), { once: true });
-    document.head.appendChild(script);
   });
 
   return scriptPromise;
@@ -87,6 +95,7 @@ export function TurnstileWidget({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<string | null>(null);
   const [status, setStatus] = useState<TurnstileStatus>("loading");
+  const [attempt, setAttempt] = useState(0);
   // 回调存进 ref：父组件每次渲染都传新函数也不重建验证框。
   // 否则 验证通过 → 父组件存 token 重新渲染 → 验证框重建再验证，会一直转圈
   const callbacksRef = useRef({ onError, onExpire, onVerify });
@@ -96,10 +105,15 @@ export function TurnstileWidget({
 
   useImperativeHandle(ref, () => ({
     reset() {
+      callbacksRef.current.onExpire?.();
       if (widgetIdRef.current && window.turnstile) {
-        window.turnstile.reset(widgetIdRef.current);
+        try {
+          window.turnstile.reset(widgetIdRef.current);
+          setStatus("ready");
+          return;
+        } catch { /* 已失效的组件重新创建 */ }
       }
-      setStatus("ready");
+      setAttempt((value) => value + 1);
     },
   }), []);
 
@@ -120,16 +134,24 @@ export function TurnstileWidget({
           theme,
           size,
           callback: (token) => {
+            if (cancelled) return;
             setStatus("verified");
             callbacksRef.current.onVerify(token);
           },
           "expired-callback": () => {
+            if (cancelled) return;
             setStatus("expired");
             callbacksRef.current.onExpire?.();
           },
           "error-callback": () => {
+            if (cancelled) return;
             setStatus("error");
             callbacksRef.current.onError?.();
+          },
+          "timeout-callback": () => {
+            if (cancelled) return;
+            setStatus("expired");
+            callbacksRef.current.onExpire?.();
           },
         });
         widgetIdRef.current = widgetId;
@@ -152,7 +174,7 @@ export function TurnstileWidget({
       }
       widgetIdRef.current = null;
     };
-  }, [siteKey, theme, size]);
+  }, [siteKey, theme, size, attempt]);
 
   return (
     <div className={className}>
@@ -171,7 +193,7 @@ export function TurnstileWidget({
       {status === "error" && (
         <div className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50/80 px-4 py-3 text-sm text-rose-600">
           <ShieldAlert className="size-4" />
-          <span>验证加载失败，请刷新页面重试</span>
+          <span>验证加载失败，请重试</span>
         </div>
       )}
       {status === "expired" && (
@@ -179,6 +201,15 @@ export function TurnstileWidget({
           <ShieldAlert className="size-4" />
           <span>验证已过期，请重新验证</span>
         </div>
+      )}
+      {(status === "error" || status === "expired") && (
+        <button type="button" className="mt-2 text-sm text-[var(--accent)] underline"
+          onClick={() => {
+            callbacksRef.current.onExpire?.();
+            setAttempt((value) => value + 1);
+          }}>
+          重新验证
+        </button>
       )}
       <div
         ref={containerRef}

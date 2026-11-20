@@ -4,6 +4,8 @@ import type { Prisma } from "@prisma/client";
 const {
   mockCheckGenerationInput,
   mockConversationFindFirst,
+  mockImageFindFirst,
+  mockJobFindFirst,
   mockDbTransaction,
   mockRawQuery,
   mockDecryptProviderSecret,
@@ -19,6 +21,8 @@ const {
 } = vi.hoisted(() => ({
   mockCheckGenerationInput: vi.fn(),
   mockConversationFindFirst: vi.fn(),
+  mockImageFindFirst: vi.fn(),
+  mockJobFindFirst: vi.fn(),
   mockDbTransaction: vi.fn(),
   mockRawQuery: vi.fn(),
   mockDecryptProviderSecret: vi.fn(),
@@ -38,6 +42,8 @@ vi.mock("@/lib/db", () => ({
     $transaction: mockDbTransaction,
     $queryRaw: mockRawQuery,
     conversation: { findFirst: mockConversationFindFirst },
+    generationImage: { findFirst: mockImageFindFirst },
+    generationJob: { findFirst: mockJobFindFirst },
     savedProviderConfig: { findUnique: mockSavedProviderFindUnique },
   },
 }));
@@ -197,6 +203,8 @@ describe("生成接口安全校验顺序", () => {
     });
     mockRequireTurnstile.mockResolvedValue(undefined);
     mockCheckGenerationInput.mockResolvedValue({ allowed: true });
+    mockImageFindFirst.mockResolvedValue(null);
+    mockJobFindFirst.mockResolvedValue(null);
     env.VIDEO_ENABLED = true;
     rateLimit.limited = false;
   });
@@ -336,7 +344,7 @@ describe("生成接口安全校验顺序", () => {
   });
 
   it("内容审核命中时拒绝生成且不建 job/不扣积分", async () => {
-    mockParseGenerateRequest.mockResolvedValue(buildRequestBody({}));
+    mockParseGenerateRequest.mockResolvedValue(buildRequestBody({ imageUrls: [] }));
     mockCheckGenerationInput.mockResolvedValueOnce({
       allowed: false,
       message: "提交内容包含违规描述，已拒绝生成",
@@ -402,7 +410,7 @@ describe("生成接口安全校验顺序", () => {
       expect(charge).not.toHaveBeenCalled();
       expect(aliases.size).toBe(0);
     } else {
-      expect(response.status).toBe(200);
+      expect({ status: response.status, body: await response.clone().json() }).toMatchObject({ status: 200 });
       await expect(response.json()).resolves.toMatchObject({ data: { generation: { sourceImageUrls: [canonicalUrl] } } });
       expect(persistedInputs).toEqual([[rawUrl]]);
       expect(charge).toHaveBeenCalledOnce();
@@ -415,6 +423,29 @@ describe("生成接口安全校验顺序", () => {
     expect(sourceUrls).toEqual([rawUrl]);
     expect(mockPersistGeneratedImage).not.toHaveBeenCalled();
     expect(mockFailGenerationJobAndRefund).not.toHaveBeenCalled();
+  });
+
+  it("数据库旧图可继续生成，混合上传和旧图保持原顺序且都经过审核", async () => {
+    const first = "data:image/png;base64,aW1hZ2UtMQ==";
+    const second = "data:image/png;base64,aW1hZ2UtMg==";
+    mockImageFindFirst.mockResolvedValue({ id: "own-image" });
+    const create = vi.fn(async ({ data }) => ({ ...data, id: "new-job", images: [], videos: [] }));
+    const tx = {
+      $executeRaw: vi.fn().mockResolvedValue(0), $queryRaw: mockRawQuery,
+      generationJob: { count: vi.fn().mockResolvedValue(0), create }, user: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      imageUrlAlias: { findMany: vi.fn().mockResolvedValue([]) },
+    };
+    mockDbTransaction.mockImplementation(async (operation: (client: typeof tx) => Promise<unknown>) => operation(tx));
+    mockPersistGeneratedImage.mockResolvedValue("https://app.unit.invalid/upload.png");
+    mockParseGenerateRequest.mockResolvedValue(buildRequestBody({ imageUrls: [first, second], imageInputOrder: ["url", "file", "url"] }));
+    const response = await POST(new Request("https://app.unit.invalid/api/generate", { method: "POST" }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ data: { generation: { sourceImageUrls: [first, "https://app.unit.invalid/upload.png", second] } } });
+    expect(mockCheckGenerationInput).toHaveBeenCalledWith(expect.objectContaining({ images: [
+      expect.objectContaining({ data: Buffer.from("image") }),
+      expect.objectContaining({ data: Buffer.from("image-1") }),
+      expect.objectContaining({ data: Buffer.from("image-2") }),
+    ] }));
   });
 
   it.each([

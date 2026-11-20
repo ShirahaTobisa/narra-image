@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { postJson } from "@/lib/http-client";
 
 import {
   TurnstileWidget,
@@ -34,33 +35,47 @@ export function InviteClaimBoard({ batches, turnstile = null }: InviteClaimBoard
   const [token, setToken] = useState<string | null>(null);
   const widgetRef = useRef<TurnstileWidgetHandle>(null);
   const [globalError, setGlobalError] = useState<string | null>(null);
+  const claimingRef = useRef(false);
+  const [isClaiming, setIsClaiming] = useState(false);
+  const lifecycleRef = useRef<object | null>(null);
+
+  useEffect(() => {
+    lifecycleRef.current = {};
+    return () => { lifecycleRef.current = null; };
+  }, []);
 
   const claim = useCallback(
     async (batchId: string) => {
+      const lifecycle = lifecycleRef.current;
+      if (!lifecycle) return null;
+      const isCurrent = () => lifecycleRef.current === lifecycle;
+      if (claimingRef.current) return { ok: false as const, error: "正在领取，请稍候" };
       if (requireTurnstile && !token) {
         return { ok: false as const, error: "请先完成人机验证" };
       }
 
-      const response = await fetch(`/api/invites/batches/${batchId}/claim`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(token ? { turnstileToken: token } : {}),
-      });
-      const result = (await response.json()) as {
-        data?: { registerUrl: string };
-        error?: string;
-      };
-
-      if (requireTurnstile) {
-        setToken(null);
-        widgetRef.current?.reset();
+      claimingRef.current = true;
+      setIsClaiming(true);
+      setToken(null);
+      try {
+        const result = await postJson<{ registerUrl: string }>(
+          `/api/invites/batches/${batchId}/claim`, token ? { turnstileToken: token } : {},
+        );
+        if (!isCurrent()) return null;
+        if (typeof result?.registerUrl !== "string" || !result.registerUrl.startsWith("/register?")) {
+          throw new Error("领取结果不完整，请稍后再试");
+        }
+        return { ok: true as const, registerUrl: result.registerUrl };
+      } catch (error) {
+        if (!isCurrent()) return null;
+        return { ok: false as const, error: error instanceof Error ? error.message : "领取失败，请稍后再试" };
+      } finally {
+        if (isCurrent()) {
+          claimingRef.current = false;
+          setIsClaiming(false);
+          if (requireTurnstile) widgetRef.current?.reset();
+        }
       }
-
-      if (!response.ok || !result.data?.registerUrl) {
-        return { ok: false as const, error: result.error || "领取失败，请稍后再试" };
-      }
-
-      return { ok: true as const, registerUrl: result.data.registerUrl };
     },
     [requireTurnstile, token],
   );
@@ -93,7 +108,7 @@ export function InviteClaimBoard({ batches, turnstile = null }: InviteClaimBoard
             batch={batch}
             claim={claim}
             navigate={(url) => router.push(url)}
-            disabled={requireTurnstile && !token}
+            disabled={isClaiming || (requireTurnstile && !token)}
             onError={setGlobalError}
           />
         ))}
@@ -111,24 +126,27 @@ function InviteClaimCard({
 }: {
   batch: InviteClaimBatch;
   claim: (batchId: string) => Promise<
-    { ok: true; registerUrl: string } | { ok: false; error: string }
+    { ok: true; registerUrl: string } | { ok: false; error: string } | null
   >;
   navigate: (url: string) => void;
   disabled: boolean;
   onError: (msg: string | null) => void;
 }) {
   const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isPending, setIsPending] = useState(false);
 
   async function handleClaim() {
     setError(null);
     onError(null);
+    setIsPending(true);
     const result = await claim(batch.id);
+    if (!result) return;
+    setIsPending(false);
     if (!result.ok) {
       setError(result.error);
       return;
     }
-    startTransition(() => navigate(result.registerUrl));
+    navigate(result.registerUrl);
   }
 
   return (
@@ -155,7 +173,7 @@ function InviteClaimCard({
       <button
         type="button"
         disabled={isPending || disabled || batch.remainingCount <= 0}
-        onClick={() => startTransition(handleClaim)}
+        onClick={() => void handleClaim()}
         className="mt-5 w-full rounded-full bg-[var(--ink)] px-5 py-3 text-sm font-medium text-white transition hover:bg-[var(--accent)] disabled:opacity-60 sm:w-auto"
       >
         {isPending ? "领取中..." : batch.remainingCount > 0 ? "领取邀请码" : "已领完"}

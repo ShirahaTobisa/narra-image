@@ -11,6 +11,7 @@
 | [Release Hardening](./release-hardening.md) | 发布拓扑、Prisma 迁移安全、healthz/readyz、环境契约与 CI/E2E 验证入口 | Active |
 | [Image Publishing](./image-publishing.md) | 三项验证门禁、GHCR 固定镜像身份/公开校验、latest 提升与镜像版 Compose | Active |
 | [Media Storage](./media-storage.md) | 生成结果媒体持久化策略、存储形态元数据、失败语义与历史回填 | Active |
+| [Generation Inputs](./generation-inputs.md) | 旧图授权读取、参考图顺序、Canvas 送审、原参数重试与取消任务统计 | Active |
 | [Image Storage](./image-storage.md) | 图片 LOCAL/S3 清单、5GB 预留、管理清理/读者租约、源副本退休与 Canvas 存储修订 | Active |
 | [Canvas Contracts](./canvas-contracts.md) | 画布账户/CAS、幂等单节点生成、原图 roots/GC、Node/Go 存储能力与安全验证 | Active |
 | [Prompt Sync](./prompt-sync.md) | 提示词来源清单单一事实来源、三入口同步、并发/幂等与调度 | Active |

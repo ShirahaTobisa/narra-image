@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   getUser: vi.fn(), requireUser: vi.fn(), env: vi.fn(), turnstile: vi.fn(), moderation: vi.fn(),
   provider: vi.fn(), providerById: vi.fn(), decrypt: vi.fn(), encrypt: vi.fn(), savedProvider: vi.fn(), publicUrl: vi.fn(), persist: vi.fn(), refund: vi.fn(),
   transaction: vi.fn(), findRun: vi.fn(), findJob: vi.fn(), readAssets: vi.fn(), readImages: vi.fn(),
-  imageQuery: vi.fn(), sourceAliases: vi.fn(),
+  imageQuery: vi.fn(), sourceAliases: vi.fn(), readCanonicalImage: vi.fn(),
   createJob: vi.fn(), charge: vi.fn(), conversation: vi.fn(), detachJob: vi.fn(), updateConversation: vi.fn(),
 }));
 
@@ -48,6 +48,10 @@ vi.mock("@/lib/providers/built-in-provider", () => ({
 vi.mock("@/lib/providers/provider-secret", () => ({ decryptProviderSecret: mocks.decrypt, encryptProviderSecret: mocks.encrypt }));
 vi.mock("@/lib/server/safe-remote-url", () => ({ assertPublicHttpUrl: mocks.publicUrl }));
 vi.mock("@/lib/storage/persist-generated-image", () => ({ persistGeneratedImage: mocks.persist }));
+vi.mock("@/lib/storage/site-image", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/storage/site-image")>()),
+  readCanonicalSiteImage: mocks.readCanonicalImage,
+}));
 vi.mock("@/lib/generation/job-refund", () => ({ failGenerationJobAndRefund: mocks.refund }));
 
 import { POST } from "@/app/api/generate/route";
@@ -252,6 +256,7 @@ beforeEach(() => {
   mocks.requireUser.mockImplementation(async () => ({ id: ownerId, credits: state.credits }));
   mocks.turnstile.mockImplementation(async () => { events.push("captcha"); });
   mocks.moderation.mockImplementation(async () => { events.push("moderation"); return { allowed: true }; });
+  mocks.readCanonicalImage.mockImplementation(async () => ({ data: canvasPng(), mimeType: "image/png" }));
   const channel = { id: "channel_test", defaultModel: "gpt-image-2", models: [], creditCost: 5, videoCreditCost: 20, name: "Unit test", apiKey: "provider-secret", baseUrl: "https://provider.invalid/v1" };
   mocks.provider.mockImplementation(async () => { events.push("provider"); return channel; });
   mocks.providerById.mockImplementation(async () => { events.push("provider"); return channel; });
@@ -626,6 +631,9 @@ describe("canvas run integration with the existing generation route", () => {
     expect(state.roots.map((root) => [root.assetId, root.ordinal])).toEqual([["asset-a", 1], ["asset-z", 3]]);
     expect(state.roots.every((root) => root.runId === ledger().id && root.runId !== runId)).toBe(true);
     expect(mocks.persist).not.toHaveBeenCalled(); expect(mocks.publicUrl).not.toHaveBeenCalledWith(dataUrl);
+    expect(mocks.moderation).toHaveBeenCalledWith(expect.objectContaining({
+      images: [expect.objectContaining({ data: canvasPng() }), expect.objectContaining({ data: canvasPng() }), expect.objectContaining({ data: canvasPng() })],
+    }));
     expect(events.indexOf("lock-assets")).toBeLessThan(events.indexOf("lock-images"));
     expect(events.indexOf("lock-images")).toBeLessThan(events.indexOf("create-job"));
   });
@@ -709,6 +717,18 @@ describe("canvas run integration with the existing generation route", () => {
     expect(response.status).toBe(400); expect(await response.json()).toEqual({ error: "Moderation blocked" });
     expect(state.credits).toBe(50); expect(state.jobs.size).toBe(0); expect(ledger().state).toBe("REJECTED");
     expect((await POST(generationRequest())).status).toBe(409); expect(mocks.moderation).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects an unsafe Canvas reference before creating or charging a job", async () => {
+    const run = wire(); run.parameters = { ...run.parameters, count: 1, generationType: "image_to_image" };
+    run.input.references = [{ sourceNodeId: "result:image_a", ordinal: 1, kind: "result", imageId: "image_a", jobId: "job_a" }];
+    const url = `data:image/png;base64,${canvasPng().toString("base64")}`;
+    state.images.set("image_a", { id: "image_a", jobId: "job_a", url, job: { id: "job_a", userId: ownerId, status: "SUCCEEDED" } });
+    mocks.moderation.mockImplementation(async ({ images }) => ({ allowed: images.length === 0, message: "参考图未通过审核" }));
+    const response = await POST(generationRequest(run));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "参考图未通过审核" });
+    expect(state.jobs.size).toBe(0); expect(state.credits).toBe(50); expect(ledger().state).toBe("REJECTED");
   });
 
   it("does not reach provider resolution or billing after a fresh CAPTCHA failure", async () => {

@@ -78,7 +78,7 @@ describe("homepage header variant and account behavior", () => {
     vi.stubGlobal("fetch", fetch);
     render(await SiteHeader({ currentUser: user, variant: "home" }));
     await act(async () => fireEvent.click(screen.getByRole("button", { name: /签到 \+10/ })));
-    expect(fetch).toHaveBeenCalledWith("/api/me/check-in", { method: "POST" });
+    expect(fetch).toHaveBeenCalledWith("/api/me/check-in", expect.objectContaining({ method: "POST", signal: expect.any(AbortSignal) }));
     expect(screen.getByRole("button", { name: /今日已签/ })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "宠物：关" }));
     expect(screen.getByRole("button", { name: "宠物：开" })).toHaveAttribute("aria-pressed", "true");

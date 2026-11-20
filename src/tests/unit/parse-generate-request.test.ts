@@ -1,6 +1,33 @@
 import { parseGenerateRequest } from "@/lib/generation/parse-generate-request";
 
 describe("生成请求解析", () => {
+  it("preserves mixed reference order across file aliases and URLs", async () => {
+    const body = new FormData();
+    body.append("model", "gpt-image-2");
+    body.append("prompt", "第一张保留人物，第二张参考画风");
+    body.append("referenceImageUrls", "https://example.com/first.png");
+    body.append("image", new File(["second"], "second.png", { type: "image/png" }));
+    body.append("referenceImageUrls", "https://example.com/third.png");
+    body.append("referenceImages", new File(["fourth"], "fourth.png", { type: "image/png" }));
+    body.append("images", new File(["fifth"], "fifth.png", { type: "image/png" }));
+    body.append("referenceImageUrls", " ");
+    body.append("ignored", new File(["ignored"], "ignored.png", { type: "image/png" }));
+
+    const result = await parseGenerateRequest(body);
+
+    expect(result.imageInputOrder).toEqual(["url", "file", "url", "file", "file"]);
+    expect(result.images.map((image) => image.name)).toEqual(["second.png", "fourth.png", "fifth.png"]);
+    expect(result.imageUrls).toEqual(["https://example.com/first.png", "https://example.com/third.png"]);
+  });
+
+  it("reports short prompts in Chinese for image edits", async () => {
+    const body = new FormData();
+    body.append("model", "gpt-image-2");
+    body.append("prompt", " ");
+    body.append("referenceImageUrls", "https://example.com/reference.png");
+    await expect(parseGenerateRequest(body)).rejects.toThrow("提示词至少 2 个字符");
+  });
+
   it("解析 JSON 文生图请求", async () => {
     const request = new Request("https://example.com/api/generate", {
       body: JSON.stringify({

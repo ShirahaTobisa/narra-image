@@ -41,6 +41,14 @@ export const generationSizeSchema = z.string()
 export const generationQualitySchema = z.enum(["auto", "low", "medium", "high"]).default("auto");
 export const generationOutputFormatSchema = z.enum(["png", "jpeg", "webp"]).default("png");
 export const generationModerationSchema = z.enum(["auto", "low"]).default("auto");
+
+export const moderationResponseSchema = z.object({
+  results: z.array(z.object({
+    flagged: z.boolean(),
+    category_scores: z.record(z.string(), z.number().min(0).max(1))
+      .refine((scores) => Object.keys(scores).length > 0, "审核结果缺少分类分数"),
+  })).min(1),
+});
 export const generationOutputCompressionSchema = z.number().int().min(0).max(100).optional().nullable();
 
 export const registerSchema = z.object({

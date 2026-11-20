@@ -33,27 +33,26 @@ function firstString(...values: Array<FormDataEntryValue | null>) {
   return null;
 }
 
-function getReferenceImages(formData: FormData) {
-  const entries = [
-    ...formData.getAll("referenceImages"),
-    ...formData.getAll("images"),
-    ...formData.getAll("image"),
-  ];
-
-  return entries.filter((entry): entry is File => entry instanceof File && entry.size > 0);
-}
-
-function getReferenceImageUrls(formData: FormData): string[] {
-  return formData
-    .getAll("referenceImageUrls")
-    .filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
+function getReferenceInputs(formData: FormData) {
+  const images: File[] = [];
+  const imageUrls: string[] = [];
+  const imageInputOrder: Array<"file" | "url"> = [];
+  for (const [name, entry] of formData) {
+    if (name === "referenceImageUrls" && typeof entry === "string" && entry.trim()) {
+      imageUrls.push(entry.trim());
+      imageInputOrder.push("url");
+    } else if (["referenceImages", "images", "image"].includes(name) && entry instanceof File && entry.size > 0) {
+      images.push(entry);
+      imageInputOrder.push("file");
+    }
+  }
+  return { images, imageUrls, imageInputOrder };
 }
 
 export async function parseGenerateRequest(request: Request | FormData) {
   const parseFormData = (formData: FormData) => {
     if (formData.has("canvasRun")) throw new CanvasContractError("CANVAS_RUN_OPT_IN_REQUIRED");
-    const images = getReferenceImages(formData);
-    const imageUrls = getReferenceImageUrls(formData);
+    const { images, imageUrls, imageInputOrder } = getReferenceInputs(formData);
 
     if (images.length === 0 && imageUrls.length === 0) {
       throw new Error("请先上传参考图");
@@ -103,7 +102,7 @@ export async function parseGenerateRequest(request: Request | FormData) {
       outputCompression: toNullableNumber(formData.get("outputCompression"))
         ?? toNullableNumber(formData.get("output_compression")),
       outputFormat: firstString(formData.get("outputFormat"), formData.get("output_format")) || "png",
-      prompt: toNullableString(formData.get("prompt")),
+      prompt: toNullableString(formData.get("prompt")) ?? "",
       providerMode,
       quality: toNullableString(formData.get("quality")) || "auto",
       moderation: toNullableString(formData.get("moderation")) || "auto",
@@ -118,6 +117,7 @@ export async function parseGenerateRequest(request: Request | FormData) {
       conversationId: toNullableString(formData.get("conversationId")) || undefined,
       count: 1,
       image: images[0] ?? null,
+      imageInputOrder,
       imageUrls,
       images,
       replaceGenerationId: toNullableString(formData.get("replaceGenerationId")) || undefined,
@@ -147,6 +147,7 @@ export async function parseGenerateRequest(request: Request | FormData) {
       channelId: input.canvasRun.parameters.channelId ?? undefined,
       conversationId: undefined,
       image: null,
+      imageInputOrder: [] as Array<"file" | "url">,
       images: [] as File[],
       imageUrls: [] as string[],
       replaceGenerationId: undefined,
@@ -174,6 +175,7 @@ export async function parseGenerateRequest(request: Request | FormData) {
     channelId: json.channelId as string | undefined,
     conversationId: typeof json.conversationId === "string" ? json.conversationId : undefined,
     image: null,
+    imageInputOrder: [] as Array<"file" | "url">,
     imageUrls: [] as string[],
     images: [],
     replaceGenerationId:

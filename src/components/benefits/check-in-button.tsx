@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { postJson } from "@/lib/http-client";
 
 type CheckInButtonProps = {
   checkedInToday: boolean;
@@ -25,35 +26,22 @@ export function CheckInButton({
   async function handleCheckIn() {
     setMessage("");
 
-    const response = await fetch("/api/me/check-in", {
-      method: "POST",
-    });
-    const result = (await response.json()) as {
-      data?: {
+    try {
+      const payload = await postJson<{
         checkedIn: boolean;
         credits: number;
         rewardCredits: number;
-      };
-      error?: string;
-    };
-
-    if (!response.ok) {
-      setMessage(result.error || "签到失败");
-      return;
+      }>("/api/me/check-in");
+      if (!payload || typeof payload.checkedIn !== "boolean" || !Number.isFinite(payload.credits)) {
+        throw new Error("签到结果不完整，请稍后再试");
+      }
+      setHasCheckedInToday(true);
+      setMessage(payload.checkedIn ? `签到成功，已到账 ${payload.rewardCredits} 积分` : "今日已签");
+      onCheckedIn?.(payload.credits);
+      startTransition(() => router.refresh());
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "签到失败，请稍后再试");
     }
-
-    const payload = result.data;
-    if (!payload) {
-      setMessage("签到失败");
-      return;
-    }
-
-    setHasCheckedInToday(true);
-    setMessage(payload.checkedIn ? `签到成功，已到账 ${payload.rewardCredits} 积分` : "今日已签");
-    onCheckedIn?.(payload.credits);
-    startTransition(() => {
-      router.refresh();
-    });
   }
 
   return (
@@ -78,7 +66,7 @@ export function CheckInButton({
       >
         {isPending ? "签到中..." : isCheckedIn ? "✓ 今日已签" : `签到 +${rewardCredits}`}
       </button>
-      <span className="sr-only" aria-live="polite">
+      <span className={message ? "max-w-48 whitespace-normal text-xs" : "sr-only"} role="status" aria-live="polite">
         {message || `签到可领取 ${rewardCredits} 积分`}
       </span>
     </div>

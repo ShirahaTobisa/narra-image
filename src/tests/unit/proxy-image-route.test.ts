@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockGetCurrentUserRecord, mockReadManagedImage, mockResolveManagedImageUrl } = vi.hoisted(() => ({
+const { mockGetCurrentUserRecord, mockReadManagedImage, mockResolveManagedImageUrl, mockFindImage, mockFindJob, mockFetchPublic } = vi.hoisted(() => ({
   mockGetCurrentUserRecord: vi.fn(),
   mockReadManagedImage: vi.fn(),
   mockResolveManagedImageUrl: vi.fn(),
+  mockFindImage: vi.fn(), mockFindJob: vi.fn(), mockFetchPublic: vi.fn(),
 }));
 
 vi.mock("@/lib/server/current-user", () => ({
@@ -13,6 +14,9 @@ vi.mock("@/lib/storage/managed-image-storage", () => ({
   readManagedImage: mockReadManagedImage,
   resolveManagedImageUrl: mockResolveManagedImageUrl,
 }));
+vi.mock("@/lib/db", () => ({ db: { generationImage: { findFirst: mockFindImage }, generationJob: { findFirst: mockFindJob } } }));
+vi.mock("@/lib/env", () => ({ getEnv: () => ({ S3_PUBLIC_BASE_URL: "https://cdn.example.com" }) }));
+vi.mock("@/lib/server/safe-remote-url", () => ({ fetchPublicHttpUrl: mockFetchPublic }));
 
 import { GET } from "@/app/api/proxy-image/route";
 
@@ -32,6 +36,8 @@ describe("图片代理接口", () => {
     vi.clearAllMocks();
     mockGetCurrentUserRecord.mockResolvedValue({ id: "user_1" });
     mockResolveManagedImageUrl.mockResolvedValue(null);
+    mockFindImage.mockResolvedValue(null);
+    mockFindJob.mockResolvedValue(null);
   });
 
   it("只代理本站图片，外站地址一律拒绝", async () => {
@@ -39,6 +45,15 @@ describe("图片代理接口", () => {
 
     expect(response.status).toBe(403);
     expect(mockReadManagedImage).not.toHaveBeenCalled();
+  });
+
+  it("允许下载数据库中属于当前用户的旧 S3 图片", async () => {
+    const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    mockFindImage.mockResolvedValue({ id: "own-image" });
+    mockFetchPublic.mockResolvedValue(new Response(bytes, { headers: { "content-type": "image/png" } }));
+    const response = await GET(proxyRequest());
+    expect(response.status).toBe(200);
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
   });
 
   it("只按文件签名返回图片并附加下载与防嗅探响应头", async () => {

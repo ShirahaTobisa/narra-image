@@ -45,7 +45,8 @@ import { assertPublicHttpUrl } from "@/lib/server/safe-remote-url";
 import { persistGeneratedImage } from "@/lib/storage/persist-generated-image";
 import { failGenerationJobAndRefund } from "@/lib/generation/job-refund";
 import { ImageStorageError, type ImageReservation } from "@/lib/storage/image-contract";
-import { bindManagedImageOutputs, closeManagedImageReservation, readManagedImage, reserveManagedImageOutputs, resolveManagedImageUrl } from "@/lib/storage/managed-image-storage";
+import { bindManagedImageOutputs, closeManagedImageReservation, reserveManagedImageOutputs, resolveManagedImageUrl } from "@/lib/storage/managed-image-storage";
+import { readCanonicalSiteImage, readSiteImage, SiteImageError } from "@/lib/storage/site-image";
 
 async function assertGenerationPublicHttpUrl(url: string, fieldName: string) {
   try {
@@ -63,24 +64,13 @@ const MAX_ACTIVE_JOBS_PER_USER = 2;
 const MAX_GENERATE_REQUESTS_PER_MINUTE = 5;
 const generateRequests = createRateLimiter({ limit: MAX_GENERATE_REQUESTS_PER_MINUTE, windowMs: 60_000 });
 
-async function assertGenerationImageUrl(url: string, siteImagesOnly: boolean) {
+async function assertGenerationImageUrl(url: string) {
   const managed = await resolveManagedImageUrl(url);
   if (managed) {
     if (managed.asset.state !== "AVAILABLE" || managed.object?.state !== "READY") throw new ImageStorageError("IMAGE_UNAVAILABLE");
     return;
   }
-  // 用站内渠道（站长的 key）时只认本站图片：外部链接没法保证送审的和出图时下载的是同一张
-  if (siteImagesOnly) throw new Error("使用站内渠道时参考图请直接上传，不支持外部图片链接");
   await assertGenerationPublicHttpUrl(url, "参考图 URL");
-}
-
-// 站内渠道引用的本站图片也要读出来送审：可能是别人的图或旧图，不一定审过（外站链接后面会被直接拒绝）
-async function readSiteReferenceImages(urls: string[]) {
-  const images = await Promise.all(urls.map(async (url) => {
-    const managed = await resolveManagedImageUrl(url);
-    return managed ? { data: await readManagedImage(managed), fileName: "reference", mimeType: managed.asset.mimeType } : null;
-  }));
-  return images.filter((image) => image !== null);
 }
 
 export async function POST(request: Request) {
@@ -133,9 +123,15 @@ export async function POST(request: Request) {
       })),
     );
 
-    const siteReferenceImages = body.providerMode === "built_in" && !canvasPreparation
-      ? await readSiteReferenceImages(body.imageUrls)
-      : [];
+    const canvasInputs = canvasPreparation ? await readCanvasRunInputs(user.id, canvasPreparation.run) : null;
+    const referenceUrls = canvasInputs?.sourceImageUrls ?? body.imageUrls;
+    const siteReferenceImages = canvasInputs
+      ? await Promise.all(referenceUrls.map((url) => readCanonicalSiteImage(url)))
+      : body.providerMode === "built_in" ? await Promise.all(referenceUrls.map(async (url) => {
+        const image = await readSiteImage(url, user.id);
+        if (!image) throw new Error("使用站内渠道时参考图请直接上传，不支持外部图片链接");
+        return image;
+      })) : [];
 
     // 内容审核：敏感词 / AI 命中则阻断本次生成（不扣积分、不建 job）；上传的和引用的参考图一起审
     const moderation = await checkGenerationInput({
@@ -218,11 +214,9 @@ export async function POST(request: Request) {
     }
 
     // 此处做入队前校验；Worker 仍需对实际请求和重定向目标重复校验。
-    const canvasInputs = canvasPreparation ? await readCanvasRunInputs(user.id, canvasPreparation.run) : null;
-    const referenceUrls = canvasInputs?.sourceImageUrls ?? body.imageUrls;
-    const urlChecks = referenceUrls
+    const urlChecks = (body.providerMode === "built_in" && !canvasInputs ? [] : referenceUrls)
       .filter((url) => !canvasInputs || !isCanvasCanonicalDataUrl(url))
-      .map((url) => assertGenerationImageUrl(url, body.providerMode === "built_in" && !canvasInputs));
+      .map((url) => assertGenerationImageUrl(url));
     if (body.providerMode === "custom" && customProvider) {
       urlChecks.push(
         assertGenerationPublicHttpUrl(customProvider.baseUrl, "自填渠道 Base URL"),
@@ -265,7 +259,11 @@ export async function POST(request: Request) {
         }),
       ),
     );
-    const sourceImageUrls = canvasInputs?.sourceImageUrls ?? [...uploadedUrls, ...body.imageUrls];
+    let fileIndex = 0;
+    let urlIndex = 0;
+    const sourceImageUrls = canvasInputs?.sourceImageUrls ?? (body.imageInputOrder?.length
+      ? body.imageInputOrder.map((kind) => kind === "file" ? uploadedUrls[fileIndex++] : body.imageUrls[urlIndex++])
+      : [...uploadedUrls, ...body.imageUrls]);
     const contractFields = generationContractWriteFields(
       env.WORKER_CONTRACTS_V1_ENABLED,
     );
@@ -399,7 +397,7 @@ export async function POST(request: Request) {
   } catch (error) {
     await closeManagedImageReservation(outputReservation).catch(() => undefined);
     if (canvasAttempt) {
-      const knownRollback = error instanceof CanvasContractError || error instanceof GenerationCreditError || error instanceof ImageStorageError || isCanvasTransactionRetryable(error);
+      const knownRollback = error instanceof CanvasContractError || error instanceof GenerationCreditError || error instanceof ImageStorageError || error instanceof SiteImageError || isCanvasTransactionRetryable(error);
       if (canvasCommitted || (canvasCommitAttempted && !knownRollback)
         || (!canvasPreparation && !(error instanceof CanvasContractError))) {
         return recoverCanvasRunResponse(canvasAttempt);
@@ -418,8 +416,8 @@ export async function POST(request: Request) {
         response.headers.set("Cache-Control", "private, no-store");
         return response;
       }
-      if (error instanceof ImageStorageError) {
-        const response = jsonError(error.message, error.status, error.code);
+      if (error instanceof ImageStorageError || error instanceof SiteImageError) {
+        const response = jsonError(error.message, error.status, error instanceof ImageStorageError ? error.code : undefined);
         response.headers.set("Cache-Control", "private, no-store");
         return response;
       }
@@ -437,6 +435,7 @@ export async function POST(request: Request) {
       return jsonError(error.message, error.status, error.code);
     }
     if (error instanceof ImageStorageError) return jsonError(error.message, error.status, error.code);
+    if (error instanceof SiteImageError) return jsonError(error.message, error.status);
     return jsonError(getErrorMessage(error), 400);
   }
 }

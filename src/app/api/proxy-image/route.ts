@@ -1,41 +1,11 @@
 import { getCurrentUserRecord } from "@/lib/server/current-user";
 import { getErrorMessage } from "@/lib/server/http";
-
-const PROXY_FETCH_TIMEOUT_MS = 15_000;
-const PROXY_IMAGE_MAX_BYTES = 20 * 1024 * 1024;
+import { readSiteImage, SiteImageError } from "@/lib/storage/site-image";
 
 type SupportedImage = {
   extension: "gif" | "jpg" | "png" | "webp";
   mediaType: "image/gif" | "image/jpeg" | "image/png" | "image/webp";
 };
-
-async function readBodyWithLimit(body: ReadableStream<Uint8Array>) {
-  const reader = body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-
-    total += value.byteLength;
-    if (total > PROXY_IMAGE_MAX_BYTES) {
-      await reader.cancel();
-      return null;
-    }
-    chunks.push(value);
-  }
-
-  const result = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    result.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return result;
-}
 
 function detectImage(bytes: Uint8Array): SupportedImage | null {
   if (
@@ -80,36 +50,11 @@ export async function GET(request: Request) {
       return new Response("Missing url parameter", { status: 400 });
     }
 
-    let managedResponse: Response | null = null;
-    const { resolveManagedImageUrl, readManagedImage } = await import("@/lib/storage/managed-image-storage");
-    const managed = await resolveManagedImageUrl(imageUrl);
-    if (managed && BigInt(managed.asset.byteLength) > BigInt(PROXY_IMAGE_MAX_BYTES)) {
-      return new Response("Image is too large", { status: 413 });
-    }
-    if (managed) managedResponse = new Response(new Uint8Array(await readManagedImage(managed, AbortSignal.timeout(PROXY_FETCH_TIMEOUT_MS))), {
-      headers: { "Content-Type": managed.asset.mimeType, "Content-Length": managed.asset.byteLength },
-    });
-    // 只代理本站图片：不替任何外站地址下载，防止被当成通用下载器
-    if (!managedResponse) {
+    const source = await readSiteImage(imageUrl, user.id);
+    if (!source) {
       return new Response("只能下载本站图片", { status: 403 });
     }
-    const upstream = managedResponse;
-
-    if (!upstream.ok || !upstream.body) {
-      return new Response("Failed to fetch image", { status: upstream.status });
-    }
-
-    const contentLength = Number(upstream.headers.get("content-length") || "0");
-    if (contentLength > PROXY_IMAGE_MAX_BYTES) {
-      await upstream.body.cancel();
-      return new Response("Image is too large", { status: 413 });
-    }
-
-    const imageBytes = await readBodyWithLimit(upstream.body);
-    if (!imageBytes) {
-      return new Response("Image is too large", { status: 413 });
-    }
-
+    const imageBytes = new Uint8Array(source.data);
     const image = detectImage(imageBytes);
     if (!image) {
       return new Response("Unsupported image content", { status: 415 });
@@ -126,6 +71,6 @@ export async function GET(request: Request) {
 
     return new Response(imageBytes, { headers });
   } catch (error) {
-    return new Response(getErrorMessage(error), { status: 403 });
+    return new Response(getErrorMessage(error), { status: error instanceof SiteImageError ? error.status : 403 });
   }
 }

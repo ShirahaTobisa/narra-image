@@ -413,11 +413,10 @@ function StudioWorkspace({
     payload: CustomProviderSubmitPayload | null;
   };
 
-  function getCustomProviderSubmitPayload(): CustomProviderSubmitResult {
+  function getCustomProviderSubmitPayload(customModel = customProvider.model.trim()): CustomProviderSubmitResult {
     const apiKey = customProvider.apiKey.trim();
     const baseUrl = customProvider.baseUrl.trim();
     const label = customProvider.label.trim() || "我的 API";
-    const customModel = customProvider.model.trim();
 
     if (!baseUrl) {
       return { error: "请输入第三方 Base URL", payload: null };
@@ -681,7 +680,10 @@ function StudioWorkspace({
       setError("请先上传参考图");
       return;
     }
-    if (!prompt.trim() && referenceImages.length === 0) return;
+    if (prompt.trim().length < 2) {
+      setError("提示词至少 2 个字符");
+      return;
+    }
     const customProviderResult = getActiveCustomProviderSubmitPayload();
     if (customProviderResult.error) {
       setShowSettings(true);
@@ -1041,8 +1043,7 @@ function StudioWorkspace({
     }
   }
 
-  // 失败重试：使用原 generation 的 prompt + 当前选项重新触发，等价于用户手动重新填写一次。
-  // 注意：不复用原 sourceImageUrls（图生图）——参考图在原文件已不可用，重试时退回文生图。
+  // 重试保留原任务参数和已保存的参考图；当前草稿和验证凭据仍按本次请求隔离。
   function handleRetryGeneration(target: GenerationItem) {
     if (target.status === "pending" || commandRef.current) return;
     if (!currentUser) {
@@ -1054,35 +1055,37 @@ function StudioWorkspace({
       setError("请先完成人机验证");
       return;
     }
-    const customProviderResult = getActiveCustomProviderSubmitPayload();
+    const { channelId, sourceImageUrls, ...config } = toReusableGenerationConfig(target, channels.map((channel) => channel.id));
+    if (config.generationType === "image_to_image" && sourceImageUrls.length === 0) {
+      setError("原任务的参考图已不可用，请重新添加参考图后生成");
+      return;
+    }
+    if (target.providerMode === "custom" && !customProviderEnabled) {
+      setError("原任务使用自填渠道，本站当前未开放该功能");
+      return;
+    }
+    const customProviderResult = target.providerMode === "custom"
+      ? getCustomProviderSubmitPayload(config.model)
+      : { payload: null };
     if (customProviderResult.error) {
       setShowSettings(true);
       setError(customProviderResult.error);
       return;
     }
     const snapshot: GenerateSnapshot = {
+      ...config,
       challenge: { ...challengeRef.current },
       needsTurnstile,
-      count,
+      count: config.generationType === "image_to_image" ? 1 : config.count,
       customProvider: customProviderResult.payload,
-      generationType: "text_to_image",
-      model: activeModel,
-      moderation,
-      negativePrompt,
-      outputCompression,
-      outputFormat,
-      prompt: target.prompt,
-      providerMode,
-      quality,
-      // 重试不带原参考图：用户如想图生图重试，可用气泡内"加入编辑"再重发。
-      referenceImages: [],
+      providerMode: target.providerMode,
+      referenceImages: sourceImageUrls.map((url, index) => ({ id: `${target.id}_retry_${index}`, file: null, previewUrl: url, sourceUrl: url })),
       replaceGenerationId: target.id,
       customProviderBaseUrl: customProvider.baseUrl.trim(),
       customProviderLabel: customProvider.label.trim() || "我的 API",
       customProviderModels: [...customProvider.models],
       customProviderRemember: customProvider.remember,
-      selectedChannelId,
-      size,
+      selectedChannelId: channelId ?? null,
     };
     startChatCommand(snapshot, false);
   }
@@ -1124,6 +1127,7 @@ function StudioWorkspace({
     setPrompt("");
     setNegativePrompt("");
     clearReferenceImages();
+    setGenerationType("text_to_image");
     setError(null);
     if (window.innerWidth < 768) setSidebarOpen(false);
   }
@@ -1296,7 +1300,7 @@ function StudioWorkspace({
             activeModel,
             onOpenCustomProviderSettings: openCustomProviderSettings,
             onSubmit: handleSubmit,
-            canSubmit: Boolean((prompt.trim() || referenceImages.length > 0) && (!needsTurnstile || turnstileToken)),
+            canSubmit: Boolean(prompt.trim().length >= 2 && (!needsTurnstile || turnstileToken)),
             onClickImageMode: () => handleChangeGenerationType("image_to_image"),
             turnstileSlot: needsTurnstile && turnstile?.siteKey ? (
               <TurnstileWidget

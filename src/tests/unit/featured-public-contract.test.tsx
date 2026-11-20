@@ -44,9 +44,13 @@ const publicFeaturedKeys = [
 
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.stubEnv("AUTH_SECRET", "featured-public-contract-test-secret");
+  vi.stubEnv("DATABASE_URL", "postgresql://test:test@127.0.0.1:5432/test");
   mocks.currentUser.mockResolvedValue(null);
   mocks.gallery.mockReturnValue(null);
 });
+
+afterEach(() => vi.unstubAllEnvs());
 
 describe.each([
   { label: "anonymous", user: null },

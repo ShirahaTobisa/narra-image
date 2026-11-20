@@ -3,6 +3,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import { resolveModerationConfig } from "@/lib/moderation/config";
 import { matchSensitiveWords } from "@/lib/moderation/sensitive-words";
+import { moderationResponseSchema } from "@/lib/validators";
 
 const MODERATION_TIMEOUT_MS = 8_000;
 /** OpenAI 审核接口单张图片上限 */
@@ -188,21 +189,14 @@ async function callModerationAi(
 
   if (!response.ok) {
     throw new Error(
-      `moderation request failed: ${response.status} ${await response.text().catch(() => "")}`,
+      `moderation request failed: ${response.status}`,
     );
   }
 
-  const data = (await response.json()) as {
-    results?: Array<{ flagged?: boolean; category_scores?: Record<string, number> }>;
-  };
-  if (!data.results?.length) {
-    throw new Error("moderation response has no results");
-  }
+  const data = moderationResponseSchema.parse(await response.json());
 
   for (const result of data.results) {
-    const scores = Object.entries(result.category_scores ?? {}).map(
-      ([category, score]) => [category, Number(score) || 0] as const,
-    );
+    const scores = Object.entries(result.category_scores);
     const [topCategory, topScore] = scores.reduce<readonly [string | null, number]>(
       (top, entry) => (entry[1] > top[1] ? entry : top),
       [null, 0],

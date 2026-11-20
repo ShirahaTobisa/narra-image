@@ -117,6 +117,11 @@ if (stored.length === 0 && orphans.length > 0) {
 
 - 表单输入用受控 `useState` 或 FormData；提交前用 zod schema（`src/lib/validators.ts`）校验，错误消息中文。
 - 提交结果错误用 `Alert` 组件（`variant` 区分 error/warning/success/info）展示，不写裸 `alert()`。
+- 登录、签到和邀请码领取共用 `postJson<T>(url, body?)`：30 秒截止，解析 `{ data }`；断网、网关 HTML、空结果与服务端错误转为操作处的可读提示，不从异步 action 抛入整页错误边界，也不自动重试 POST。
+- 登录提交绑定 `mode + requireTurnstile + siteKey` 作用域；切换作用域或卸载后，旧结果不得重置新验证码、覆盖错误或导航。邀请码领取同样拒绝卸载后的迟到导航，各批次共用防重复提交状态。
+- Turnstile 官方脚本加载最多等待 15 秒，失败清除共享失败 Promise/脚本并提供“重新验证”。token 在发请求时消费；失败重置验证，过期或组件 `reset()` 立即清除父级 token。回调不得更新已卸载组件。
+- 登录/注册共用 `getAuthCover()`：自定义封面不查询精选；封面故障降级为无封面，登录资格和验证码配置仍由各自入口读取。
+- 上述边界由 `auth-form-submission`、`turnstile-widget`、`client-actions`、`http-client`、`auth-cover` 测试覆盖。生成重试与参考图处理见 [Generation Inputs](../operations/generation-inputs.md)。
 - React Flow 节点输入、renderer-only dimensions、双模式草稿/运行生命周期遵循 [Canvas Studio](./canvas-studio.md)。被动外部 store 转发的受控文本必须保证原生事件内同步 value，防止 IME 被旧值写回打断。
 - `useCanvasEditor(view,controller)` 的 feature-local registry 由 owner/controller 生命周期持有，并以 `useSyncExternalStore` 订阅；不是应用全局 store 或第二份 canonical scene。目标 key 为 `[ownerId,canvasId,nodeId]`，允许字段仅 model/size/outputCompression/negativePrompt/seed，不含 API key/CAPTCHA。
 - raw 参数与 custom-size-open 意图放在懒 renderer 之上，Close/节点/模式/横竖屏改变不清除。提示词即时进 domain，本地自动保存仍只保存已接受 domain；未应用参数仅内存，必须显示 pending/refresh-loss，不冒充账号 snapshot 已保存。

@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Sparkles } from "lucide-react";
+import { postJson } from "@/lib/http-client";
 
 import {
   TurnstileWidget,
@@ -38,17 +39,31 @@ export function AuthForm({
   turnstile = null,
 }: AuthFormProps) {
   const router = useRouter();
-  const [isPending, startTransition] = useTransition();
+  const [isNavigating, startTransition] = useTransition();
+  const [pendingScope, setPendingScope] = useState<object | null>(null);
+  const submissionRef = useRef<{ scope: object; pending: boolean } | null>(null);
   const [error, setError] = useState<string | null>(oauthError);
   const [inviteCode, setInviteCode] = useState(initialInviteCode);
-  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [challenge, setChallenge] = useState<{ scope: object; token: string } | null>(null);
   const turnstileRef = useRef<TurnstileWidgetHandle>(null);
 
   const requireTurnstile =
     Boolean(turnstile?.isEnabled && turnstile?.siteKey) &&
     (mode === "login" ? !!turnstile?.protectLogin : !!turnstile?.protectRegister);
+  const challengeScope = `${mode}:${requireTurnstile}:${turnstile?.siteKey ?? ""}`;
+  const scope = useMemo(() => ({ challengeScope }), [challengeScope]);
+  const turnstileToken = challenge?.scope === scope ? challenge.token : null;
+  const isPending = pendingScope === scope || isNavigating;
+
+  useEffect(() => {
+    submissionRef.current = { scope, pending: false };
+    return () => { submissionRef.current = null; };
+  }, [scope]);
 
   async function handleSubmit(formData: FormData) {
+    const submission = submissionRef.current;
+    if (!submission || submission.scope !== scope || submission.pending) return;
+    const isCurrent = () => submissionRef.current === submission;
     setError(null);
 
     if (requireTurnstile && !turnstileToken) {
@@ -70,40 +85,34 @@ export function AuthForm({
             ...(turnstileToken ? { turnstileToken } : {}),
           };
 
-    const response = await fetch(
-      mode === "register" ? "/api/auth/register" : "/api/auth/login",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      },
-    );
-
-    const result = (await response.json()) as {
-      data?: {
-        user?: {
-          role: "user" | "admin";
-        };
-      };
-      error?: string;
-    };
-
-    if (!response.ok) {
-      setError(result.error || "请求失败，请稍后再试");
-      // token 一次性，失败后要重置
-      if (requireTurnstile) {
-        setTurnstileToken(null);
-        turnstileRef.current?.reset();
+    submission.pending = true;
+    setPendingScope(scope);
+    setChallenge(null);
+    let succeeded = false;
+    try {
+      const result = await postJson<{ user?: { role: "user" | "admin" } }>(
+        mode === "register" ? "/api/auth/register" : "/api/auth/login", payload,
+      );
+      if (!isCurrent()) return;
+      if (result.user?.role !== "user" && result.user?.role !== "admin") {
+        throw new Error("登录结果不完整，请稍后再试");
       }
-      return;
+      succeeded = true;
+      startTransition(() => {
+        if (!isCurrent()) return;
+        router.push(result.user?.role === "admin" ? "/admin" : "/create");
+        router.refresh();
+      });
+    } catch (error) {
+      if (isCurrent()) setError(error instanceof Error ? error.message : "请求失败，请稍后再试");
+    } finally {
+      submission.pending = false;
+      // token 是一次性的，网络或解析失败也可能已经消耗它。
+      if (isCurrent()) {
+        setPendingScope(null);
+        if (requireTurnstile && !succeeded) turnstileRef.current?.reset();
+      }
     }
-
-    startTransition(() => {
-      router.push(result.data?.user?.role === "admin" ? "/admin" : "/create");
-      router.refresh();
-    });
   }
 
   function buildOAuthHref(providerType: string) {
@@ -122,7 +131,10 @@ export function AuthForm({
 
   return (
     <div className="grid gap-5">
-      <form action={handleSubmit} className="grid gap-4">
+      <form onSubmit={(event) => {
+        event.preventDefault();
+        void handleSubmit(new FormData(event.currentTarget));
+      }} className="grid gap-4">
         <div className="grid gap-2">
           <label htmlFor="auth-email" className="text-xs font-medium uppercase tracking-[0.2em] text-[var(--ink-soft)]">
             邮箱
@@ -172,11 +184,12 @@ export function AuthForm({
         {requireTurnstile && turnstile?.siteKey ? (
           <div className="flex justify-center">
             <TurnstileWidget
+              key={challengeScope}
               ref={turnstileRef}
               siteKey={turnstile.siteKey}
-              onVerify={(token) => setTurnstileToken(token)}
-              onExpire={() => setTurnstileToken(null)}
-              onError={() => setTurnstileToken(null)}
+              onVerify={(token) => setChallenge({ scope, token })}
+              onExpire={() => setChallenge(null)}
+              onError={() => setChallenge(null)}
             />
           </div>
         ) : null}

@@ -233,7 +233,7 @@ export async function getGenerationChannelForModel(
   return resolveStoredChannel(last);
 }
 
-// 渠道最近 10 分钟里最后 3 个任务都失败了（被审核拦下的不算），就当它暂时不可用
+// 最近 10 分钟的最后 3 个任务都因渠道失败时才切换；主动取消和审核拒绝不算。
 const CHANNEL_FAILURE_WINDOW_MS = 10 * 60 * 1000;
 const CHANNEL_FAILURE_STREAK = 3;
 
@@ -243,6 +243,7 @@ async function isChannelFailing(channelId: string) {
     select: { errorMessage: true, status: true },
     take: CHANNEL_FAILURE_STREAK,
     where: {
+      OR: [{ errorCode: null }, { errorCode: { not: "GENERATION_CANCELLED" } }],
       providerChannelId: channelId,
       status: { in: [GenerationStatus.SUCCEEDED, GenerationStatus.FAILED] },
       updatedAt: { gte: new Date(Date.now() - CHANNEL_FAILURE_WINDOW_MS) },

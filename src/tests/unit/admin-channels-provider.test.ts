@@ -50,6 +50,14 @@ describe("站内渠道兜底", () => {
     isActive: true, models, name: id, slug: id, sortOrder: 0, videoCreditCost: 20,
   });
   const failed = (errorMessage: string) => ({ errorMessage, status: "FAILED" });
+  function withHistory(jobs: Array<ReturnType<typeof failed> & { errorCode?: string }>) {
+    // 模拟数据库 WHERE 在 LIMIT 之前过滤，包括 SQL NULL 的语义。
+    mockGenerationJobFindMany.mockImplementation(({ where, take }) => Promise.resolve(jobs.filter((job) =>
+      !where.OR || where.OR.some((filter: { errorCode: { not: string } | null }) =>
+        filter.errorCode === null ? job.errorCode == null
+          : job.errorCode != null && job.errorCode !== filter.errorCode.not),
+    ).slice(0, take)));
+  }
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -73,6 +81,30 @@ describe("站内渠道兜底", () => {
   it("被审核拦下的失败不算渠道坏了", async () => {
     mockGenerationJobFindMany.mockResolvedValue([failed("upstream 502"), failed("moderation_blocked"), failed("timeout")]);
     await expect(getGenerationChannelForModel("gpt-image-2.6-flare")).resolves.toMatchObject({ id: "primary" });
+  });
+
+  it("取消排队任务不会让全站切换到兜底渠道", async () => {
+    withHistory(Array.from({ length: 3 }, () => ({
+      ...failed("用户取消生成。"), errorCode: "GENERATION_CANCELLED",
+    })));
+    await expect(getGenerationChannelForModel("gpt-image-2.6-flare")).resolves.toMatchObject({ id: "primary" });
+  });
+
+  it("取消任务不会凑成三个连续渠道故障", async () => {
+    withHistory([
+      failed("upstream 502"),
+      { ...failed("用户取消生成。"), errorCode: "GENERATION_CANCELLED" },
+      failed("timeout"),
+    ]);
+    await expect(getGenerationChannelForModel("gpt-image-2.6-flare")).resolves.toMatchObject({ id: "primary" });
+  });
+
+  it("先排除取消再取最近三个结果，取消也不能掩盖真实渠道故障", async () => {
+    withHistory([
+      { ...failed("用户取消生成。"), errorCode: "GENERATION_CANCELLED" },
+      failed("upstream 502"), failed("timeout"), failed("upstream 503"),
+    ]);
+    await expect(getGenerationChannelForModel("gpt-image-2.6-flare")).resolves.toMatchObject({ id: "fallback" });
   });
 
   it("主渠道不支持的模型直接由兜底渠道接", async () => {

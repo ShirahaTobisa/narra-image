@@ -7,8 +7,7 @@ import { getEnabledOAuthProviders } from "@/lib/auth/oauth-config";
 import { getPublicTurnstileConfig } from "@/lib/auth/turnstile";
 import { fromPrismaRole } from "@/lib/prisma-mappers";
 import { getCurrentUserRecord } from "@/lib/server/current-user";
-import { getLoginCoverDisplayConfig } from "@/lib/server/login-cover";
-import { listFeaturedWorksPage } from "@/lib/server/works";
+import { getAuthCover } from "@/lib/server/auth-cover";
 
 export const dynamic = "force-dynamic";
 
@@ -35,35 +34,18 @@ export default async function RegisterPage({ searchParams }: RegisterPageProps) 
       ? resolvedSearchParams.error
       : null;
 
-  const [oauthProviders, featuredPage, turnstile, loginCoverConfig] = await Promise.all([
+  const [oauthProviders, turnstile, coverProps] = await Promise.all([
     getEnabledOAuthProviders(),
-    listFeaturedWorksPage({ limit: 1 }).catch(() => ({
-      hasMore: false,
-      items: [] as Array<{ authorName: string; image: string; title: string }>,
-      nextCursor: null,
-    })),
     getPublicTurnstileConfig(),
-    getLoginCoverDisplayConfig(),
+    getAuthCover(),
   ]);
-  const featured = featuredPage.items[0] ?? null;
-  const cover = loginCoverConfig.mode === "custom"
-    ? null
-    : featured
-      ? {
-          authorName: featured.authorName,
-          image: featured.image,
-          title: featured.title,
-        }
-      : null;
-  const coverImageUrl = loginCoverConfig.mode === "custom" ? loginCoverConfig.customUrl : null;
 
   return (
     <AuthShell
       eyebrow="Join Narra"
       title="First in line."
       description="第一批用户值得被认真对待。注册成功默认 500 积分；邀请码由后台生成，可前往邀请码领取页申领。"
-      cover={cover}
-      coverImageUrl={coverImageUrl}
+      {...coverProps}
       coverCaption="Welcome Aboard"
       footnote={
         <span className="inline-flex flex-wrap items-center justify-center gap-x-2 gap-y-1">

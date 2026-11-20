@@ -150,6 +150,25 @@ describe("内容审核 checkGenerationInput", () => {
     expect(result).toEqual({ allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE });
   });
 
+  it.each([
+    {},
+    { flagged: false },
+    { flagged: "false", category_scores: { sexual: 0.1 } },
+    { flagged: false, category_scores: {} },
+    { flagged: false, category_scores: { sexual: "unknown" } },
+    { flagged: false, category_scores: { sexual: -0.1 } },
+    { flagged: false, category_scores: { sexual: 1.1 } },
+  ])("审核结果结构或分数无效时拒绝，而不是放行：%j", async (invalid) => {
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    mockModerationResponse([invalid]);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    expect(await checkGenerationInput({ prompt: "a cat", userId: "u1" })).toEqual({
+      allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE,
+    });
+    expect(mockDb.contentReview.create).not.toHaveBeenCalled();
+  });
+
   it("AI 审核已开启但没配接口地址或密钥时拒绝（不调用接口）", async () => {
     mockResolveConfig.mockResolvedValue(
       baseConfig({ aiApiKey: null, aiBaseUrl: null, aiEnabled: true }),
