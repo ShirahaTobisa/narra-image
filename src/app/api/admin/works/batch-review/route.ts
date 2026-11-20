@@ -21,7 +21,7 @@ export async function POST(request: Request) {
           ? await getVideoMutationTarget(item.id)
           : await getWorkMutationTarget(item.id);
 
-      if (!target) {
+      if (!target || item.submittedAt !== (target.submittedAt?.toISOString() ?? null)) {
         skippedIds.push(item.id);
         continue;
       }
@@ -40,16 +40,13 @@ export async function POST(request: Request) {
         continue;
       }
 
-      if (item.mediaType === "video") {
-        await db.generatedVideo.update({
-          data: patchData,
-          where: { id: item.id },
-        });
-      } else {
-        await db.generationImage.update({
-          data: patchData,
-          where: { id: item.id },
-        });
+      const where = { id: item.id, showcaseStatus: target.showcaseStatus, submittedAt: target.submittedAt };
+      const updated = item.mediaType === "video"
+        ? await db.generatedVideo.updateMany({ data: patchData, where })
+        : await db.generationImage.updateMany({ data: patchData, where });
+      if (updated.count !== 1) {
+        skippedIds.push(item.id);
+        continue;
       }
       updatedIds.push(item.id);
     }

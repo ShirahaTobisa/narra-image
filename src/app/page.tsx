@@ -66,14 +66,14 @@ export default async function Home() {
   const user = await getHomeUserRecord();
   const currentUser = user ? serializeUser(user) : null;
   const { page: featuredPage, failed } = await getHomeFeaturedPage(user?.id);
-  const apiEnabled = user ? await isApiEnabled().catch(() => true) : true;
+  const apiEnabled = await isApiEnabled().catch(() => false);
 
   return (
     <HomeMotionProvider>
       <SiteHeader currentUser={currentUser} variant="home" activeHref="/" />
       <main>
         <HomeHero />
-        <CapabilitySection />
+        <CapabilitySection apiEnabled={apiEnabled} />
         <HomeReveal as="section" id="gallery" className={styles.gallery}>
           <div className={styles.container}>
             <div className={styles.galleryHeader}>

@@ -125,6 +125,7 @@ export type SerializedWork = {
   negativePrompt: string | null;
   ownerId: string;
   prompt: string;
+  publicAuthorName: string | null;
   reviewNote: string | null;
   reviewedAt: string | null;
   reviewedById: string | null;
@@ -256,6 +257,7 @@ export function serializeWork(work: WorkRecord): SerializedWork {
     negativePrompt: work.job.negativePrompt,
     ownerId: work.job.userId,
     prompt: work.job.prompt,
+    publicAuthorName: work.publicAuthorName ?? null,
     reviewNote: work.reviewNote,
     reviewedAt: work.reviewedAt?.toISOString() ?? null,
     reviewedById: work.reviewedById,
@@ -293,7 +295,7 @@ export function serializePublicWorkDetail(work: SerializedWork): SerializedPubli
 
   return {
     availability: work.availability ?? "available",
-    authorNickname: work.authorNickname,
+    authorNickname: work.publicAuthorName ?? null,
     createdAt: work.createdAt,
     featuredAt: work.featuredAt,
     id: work.id,
@@ -320,12 +322,11 @@ export type FeaturedWorkRecord = WorkRecord & {
 };
 
 export function serializeFeaturedWork(work: FeaturedWorkRecord): SerializedFeaturedWork {
-  const author = work.job.user;
   const presentation = presentGenerationImage(work);
   return {
     availability: presentation.availability,
-    authorAvatar: null, // 公开画廊不放头像：头像不经审核，Discord 头像地址还会带出作者的 Discord 账号
-    authorName: author.nickname || "匿名创作者",
+    authorAvatar: null, // 公开作品不展示头像，避免带出第三方账号身份。
+    authorName: work.publicAuthorName || "匿名创作者",
     featuredAt: work.featuredAt?.toISOString() ?? null,
     id: work.id,
     image: presentation.url,
@@ -366,10 +367,9 @@ export type FeaturedVideoRecord = GeneratedVideo & {
 };
 
 export function serializeFeaturedVideo(video: FeaturedVideoRecord): SerializedFeaturedVideo {
-  const author = video.job.user;
   return {
-    authorAvatar: null, // 公开画廊不放头像：头像不经审核，Discord 头像地址还会带出作者的 Discord 账号
-    authorName: author.nickname || "匿名创作者",
+    authorAvatar: null, // 公开作品不展示头像，避免带出第三方账号身份。
+    authorName: video.publicAuthorName || "匿名创作者",
     durationSeconds: typeof video.durationSeconds === "number" ? video.durationSeconds : null,
     featuredAt: video.featuredAt?.toISOString() ?? null,
     id: video.id,

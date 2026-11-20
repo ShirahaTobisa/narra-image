@@ -55,7 +55,7 @@ describe("fixed editorial hero", () => {
     expect(screen.getByRole("link", { name: /开始我的创作/ })).toHaveAttribute("href", "/create");
     expect(screen.getByRole("link", { name: /探索灵感画廊/ })).toHaveAttribute("href", "#gallery");
     expect(container.querySelectorAll("[data-home-stat]")).toHaveLength(3);
-    expect(screen.getByText("沿用首页展示文案，非实时统计或服务测速。")).toBeInTheDocument();
+    expect(screen.getByText("按申请张数扣积分与计限额；生成耗时取决于排队和模型处理。")).toBeInTheDocument();
   });
 
   it.each(HERO_SCENES)("copies the complete $id prompt while pointer depth is active and typing is incomplete", async (scene) => {

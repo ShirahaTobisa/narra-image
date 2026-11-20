@@ -45,7 +45,7 @@ function getStatusHint(work: SerializedWork) {
   }
 
   if (work.showcaseStatus === "FEATURED") {
-    return `作品已公开${work.featuredAt ? `，公开时间 ${formatWorkTime(work.featuredAt)}` : ""}。公开页统一显示为匿名创作者。`;
+    return `作品已公开${work.featuredAt ? `，公开时间 ${formatWorkTime(work.featuredAt)}` : ""}。公开署名：${work.publicAuthorName || "匿名创作者"}。`;
   }
 
   if (work.showcaseStatus === "TAKEDOWN_PENDING") {
@@ -79,10 +79,12 @@ export function WorkShowcaseControls({
   const [error, setError] = useState<string | null>(null);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [showPromptPublic, setShowPromptPublic] = useState(work.showPromptPublic);
+  const [showAuthorPublic, setShowAuthorPublic] = useState(false);
+  const authorName = work.authorNickname?.trim() || null;
 
   async function handleAction(
     action: "request_unfeature" | "submit" | "withdraw",
-    options?: { showPromptPublic?: boolean },
+    options?: { showPromptPublic?: boolean; showAuthorPublic?: boolean },
   ) {
     setError(null);
     setIsPending(true);
@@ -96,6 +98,7 @@ export function WorkShowcaseControls({
         body: JSON.stringify({
           action,
           showPromptPublic: options?.showPromptPublic,
+          showAuthorPublic: options?.showAuthorPublic,
         }),
       });
       const result = (await response.json()) as {
@@ -109,6 +112,8 @@ export function WorkShowcaseControls({
 
       setShowSubmitModal(false);
       router.refresh();
+    } catch {
+      setError("操作失败，请稍后再试");
     } finally {
       setIsPending(false);
     }
@@ -133,7 +138,11 @@ export function WorkShowcaseControls({
             <button
               type="button"
               disabled={isPending || !isImageAvailable(work.availability)}
-              onClick={() => setShowSubmitModal(true)}
+              onClick={() => {
+                setError(null);
+                setShowAuthorPublic(false);
+                setShowSubmitModal(true);
+              }}
               className="rounded-full bg-[var(--ink)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--accent)] disabled:opacity-60"
             >
               {isPending ? "处理中..." : "投稿首页"}
@@ -163,7 +172,7 @@ export function WorkShowcaseControls({
           ) : null}
         </div>
 
-        {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+        {error && !showSubmitModal ? <p role="alert" className="text-sm text-rose-600">{error}</p> : null}
       </div>
 
       {showSubmitModal && isImageAvailable(work.availability) ? createPortal(
@@ -172,23 +181,44 @@ export function WorkShowcaseControls({
           onClick={() => setShowSubmitModal(false)}
         >
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="投稿首页精选"
             className="studio-card w-full max-w-lg rounded-[1.8rem] p-6"
             onClick={(event) => event.stopPropagation()}
           >
             <h3 className="text-lg font-semibold text-[var(--ink)]">投稿首页精选</h3>
             <p className="mt-2 text-sm leading-relaxed text-[var(--ink-soft)]">
-              投稿通过后，作品会出现在首页和公开详情页，公开页统一显示为匿名创作者。
+              投稿通过后，作品会出现在首页和公开详情页。默认匿名，也可以选择使用当前昵称署名。
+            </p>
+
+            <label className="mt-5 flex items-start gap-3 rounded-[1.2rem] border border-[var(--line)] bg-[var(--surface-strong)]/40 px-4 py-4 text-sm text-[var(--ink)]">
+              <input
+                type="checkbox"
+                checked={showAuthorPublic}
+                disabled={isPending || !authorName}
+                onChange={(event) => setShowAuthorPublic(event.target.checked)}
+                className="mt-0.5 rounded border-[var(--line)]"
+              />
+              <span>公开我的昵称</span>
+            </label>
+            <p className="mt-2 text-xs leading-relaxed text-[var(--ink-soft)]">
+              公开署名：{showAuthorPublic ? authorName : "匿名创作者"}。
+              {authorName ? "署名随投稿审核，之后修改个人昵称不会改变本次署名。" : "如需署名，请先在个人设置中填写昵称。"}
             </p>
 
             <label className="mt-5 flex items-start gap-3 rounded-[1.2rem] border border-[var(--line)] bg-[var(--surface-strong)]/40 px-4 py-4 text-sm text-[var(--ink)]">
               <input
                 type="checkbox"
                 checked={showPromptPublic}
+                disabled={isPending}
                 onChange={(event) => setShowPromptPublic(event.target.checked)}
                 className="mt-0.5 rounded border-[var(--line)]"
               />
               <span>允许公开页面显示完整提示词</span>
             </label>
+
+            {error ? <p role="alert" className="mt-3 text-sm text-rose-600">{error}</p> : null}
 
             <div className="mt-6 flex flex-wrap justify-end gap-2">
               <button
@@ -204,6 +234,7 @@ export function WorkShowcaseControls({
                 onClick={() =>
                   void handleAction("submit", {
                     showPromptPublic,
+                    showAuthorPublic,
                   })
                 }
                 className="rounded-full bg-[var(--ink)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--accent)] disabled:opacity-60"

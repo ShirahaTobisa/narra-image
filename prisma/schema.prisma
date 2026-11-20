@@ -556,6 +556,7 @@ model GenerationImage {
   mediaAssetId     String?        @unique @db.Uuid
   showcaseStatus   ShowcaseStatus @default(PRIVATE)
   showPromptPublic Boolean        @default(false)
+  publicAuthorName String?
   submittedAt      DateTime?
   featuredAt       DateTime?
   reviewedAt       DateTime?
@@ -584,6 +585,7 @@ model GeneratedVideo {
   storageKey       String?
   showcaseStatus   ShowcaseStatus @default(PRIVATE)
   showPromptPublic Boolean        @default(false)
+  publicAuthorName String?
   submittedAt      DateTime?
   featuredAt       DateTime?
   reviewedAt       DateTime?

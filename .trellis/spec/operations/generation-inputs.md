@@ -10,6 +10,7 @@
 - `calculateGenerationCost({ providerMode, builtInCreditCost, count })` 与 `hasEnoughCredits({ ...同前, credits })` 的 `count` 必填且为实际输出数；内置单价乘张数，自填渠道为 0。
 - `assertGenerationRateLimit(userId, count)`：同步检查并占用每用户滚动 60 秒 5 张额度，超额抛 `ApiRateLimitError`（429）。底层 `tryRecord(key, count = 1)` 超额不写入。
 - `startExternalGeneration(args) -> Promise<{ result: Promise<Job> }>`：先完成 API/图片限额准入，再启动生成；流式入口先 await 此包装，再开始响应并等待 result。普通 `runExternalGeneration` 复用它，不提供跳过限额参数。
+- 公共模型准入与 `/v1/models` 复用 `mergeChannelsForUsers` 的明确名称集合；通配渠道仅为已公开模型兜底，不能让客户端任意模型名称通过。普通 JSON 无参考图的图生图/图生视频在解析时拒绝；Canvas 使用自己的规范输入分支。
 - `readSiteImage(url, ownerId, options?) -> Promise<SiteImage | null>`：客户端传入的 URL 必须经过授权读取；`null` 表示不属于允许的本站图片。
 - `readCanonicalSiteImage(url, options?) -> Promise<SiteImage>`：仅供 `readCanvasRunInputs(ownerId, run)` 已核验拥有权后的内部结果使用，不能直接接收客户端 URL。
 - `SiteImage = { data: Buffer; mimeType: string }`；`options = { maximumBytes?: number; signal?: AbortSignal }`。
@@ -24,12 +25,15 @@
 
 - 网页、Canvas、外部 API legacy / gateway 用进程级共享用户图片限额；API Key / endpoint 不能拆分额度。Canvas replay 在图片限额之前返回。已有请求次数防刷和 API 每 Key / 每日限制仍独立保留。
 - 图片额度在有效请求解析和功能检查后、审核/存储/扣费前占用；已接纳但后续失败的尝试仍占本次窗口。限的是提交图片数，不是异步完成时刻；当前单进程部署重启清零，多实例前须换共享存储。
-- 文生图 `count=4`、单价 5 时预扣 20；参考图数量与输出数量无关，图生图即使 JSON 传 4 也统一输出 1、扣 5。视频沿用单任务价格。事务仍要求余额至少为总价，失败补偿只按记录的总额执行一次，不追扣历史任务。
+- 文生图 `count=4`、单价 5 时预扣 20；参考图数量与输出数量无关，图生图即使请求 `count=4` 也统一输出 1、扣 5。视频沿用单任务价格。事务仍要求余额至少为总价，失败补偿只按记录的总额执行一次，不追扣历史任务。
 - 受管理图片继续使用现有签名、可用性、存储读取和校验规则，读取失败不得退回旧图片分支。
 - 历史 data URL 仅接受 PNG/JPEG/WebP/GIF；旧 S3 URL 必须匹配 `S3_PUBLIC_BASE_URL` 或 `S3_ENDPOINT/S3_BUCKET` 的完整 origin 和目录边界。拒绝凭据、query、fragment、编码路径穿越。
 - 旧图片还须精确匹配数据库：当前用户的成功结果、成功的精选结果，或当前用户的历史参考图。仅域名匹配不能授权。
 - 默认最多 20 MiB、15 秒；远程读取使用 `fetchPublicHttpUrl`，保留公网地址检查、DNS 固定和禁止重定向。旧 S3 使用唯一且不覆盖的对象 key；不得把此入口推广为任意可变远程 URL。
 - Canvas 先确认拥有权并读取参考图，再调用共享审核；提交事务仍复核输入身份。审核失败不得创建任务或扣积分。
+- 普通网页在保存新参考图和输出预留前，短事务按 reference epoch→User 顺序取得队列名额、复核账号/归属/余额，并创建 `workerManaged:false` 的预备任务；上传在事务外。最终更新必须匹配 PENDING、未退款、未取消及 workerManaged=false，再绑定输出预留并交给 Worker。Canvas 沿用原 run 提交，不套第二层预备流程。
+- 预备失败使用 `failGenerationJobAndRefund({ onlyUnmanagedPending:true })`；占位回执丢失按预分配 jobId 检查，启用回执丢失不得退款或关闭已交付任务的预留。部分上传失败不等于能立即删除未知或仍有引用的图片对象。
+- Worker 首次上游发送前检查账号封禁，确定未发送时按 `GENERATION_CANCELLED` 收尾和一次补偿。批次首张已发送后不再以新封禁错误退整个任务；取消和参考图输入错误不计入渠道失败连续次数。
 - 站内渠道必须启用总开关和 AI，且配置、密钥、模型、阈值有效；关闭审核表示暂停站内生成，不能降级成只查词库。自定义渠道保留原有可选开关语义。
 - AI 输入包含完整 prompt 与 negativePrompt，后者标明“需要排除的内容”；敏感词仅做 NFKC 和不可见格式字符归一化，不能靠词库替代 AI。
 - 审核 `results` 至少一项；每项 `flagged`、`categories.sexual` 和 `categories["sexual/minors"]` 必须是 boolean；两个对应分数必须存在，所有分数均为有限 0～1 数字。任一分类 true 都拒绝，不能仅依赖总 flagged。
@@ -81,6 +85,8 @@
 - 网页/Canvas/API/gateway 路由与服务测试使用真实计费函数；断言任务总价、余额、输出数量和 429 无副作用，Canvas replay 不重复占图片额度，跨入口/跨 Key 共用用户额度。退款覆盖总额 20 和重复/未决状态。
 - `site-image.test.ts`：本人/精选/历史引用授权、非本站地址拒绝、读取限额、受管理错误不回退。
 - `generate-route-security.test.ts`、`canvas-generate-route.test.ts`：实际参考字节送审、拒绝后不入队/扣费、混合参考图最终顺序。
+- `generate-route-admission.test.ts`：满队列不预留/上传、并发最后名额、预备不可领取、取消/封禁与两种回执丢失；`job-refund.test.ts` 覆盖只退款尚未交付的预备任务。真实 Worker DB suites 覆盖 legacy/v1 封禁前零上游请求、一次退款，以及首张发送后正常完成。
+- `avatar-route.test.ts`：每用户5次/60秒限频先于解析，200 KiB头像的原始字节经同一严格图片审核后才存储；审核拒绝/故障不得更新头像。公开作品仍不展示账号头像。
 - `proxy-image-route.test.ts`：已授权旧图下载与内容识别；`moderation-check.test.ts`：关审、缺项、coverage、负面词、分数上限、损坏响应和无害正例。
 - `moderation-images.test.ts`：真实静态四格式、动画/伪装/损坏拒绝、8～20 MiB 普通图片允许且 Canvas 原限额保持；`moderation-config.test.ts`：首次 PATCH 保留环境开关。
 - `local-image-moderation.test.ts`：阈值边界、五类完整性、原图/顺序、16张串行、全局单例、队列/256MiB预算、排队/活动截止、晚到ready/result、线程退出前禁止重建、故障后预算回收；阻止分数使用合成响应，不收集违法图片。

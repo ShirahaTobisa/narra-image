@@ -1,0 +1,6 @@
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"隔离测试和验证范围"}
+{"file":".trellis/spec/operations/generation-inputs.md","reason":"输入、审核、限额和计费契约"}
+{"file":".trellis/spec/operations/image-storage.md","reason":"图片预留、引用与存储生命周期"}
+{"file":".trellis/spec/operations/release-hardening.md","reason":"生产只读检查和发布边界"}
+{"file":".trellis/spec/frontend/public-work-data.md","reason":"公开署名选择与数据白名单"}
+{"file":".trellis/spec/frontend/generation-worker-contracts.md","reason":"取消、退款、Worker首次发送和兼容迁移"}

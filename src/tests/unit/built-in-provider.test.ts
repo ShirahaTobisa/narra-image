@@ -1,3 +1,4 @@
+import channelScenarios from "../../../contracts/generation/v1/scenarios/channels.json";
 import {
   mergeBuiltInProviderConfigInput,
   mergeChannelsForUsers,
@@ -5,6 +6,12 @@ import {
 } from "@/lib/providers/built-in-provider-core";
 
 describe("给用户看的渠道", () => {
+  it("公开模型集合符合共享契约，不把通配符变成公开模型", () => {
+    for (const fixture of channelScenarios.publicModelLists) {
+      const channels = fixture.channels.map((channel, index) => ({ ...channel, id: String(index), name: "fixture" }));
+      expect(mergeChannelsForUsers(channels)[0]?.models ?? []).toEqual(fixture.models);
+    }
+  });
   it("所有渠道合成一个平台渠道，只露出模型，不露渠道名和 ID", () => {
     const merged = mergeChannelsForUsers([
       { creditCost: 5, defaultModel: "gpt-image-2", id: "ch_upstream", models: ["gpt-image-2"], name: "上游中转" },

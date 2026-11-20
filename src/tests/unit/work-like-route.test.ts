@@ -34,6 +34,7 @@ vi.mock("@/lib/db", () => ({
     generationImage: {
       findUnique: mockFindWork,
     },
+    generatedVideo: { findUnique: mockFindWork },
   },
 }));
 
@@ -62,6 +63,19 @@ describe("作品点赞接口", () => {
     });
 
     expect(response.status).toBe(401);
+  });
+
+  it.each(["image", "video"])("%s 点赞必须按未封禁作者查询目标，否则不写点赞", async (mediaType) => {
+    mockGetCurrentUser.mockResolvedValue({ id: "viewer" });
+    mockFindWork.mockResolvedValue(null);
+    const response = await PUT(new Request(`https://example.com?mediaType=${mediaType}`), {
+      params: Promise.resolve({ id: "banned-work" }),
+    });
+    expect(response.status).toBe(404);
+    expect(mockFindWork).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "banned-work", showcaseStatus: "FEATURED", job: { user: { bannedAt: null } } },
+    }));
+    expect(mockTransaction).not.toHaveBeenCalled();
   });
 
   it("公开作品未点赞时创建点赞记录", async () => {

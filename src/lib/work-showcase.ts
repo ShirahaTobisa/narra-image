@@ -34,6 +34,7 @@ export const workShowcaseStatusLabels: Record<WorkShowcaseStatus, string> = {
 
 type MutableWorkFields = {
   featuredAt?: Date | null;
+  publicAuthorName?: string | null;
   reviewNote?: string | null;
   reviewedAt?: Date | null;
   reviewedById?: string | null;

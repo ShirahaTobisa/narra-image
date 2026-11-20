@@ -2,6 +2,7 @@ import { ShowcaseStatus } from "@prisma/client";
 
 import { db } from "@/lib/db";
 import { getCurrentUserRecord } from "@/lib/server/current-user";
+import { publicWorkWhere } from "@/lib/server/public-work";
 import { getErrorMessage, jsonError, jsonOk } from "@/lib/server/http";
 
 export async function PUT(
@@ -20,7 +21,7 @@ export async function PUT(
 
     if (isVideo) {
       const video = await db.generatedVideo.findUnique({
-        where: { id },
+        where: { id, ...publicWorkWhere },
         select: { id: true, showcaseStatus: true },
       });
       if (!video || video.showcaseStatus !== ShowcaseStatus.FEATURED) {
@@ -47,7 +48,7 @@ export async function PUT(
     }
 
     const work = await db.generationImage.findUnique({
-      where: { id },
+      where: { id, ...publicWorkWhere },
       select: {
         id: true,
         showcaseStatus: true,

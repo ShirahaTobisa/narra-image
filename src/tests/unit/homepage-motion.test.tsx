@@ -219,27 +219,27 @@ describe("shared homepage motion lifecycle", () => {
     expect(environment.observers.every((observer) => observer.disconnected)).toBe(true);
   });
 
-  it("uses one bounded counter loop and final marketing values under pause/reduced motion", () => {
+  it("uses one bounded counter loop and final quantity limits under pause/reduced motion", () => {
     const { container, unmount } = render(<Wrapper><HeroStats /></Wrapper>);
     const value = (id: string) => container.querySelector(`[data-home-stat="${id}"]`)?.textContent;
-    expect(value("works")).toBe("150,000+");
+    expect(value("outputs")).toBe("4 张");
     environment.visibility(true);
     expect(environment.frames.size).toBe(1);
     environment.frame(0);
-    expect(value("works")).toBe("0+");
+    expect(value("outputs")).toBe("0 张");
     environment.frame(750);
-    expect(value("works")).toBe("131,250+");
+    expect(value("outputs")).toBe("3 张");
     environment.setHidden(true);
     expect(environment.frames.size).toBe(0);
     environment.setHidden(false);
     environment.frame(2000);
     environment.frame(2750);
-    expect(value("works")).toBe("150,000+");
-    expect(value("models")).toBe("120+");
-    expect(value("response")).toBe("< 4.2s");
+    expect(value("outputs")).toBe("4 张");
+    expect(value("references")).toBe("16 张");
+    expect(value("quota")).toBe("5 张");
     expect(environment.frames.size).toBe(0);
     environment.setMedia(HOME_MEDIA.reduced, true);
-    expect(value("works")).toBe("150,000+");
+    expect(value("outputs")).toBe("4 张");
     unmount();
     expect(environment.frames.size).toBe(0);
   });
@@ -251,7 +251,7 @@ describe("shared homepage motion lifecycle", () => {
     const petSelected = localStorage.getItem(PET_SELECTED_STORAGE_KEY);
     const petEvent = vi.fn();
     window.addEventListener(PET_TOGGLE_EVENT, petEvent);
-    const { container, unmount } = render(<Wrapper><CapabilitySection /></Wrapper>);
+    const { container, rerender, unmount } = render(<Wrapper><CapabilitySection apiEnabled /></Wrapper>);
     expect(container.querySelectorAll("[data-home-demo]")).toHaveLength(4);
     expect(screen.getByText("POST /v1/images/generations")).toBeInTheDocument();
     expect(screen.getByText("非实时请求")).toBeInTheDocument();
@@ -269,6 +269,9 @@ describe("shared homepage motion lifecycle", () => {
     expect(vi.getTimerCount()).toBe(0);
     act(() => vi.advanceTimersByTime(HOME_MOTION.capabilityCycleMs * 3));
     expect(container.querySelector("[data-home-version-label]")).toHaveTextContent("v2 · 局部补光");
+    rerender(<Wrapper><CapabilitySection apiEnabled={false} /></Wrapper>);
+    expect(container.querySelectorAll("[data-home-demo]")).toHaveLength(3);
+    expect(screen.queryByText("POST /v1/images/generations")).not.toBeInTheDocument();
     unmount();
     window.removeEventListener(PET_TOGGLE_EVENT, petEvent);
     expect(vi.getTimerCount()).toBe(0);

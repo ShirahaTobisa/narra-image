@@ -230,11 +230,25 @@ function client(snapshot: FakeState) {
     generationImage: { findMany: async (query: ImageQuery) => imageRead(snapshot, query) },
     generationJob: {
       create: async (input: { data: Record<string, unknown> }) => mocks.createJob(snapshot, input),
-      updateMany: mocks.detachJob,
+      updateMany: async (input: { where: { id: string }; data: Record<string, unknown> }) => {
+        if (!("workerManaged" in input.data)) return mocks.detachJob(input);
+        const job = snapshot.jobs.get(input.where.id);
+        if (!job || job.workerManaged || job.status !== "PENDING") return { count: 0 };
+        Object.assign(job, input.data);
+        return { count: 1 };
+      },
+      findUniqueOrThrow: async ({ where }: { where: { id: string } }) => {
+        const job = snapshot.jobs.get(where.id);
+        if (!job) throw new Error("missing job");
+        return job;
+      },
       count: async () => 0,
     },
-    user: { updateMany: async (input: { where: { id: string; credits: { gte: number } }; data: { credits: { decrement: number } } }) => mocks.charge(snapshot, input) },
-    conversation: { update: mocks.updateConversation },
+    user: {
+      findUnique: async () => ({ id: ownerId, credits: snapshot.credits, bannedAt: null }),
+      updateMany: async (input: { where: { id: string; credits: { gte: number } }; data: { credits: { decrement: number } } }) => mocks.charge(snapshot, input),
+    },
+    conversation: { update: mocks.updateConversation, findFirst: mocks.conversation },
   };
 }
 

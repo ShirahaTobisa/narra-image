@@ -1,5 +1,19 @@
 {
   "version": 1,
+  "publicModelLists": [
+    {
+      "channels": [
+        { "defaultModel": "m1", "models": ["m2"] },
+        { "defaultModel": "fallback", "models": ["*"] }
+      ],
+      "models": ["m1", "m2"]
+    },
+    {
+      "channels": [{ "defaultModel": "fallback", "models": ["*", "m2"] }],
+      "models": ["fallback", "m2"]
+    },
+    { "channels": [], "models": [] }
+  ],
   "scenarios": [
     {
       "id": "WC-A01",

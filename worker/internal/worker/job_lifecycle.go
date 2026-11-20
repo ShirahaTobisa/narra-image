@@ -22,14 +22,25 @@ type lockedJobLifecycle struct {
 }
 
 func (w *Worker) withJobProviderLifecycle(ctx context.Context, job GenerationJob) context.Context {
+	markSubmitting := func(markCtx context.Context) error {
+		var banned bool
+		if err := w.pool.QueryRow(markCtx, `SELECT "bannedAt" IS NOT NULL FROM "User" WHERE id = $1`, job.UserID).Scan(&banned); err != nil {
+			return preHandoffRetryableFailure(err)
+		}
+		if banned {
+			return ContractFailure{Code: errorGenerationCancelled, Message: "账号已封禁，生成任务已取消"}
+		}
+		if job.ContractVersion < 1 {
+			return nil
+		}
+		return w.markJobSubmitting(markCtx, job)
+	}
 	if job.ContractVersion < 1 {
-		return ctx
+		return withProviderLifecycle(ctx, markSubmitting, nil, nil)
 	}
 	return withProviderLifecycle(
 		ctx,
-		func(markCtx context.Context) error {
-			return w.markJobSubmitting(markCtx, job)
-		},
+		markSubmitting,
 		func(markCtx context.Context, requestID string) error {
 			return w.markJobSubmitted(markCtx, job, requestID)
 		},

@@ -184,6 +184,7 @@ export function AdminWorksBoard({
         body: JSON.stringify({
           action,
           mediaType: work.mediaType ?? "image",
+          submittedAt: work.submittedAt,
           reviewNote: draftNotes[key] || null,
         }),
         headers: { "Content-Type": "application/json" },
@@ -223,6 +224,7 @@ export function AdminWorksBoard({
           items: selectedItems.map((item) => ({
             id: item.id,
             mediaType: item.mediaType ?? "image",
+            submittedAt: item.submittedAt,
           })),
           reviewNote: batchNote.trim() || null,
         }),
@@ -430,6 +432,9 @@ export function AdminWorksBoard({
 
                           <p className="mt-2.5 line-clamp-3 text-sm leading-relaxed text-[var(--ink)]">
                             {work.prompt}
+                          </p>
+                          <p className="text-xs text-[var(--ink-soft)]">
+                            公开署名：{work.publicAuthorName || "匿名创作者"}
                           </p>
 
                           <div className="mt-2.5 flex flex-wrap gap-1.5 text-xs text-[var(--ink-soft)]">

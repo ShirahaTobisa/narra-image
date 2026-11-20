@@ -570,7 +570,7 @@ export function UsersManagementBoard({
         busy={actionBusy}
         tone="danger"
         title="永久删除用户"
-        description="将永久删除该用户及其名下全部生成记录、对话、API Key、签到与兑换流水，操作不可撤销。"
+        description="将永久删除该用户及其名下全部生成记录、对话、API Key、签到与兑换流水，操作不可撤销。删除不等于封禁：仍满足登录条件的第三方账号可重新注册并再次获得初始积分。处理违规账号请使用封禁。"
         confirmLabel={actionBusy ? "删除中…" : "确认永久删除"}
         error={actionError}
       >

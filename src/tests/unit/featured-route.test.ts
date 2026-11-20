@@ -51,7 +51,7 @@ describe("首页精选接口", () => {
     });
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toBe(
-      "public, s-maxage=60, stale-while-revalidate=120",
+      "private, no-store",
     );
     await expect(response.json()).resolves.toEqual({
       hasMore: true,

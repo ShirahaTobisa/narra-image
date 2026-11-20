@@ -47,7 +47,7 @@ export function AuthCover({
             in pixels.
           </p>
           <p className="max-w-[18rem] text-sm leading-7 text-[var(--ink-soft)]">
-            一个邀请制的 AI 图像创作社区，欢迎你成为最早一批用户。
+            一个分享灵感的 AI 图像创作社区，欢迎加入。
           </p>
         </div>
       )}

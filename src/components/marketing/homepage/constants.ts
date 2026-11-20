@@ -62,14 +62,14 @@ export const HOME_MEDIA = {
 } as const;
 
 export const HERO_STATS = [
-  { id: "works", value: 150000, format: "comma", prefix: "", suffix: "+", label: "累计生成叙事画作" },
-  { id: "models", value: 120, format: "integer", prefix: "", suffix: "+", label: "精调光影与胶片模型" },
-  { id: "response", value: 4.2, format: "decimal", prefix: "< ", suffix: "s", label: "平均生成响应耗时" },
+  { id: "outputs", value: 4, label: "单次文生图最多" },
+  { id: "references", value: 16, label: "单次可用参考图" },
+  { id: "quota", value: 5, label: "每人每分钟最多申请" },
 ] as const;
 
 export const CAPABILITIES = [
   { id: "prompt", title: "画笔写意 / 叙事生图", description: "捕捉文字背后的情绪与光影明暗，用多种画幅与镜头语言，为每一帧想象写下故事。" },
-  { id: "versions", title: "创作迭代台 / 画布微调", description: "在多轮对话与画布中延伸灵感。参考已有画面继续创作，让构图与细节一步步接近心中所想。" },
+  { id: "versions", title: "参考图编辑 / 多轮创作", description: "在多轮对话中延伸灵感。参考已有画面继续创作，让构图与细节一步步接近心中所想。" },
   { id: "pet", title: "灵动数字宠物伴途", description: "让桌面小生灵陪你一起等待灵感、庆祝创作。在独自构思的片刻，也有轻盈温暖的陪伴。" },
   { id: "api", title: "开发者 API", description: "通过兼容 OpenAI 风格的图像接口，将影像生成接入自己的应用。调用方式与密钥在 API 控制台查看。" },
 ] as const;

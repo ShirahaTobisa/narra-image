@@ -19,6 +19,7 @@ type FailGenerationJobInput = {
   jobId: string;
   lockedBefore?: Date;
   onlyUnclaimedV1Pending?: boolean;
+  onlyUnmanagedPending?: boolean;
 };
 
 type GenerationRefundTransaction = Pick<
@@ -50,6 +51,7 @@ export async function failGenerationJobAndRefundInTransaction(
   jobId,
   lockedBefore,
   onlyUnclaimedV1Pending,
+  onlyUnmanagedPending,
 }: FailGenerationJobInput,
 ) {
   const job = await tx.generationJob.findUnique({
@@ -64,15 +66,19 @@ export async function failGenerationJobAndRefundInTransaction(
       refundAppliedAt: true,
       status: true,
       userId: true,
+      workerManaged: true,
     },
   });
 
-  const statuses = allowedStatuses ?? [
+  const statuses = onlyUnmanagedPending ? [GenerationStatus.PENDING] : allowedStatuses ?? [
     GenerationStatus.PENDING,
     GenerationStatus.PROCESSING,
     GenerationStatus.FAILED,
   ];
 
+  if (onlyUnmanagedPending && job?.workerManaged) {
+    return { blockedByWorkerState: true, refundedCredits: 0, updated: false };
+  }
   if (!job || !statuses.includes(job.status)) {
     return {
       refundedCredits: 0,
@@ -133,6 +139,7 @@ export async function failGenerationJobAndRefundInTransaction(
       creditsSpent: job.creditsSpent,
       ...(createdBefore ? { createdAt: { lt: createdBefore } } : {}),
       id: job.id,
+      ...(onlyUnmanagedPending ? { workerManaged: false } : {}),
       ...(contractVersion >= 1 ? { handoffState: job.handoffState } : {}),
       ...(lockedBefore ? { lockedAt: { lt: lockedBefore } } : {}),
       ...(requiresUnclaimedV1Pending
@@ -162,6 +169,7 @@ export async function failGenerationJobAndRefundInTransaction(
 
   if (updated.count === 0) {
     return {
+      ...(onlyUnmanagedPending ? { blockedByWorkerState: true } : {}),
       refundedCredits: 0,
       updated: false,
     };

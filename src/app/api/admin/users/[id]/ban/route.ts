@@ -1,3 +1,5 @@
+import { revalidateTag } from "next/cache";
+
 import { db } from "@/lib/db";
 import { requireAdminRecord } from "@/lib/server/current-user";
 import { getErrorMessage, jsonError, jsonOk, parseJsonBody } from "@/lib/server/http";
@@ -32,6 +34,7 @@ export async function PATCH(
       data: { bannedAt: body.banned ? new Date() : null },
       select: { bannedAt: true, id: true },
     });
+    revalidateTag("featured-works", { expire: 0 });
 
     return jsonOk({
       user: {

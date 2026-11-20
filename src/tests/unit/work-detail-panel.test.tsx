@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const mocks = vi.hoisted(() => ({ download: vi.fn(), refresh: vi.fn() }));
@@ -100,14 +100,60 @@ describe("owner detail management compatibility", () => {
     await user.click(screen.getByRole("button", { name: "投稿首页" }));
     const publishPrompt = screen.getByRole("checkbox", { name: "允许公开页面显示完整提示词" });
     expect(publishPrompt).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "公开我的昵称" })).not.toBeChecked();
+    expect(screen.getByText(/公开署名：匿名创作者/)).toBeInTheDocument();
     await user.click(publishPrompt);
     await user.click(screen.getByRole("button", { name: "确认投稿" }));
 
     expect(fetchMock).toHaveBeenCalledWith(`/api/me/works/${work.id}/showcase`, expect.objectContaining({
       method: "PATCH",
-      body: JSON.stringify({ action: "submit", showPromptPublic: true }),
+      body: JSON.stringify({ action: "submit", showPromptPublic: true, showAuthorPublic: false }),
     }));
     await waitFor(() => expect(mocks.refresh).toHaveBeenCalled());
+  });
+
+  it("shows the current nickname for explicit author opt-in and submits only the choice", async () => {
+    const user = userEvent.setup();
+    const work = serializeWork(createPrivacyWork({ showcaseStatus: "PRIVATE" }));
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<WorkDetailPanel detailUrl={detailUrl} isOwner work={work} />);
+
+    await user.click(screen.getByRole("button", { name: "投稿首页" }));
+    await user.click(screen.getByRole("checkbox", { name: "公开我的昵称" }));
+    expect(screen.getByText(/公开署名：Public author nickname/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "确认投稿" }));
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ action: "submit", showPromptPublic: false, showAuthorPublic: true });
+    await waitFor(() => expect(mocks.refresh).toHaveBeenCalled());
+  });
+
+  it("does not offer a blank nickname as public authorship", async () => {
+    const user = userEvent.setup();
+    const work = { ...serializeWork(createPrivacyWork({ showcaseStatus: "PRIVATE" })), authorNickname: "   " };
+    render(<WorkDetailPanel detailUrl={detailUrl} isOwner work={work} />);
+    await user.click(screen.getByRole("button", { name: "投稿首页" }));
+    expect(screen.getByRole("checkbox", { name: "公开我的昵称" })).toBeDisabled();
+    expect(screen.getByText(/请先在个人设置中填写昵称/)).toBeInTheDocument();
+  });
+
+  it("keeps a rejected public name visible in the open form and permits anonymous retry", async () => {
+    const user = userEvent.setup();
+    const work = serializeWork(createPrivacyWork({ showcaseStatus: "PRIVATE" }));
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(Response.json({ error: "公开署名包含违规内容，请修改昵称或选择匿名投稿" }, { status: 400 }))
+      .mockResolvedValueOnce(Response.json({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<WorkDetailPanel detailUrl={detailUrl} isOwner work={work} />);
+    await user.click(screen.getByRole("button", { name: "投稿首页" }));
+    await user.click(screen.getByRole("checkbox", { name: "公开我的昵称" }));
+    await user.click(screen.getByRole("button", { name: "确认投稿" }));
+    const form = screen.getByRole("dialog", { name: "投稿首页精选" });
+    expect(await within(form).findByRole("alert")).toHaveTextContent("公开署名包含违规内容");
+    expect(mocks.refresh).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("checkbox", { name: "公开我的昵称" }));
+    await user.click(screen.getByRole("button", { name: "确认投稿" }));
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).showAuthorPublic).toBe(false);
+    await waitFor(() => expect(mocks.refresh).toHaveBeenCalledTimes(1));
   });
 
   it.each([

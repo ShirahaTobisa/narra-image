@@ -59,6 +59,7 @@ export function createPrivacyWork(
     likes: [],
     mediaStorage: "S3",
     mediaAssetId: null,
+    publicAuthorName: null,
     reviewNote: workPrivacySentinels.reviewNote,
     reviewedAt: new Date(workPrivacySentinels.reviewedAt),
     reviewedBy: {

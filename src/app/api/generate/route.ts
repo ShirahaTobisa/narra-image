@@ -65,6 +65,7 @@ const MAX_ACTIVE_JOBS_PER_USER = 2;
 // 每个用户每分钟最多发 5 次生成请求（被这条拦下的不算次数），护住上游渠道和审核接口
 const MAX_GENERATE_REQUESTS_PER_MINUTE = 5;
 const generateRequests = createRateLimiter({ limit: MAX_GENERATE_REQUESTS_PER_MINUTE, windowMs: 60_000 });
+const generationInclude = { images: { include: imageAvailabilityInclude }, videos: true } satisfies Prisma.GenerationJobInclude;
 
 async function assertGenerationImageUrl(url: string) {
   const managed = await resolveManagedImageUrl(url);
@@ -247,55 +248,48 @@ export async function POST(request: Request) {
       ? await encryptProviderSecret(customProvider.apiKey, env.AUTH_SECRET)
       : null;
 
-    if (body.generationType === "text_to_image" || body.generationType === "image_to_image") {
-      outputReservation = await reserveManagedImageOutputs({
-        ownerId: user.id,
-        intentKey: canvasPreparation ? `canvas-output:${canvasPreparation.run.runId}:${canvasPreparation.intentHash}` : `output:${reservedJobId}`,
-        count,
-      });
-    }
+    const reserveOutputs = async () => {
+      if (body.generationType === "text_to_image" || body.generationType === "image_to_image") {
+        outputReservation = await reserveManagedImageOutputs({
+          ownerId: user.id,
+          intentKey: canvasPreparation ? `canvas-output:${canvasPreparation.run.runId}:${canvasPreparation.intentHash}` : `output:${reservedJobId}`,
+          count,
+        });
+      }
+    };
+    if (canvasPreparation) await reserveOutputs();
 
-    const uploadedUrls = await Promise.all(
-      fileSourceImages.map((sourceImage) =>
-        persistGeneratedImage({
-          buffer: sourceImage.data,
-          fileExtension: sourceImage.fileName.split(".").pop() || "png",
-          mimeType: sourceImage.mimeType,
-          userId: user.id,
-        }),
-      ),
-    );
-    let fileIndex = 0;
-    let urlIndex = 0;
-    const sourceImageUrls = canvasInputs?.sourceImageUrls ?? (body.imageInputOrder?.length
-      ? body.imageInputOrder.map((kind) => kind === "file" ? uploadedUrls[fileIndex++] : body.imageUrls[urlIndex++])
-      : [...uploadedUrls, ...body.imageUrls]);
     const contractFields = generationContractWriteFields(
       env.WORKER_CONTRACTS_V1_ENABLED,
     );
 
-    // 创建 PENDING 任务并预扣积分。模型调用转交给 Go Worker，
-    // 让请求链路保持短平快，也避免 Next 进程重启导致后台生成丢失。
+    // 普通网页先占名额、扣费；参考图准备好之前 Worker 不得领取。
+    // Canvas 沿用自己的原子 run 提交，不经过普通文件上传。
     const preparation = canvasPreparation;
     const createJob = async (tx: Prisma.TransactionClient) => {
       if (!preparation) {
-        // 先锁住这个用户再数他没跑完的任务，并发提交也只能排进 MAX_ACTIVE_JOBS_PER_USER 个（画布另有同节点限制）
+        await lockImageReferenceEpoch(tx);
         await tx.$executeRaw`SELECT 1 FROM "User" WHERE id = ${user.id} FOR UPDATE`;
+        const currentUser = await tx.user.findUnique({ where: { id: user.id }, select: { bannedAt: true, credits: true } });
+        if (!currentUser || currentUser.bannedAt) throw new Error("账号不可用，请重新登录");
+        if (body.providerMode === "built_in" && currentUser.credits < cost) throw new GenerationCreditError("积分不足，请联系管理员补充");
+        if (conversationToBind && !await tx.conversation.findFirst({ where: { id: conversationToBind, userId: user.id }, select: { id: true } })) {
+          throw new Error("会话不存在或不属于当前用户");
+        }
         const activeJobs = await tx.generationJob.count({
           where: { status: { in: [GenerationStatus.PENDING, GenerationStatus.PROCESSING] }, userId: user.id },
         });
         if (activeJobs >= MAX_ACTIVE_JOBS_PER_USER) {
           throw new Error(`同时最多 ${MAX_ACTIVE_JOBS_PER_USER} 个任务在生成，请等前面的完成后再提交`);
         }
-        await lockImageReferenceEpoch(tx);
       }
       let currentInputs: CanvasResolvedRunInputs | null = null;
       if (preparation && canvasInputs) currentInputs = await prepareCanvasRunCommit(tx, preparation, canvasInputs);
-      const committedSourceUrls = currentInputs?.sourceImageUrls ?? sourceImageUrls;
+      const committedSourceUrls = currentInputs?.sourceImageUrls ?? body.imageUrls;
       await bindManagedImageInputAliases(tx, committedSourceUrls, env.APP_URL);
       const created = await tx.generationJob.create({
         data: {
-          ...(outputReservation ? { id: reservedJobId } : {}),
+          ...(outputReservation || !preparation ? { id: reservedJobId } : {}),
           ...(conversationToBind ? { conversationId: conversationToBind } : {}),
           count,
           contractVersion: contractFields.contractVersion,
@@ -331,12 +325,9 @@ export async function POST(request: Request) {
           status: GenerationStatus.PENDING,
           handoffState: contractFields.handoffState,
           userId: user.id,
-          workerManaged: true,
+          workerManaged: Boolean(preparation),
         },
-        include: {
-          images: { include: imageAvailabilityInclude },
-          videos: true,
-        },
+        include: generationInclude,
       });
 
       await bindManagedImageOutputs(tx, outputReservation, user.id, created.id);
@@ -376,8 +367,7 @@ export async function POST(request: Request) {
           data: { credits: { decrement: cost } },
         });
         if (charged.count === 0) {
-          if (preparation) throw new GenerationCreditError("积分不足，请联系管理员补充");
-          throw new Error("积分不足，请联系管理员补充");
+          throw new GenerationCreditError("积分不足，请联系管理员补充");
         }
       }
 
@@ -387,6 +377,7 @@ export async function POST(request: Request) {
       return (await projectGenerationSourceUrls([created], tx))[0];
     };
     if (preparation) canvasCommitAttempted = true;
+    else jobId = reservedJobId;
     const job = preparation ? await canvasTransaction(createJob) : await db.$transaction(createJob);
     if (preparation) {
       canvasCommitted = true;
@@ -397,11 +388,37 @@ export async function POST(request: Request) {
     }
     jobId = job.id;
 
+    await reserveOutputs();
+    const uploadedUrls = await Promise.all(fileSourceImages.map((sourceImage) => persistGeneratedImage({
+      buffer: sourceImage.data,
+      fileExtension: sourceImage.fileName.split(".").pop() || "png",
+      mimeType: sourceImage.mimeType,
+      userId: user.id,
+    })));
+    let fileIndex = 0;
+    let urlIndex = 0;
+    const sourceImageUrls = body.imageInputOrder?.length
+      ? body.imageInputOrder.map((kind) => kind === "file" ? uploadedUrls[fileIndex++] : body.imageUrls[urlIndex++])
+      : [...uploadedUrls, ...body.imageUrls];
+    const readyJob = await db.$transaction(async (tx) => {
+      await lockImageReferenceEpoch(tx);
+      const currentUser = await tx.user.findUnique({ where: { id: user.id }, select: { bannedAt: true } });
+      if (!currentUser || currentUser.bannedAt) throw new Error("账号不可用，请重新登录");
+      await bindManagedImageInputAliases(tx, sourceImageUrls, env.APP_URL);
+      const enabled = await tx.generationJob.updateMany({
+        where: { id: job.id, userId: user.id, status: GenerationStatus.PENDING, workerManaged: false, refundAppliedAt: null, cancelRequestedAt: null },
+        data: { sourceImageUrls, workerManaged: true },
+      });
+      if (enabled.count === 0) throw new Error("任务已取消或结束，请重新提交");
+      await bindManagedImageOutputs(tx, outputReservation, user.id, job.id);
+      const ready = await tx.generationJob.findUniqueOrThrow({ where: { id: job.id }, include: generationInclude });
+      return (await projectGenerationSourceUrls([ready], tx))[0];
+    });
     return jsonOk({
-      generation: serializeGeneration(job),
+      generation: serializeGeneration(readyJob),
     });
   } catch (error) {
-    await closeManagedImageReservation(outputReservation).catch(() => undefined);
+    if (!jobId) await closeManagedImageReservation(outputReservation).catch(() => undefined);
     if (canvasAttempt) {
       const knownRollback = error instanceof CanvasContractError || error instanceof GenerationCreditError || error instanceof ApiRateLimitError || error instanceof ImageStorageError || error instanceof SiteImageError || isCanvasTransactionRetryable(error);
       if (canvasCommitted || (canvasCommitAttempted && !knownRollback)
@@ -432,12 +449,18 @@ export async function POST(request: Request) {
     if (error instanceof ApiRateLimitError) return jsonError(error.message, error.status);
     if (canvasTransport || error instanceof CanvasContractError) return canvasErrorResponse(error);
     if (jobId) {
-      await failGenerationJobAndRefund({
+      const failed = await failGenerationJobAndRefund({
         errorMessage: getErrorMessage(error),
         jobId,
+        onlyUnmanagedPending: true,
       });
+      // 启用事务的回执可能丢失；已经交给 Worker 的任务保留积分和输出预留。
+      if (!("blockedByWorkerState" in failed && failed.blockedByWorkerState)) {
+        await closeManagedImageReservation(outputReservation).catch(() => undefined);
+      }
     }
 
+    if (error instanceof GenerationCreditError) return jsonError(error.message, 402);
     if (error instanceof GenerationContractError) {
       return jsonError(error.message, error.status, error.code);
     }

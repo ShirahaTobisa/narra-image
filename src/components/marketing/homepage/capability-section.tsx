@@ -28,7 +28,7 @@ function CapabilityCard({ capability, visible, children }: CapabilityCardProps) 
   );
 }
 
-export function CapabilitySection() {
+export function CapabilitySection({ apiEnabled = false }: { apiEnabled?: boolean }) {
   const { ref, visible } = useHomeVisibility<HTMLDivElement>();
   const cycle = useHomeCycle(PROMPT_PILLS.length, visible);
   const [petIdea, setPetIdea] = useState(0);
@@ -43,7 +43,7 @@ export function CapabilitySection() {
             <p className={styles.sectionDescription}>将叙事艺术感融入每一次构思与微调，提供有温度的影像创作体验。</p>
           </div>
           <div className={styles.capabilityGrid}>
-            {CAPABILITIES.map((capability) => (
+            {CAPABILITIES.filter((capability) => capability.id !== "api" || apiEnabled).map((capability) => (
               <CapabilityCard key={capability.id} capability={capability} visible={visible}>
                 {capability.id === "prompt" ? (
                   <>

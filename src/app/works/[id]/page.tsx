@@ -7,6 +7,7 @@ import { serializePublicWorkDetail, serializeUser } from "@/lib/prisma-mappers";
 import { getEnv } from "@/lib/env";
 import { getCurrentUserRecord } from "@/lib/server/current-user";
 import { getWorkById } from "@/lib/server/works";
+import { visibleWorkWhere } from "@/lib/server/public-work";
 import { canViewWorkDetail } from "@/lib/work-showcase";
 
 export const dynamic = "force-dynamic";
@@ -17,11 +18,12 @@ export default async function WorkDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [user, work] = await Promise.all([getCurrentUserRecord(), getWorkById(id)]);
+  const user = await getCurrentUserRecord();
+  const work = await getWorkById(id, user?.id);
 
   if (!work) {
     const video = await db.generatedVideo.findUnique({
-      where: { id },
+      where: { id, ...visibleWorkWhere(user?.id) },
       include: { job: { select: { prompt: true, userId: true } } },
     });
     const isVideoOwner = user?.id === video?.job.userId;
@@ -63,7 +65,7 @@ export default async function WorkDetailPage({
           <p className="text-sm text-[var(--ink-soft)]">
             {isOwner
               ? "作品详情同时承担你的公开状态管理页。"
-              : "公开页面统一以匿名创作者展示，不显示用户邮箱。"}
+              : "公开署名由作者投稿时选择，不显示用户邮箱或头像。"}
           </p>
         </div>
 

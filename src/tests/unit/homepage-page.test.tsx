@@ -1,16 +1,16 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 
-const mocks = vi.hoisted(() => ({ currentUser: vi.fn(), feed: vi.fn(), gallery: vi.fn(), header: vi.fn(), cache: vi.fn() }));
+const mocks = vi.hoisted(() => ({ currentUser: vi.fn(), feed: vi.fn(), gallery: vi.fn(), header: vi.fn(), cache: vi.fn(), apiEnabled: vi.fn() }));
 vi.mock("next/cache", () => ({ unstable_cache: <T extends (...args: never[]) => unknown>(callback: T, keys: string[], options: unknown) => { mocks.cache(keys, options); return callback; } }));
 vi.mock("@/lib/server/current-user", () => ({ getCurrentUserRecord: mocks.currentUser }));
-vi.mock("@/lib/api-config", () => ({ isApiEnabled: async () => true }));
+vi.mock("@/lib/api-config", () => ({ isApiEnabled: mocks.apiEnabled }));
 vi.mock("@/lib/env", () => ({ getEnv: () => ({ VIDEO_ENABLED: true }) }));
 vi.mock("@/lib/server/works", () => ({ listFeaturedWorksPage: mocks.feed }));
 vi.mock("@/components/marketing/site-header", () => ({ SiteHeader: mocks.header }));
 vi.mock("@/components/marketing/featured-gallery", () => ({ FeaturedGallery: mocks.gallery }));
 vi.mock("@/components/marketing/homepage/home-hero", () => ({ HomeHero: () => <section id="hero">固定三场景</section> }));
-vi.mock("@/components/marketing/homepage/capability-section", () => ({ CapabilitySection: () => <section id="capabilities" /> }));
+vi.mock("@/components/marketing/homepage/capability-section", () => ({ CapabilitySection: ({ apiEnabled }: { apiEnabled: boolean }) => <section id="capabilities" data-api-enabled={apiEnabled} /> }));
 vi.mock("@/components/marketing/homepage/home-motion-provider", () => ({ HomeMotionProvider: ({ children }: { children: ReactNode }) => <div>{children}</div> }));
 vi.mock("@/components/marketing/homepage/home-reveal", () => ({ HomeReveal: ({ children, id }: { children: ReactNode; id?: string }) => <section id={id}>{children}</section> }));
 
@@ -20,6 +20,7 @@ import { createPrivacyUser } from "./helpers/work-privacy-fixtures";
 
 beforeEach(() => {
   mocks.currentUser.mockResolvedValue(null);
+  mocks.apiEnabled.mockReset().mockResolvedValue(true);
   mocks.feed.mockResolvedValue({ items: [], hasMore: false, nextCursor: null });
   mocks.header.mockReturnValue(null);
   mocks.gallery.mockReturnValue(null);
@@ -27,6 +28,14 @@ beforeEach(() => {
 afterEach(() => { cleanup(); mocks.currentUser.mockReset(); mocks.feed.mockReset(); mocks.gallery.mockReset(); mocks.header.mockReset(); vi.restoreAllMocks(); });
 
 describe("Home server bootstrap", () => {
+  it.each([false, "unavailable"])("访客首页在 API 关闭或配置读取失败时隐藏入口：%s", async (state) => {
+    if (state === false) mocks.apiEnabled.mockResolvedValue(false);
+    else mocks.apiEnabled.mockRejectedValue(new Error("synthetic unavailable"));
+    const { container } = render(await Home());
+    expect(container.querySelector("#capabilities")).toHaveAttribute("data-api-enabled", "false");
+    expect(screen.queryByRole("link", { name: "开发者 API" })).not.toBeInTheDocument();
+  });
+
   it("keeps dynamic rendering and the anonymous 60-second tagged cache", async () => {
     expect(dynamic).toBe("force-dynamic");
     expect(mocks.cache).toHaveBeenCalledWith(["featured-home-anonymous"], { revalidate: 60, tags: ["featured-works"] });

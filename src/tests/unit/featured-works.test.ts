@@ -74,6 +74,7 @@ describe("首页精选分页查询", () => {
             not: null,
           },
           showcaseStatus: ShowcaseStatus.FEATURED,
+          job: { user: { bannedAt: null } },
         },
       }),
     );

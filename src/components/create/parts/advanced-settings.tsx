@@ -361,7 +361,7 @@ export function AdvancedSettings({
                 </label>
               )}
 
-              <label>
+              {providerMode === "custom" && allowCustomProvider && <label>
                 <span className="mb-1.5 block text-xs font-medium text-[var(--ink-soft)]">审核策略</span>
                 <select
                   aria-label="审核策略"
@@ -373,7 +373,7 @@ export function AdvancedSettings({
                     <option key={option.value} value={option.value}>{option.label}</option>
                   ))}
                 </select>
-              </label>
+              </label>}
 
               {generationType === "text_to_image" && (
                 <div>

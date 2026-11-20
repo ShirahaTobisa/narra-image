@@ -29,6 +29,9 @@ export async function PATCH(
     if (!work) {
       return jsonError("作品不存在", 404);
     }
+    if (body.submittedAt !== (work.submittedAt?.toISOString() ?? null)) {
+      return jsonError("投稿已变更，请刷新后重新审核", 409);
+    }
 
     const data = applyAdminWorkReview({
       action: body.action,
@@ -38,16 +41,12 @@ export async function PATCH(
       reviewerId: admin.id,
     });
 
-    if (isVideo) {
-      await db.generatedVideo.update({
-        where: { id },
-        data,
-      });
-    } else {
-      await db.generationImage.update({
-        where: { id },
-        data,
-      });
+    const where = { id, showcaseStatus: work.showcaseStatus, submittedAt: work.submittedAt };
+    const updated = isVideo
+      ? await db.generatedVideo.updateMany({ where, data })
+      : await db.generationImage.updateMany({ where, data });
+    if (updated.count !== 1) {
+      return jsonError("作品状态已变更，请刷新后重新审核", 409);
     }
 
     revalidateTag("featured-works", "max");

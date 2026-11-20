@@ -5,9 +5,14 @@ package worker
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -152,6 +157,112 @@ INSERT INTO "GenerationJob" (
 			t.Fatalf("插入任务 fixture 失败: %v", err)
 		}
 	}
+
+	t.Run("user ban before and after first submission", func(t *testing.T) {
+		contract, err := LoadGenerationContract("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var fixture struct {
+			Scenarios []struct {
+				ID              string `json:"id"`
+				ContractVersion int    `json:"contractVersion"`
+				Action          string `json:"action"`
+				Result          struct {
+					ErrorCode string `json:"errorCode"`
+					Refund    bool   `json:"refund"`
+				} `json:"result"`
+			} `json:"scenarios"`
+		}
+		if err := json.Unmarshal(contract.Scenarios["lifecycle"], &fixture); err != nil {
+			t.Fatal(err)
+		}
+		for _, scenario := range fixture.Scenarios {
+			if !strings.HasPrefix(scenario.Action, "ban_") {
+				continue
+			}
+			t.Run(scenario.ID, func(t *testing.T) {
+				reset()
+				userID, jobID := scenario.ID+"-user", scenario.ID+"-job"
+				insertUser(userID)
+				insertJob(jobID, userID, 10)
+				if _, err := pool.Exec(ctx, `UPDATE "GenerationJob" SET count = 2, "contractVersion" = $2,
+  "handoffState" = CASE WHEN $2 = 0 THEN NULL ELSE 'NOT_STARTED'::"GenerationHandoffState" END WHERE id = $1`, jobID, scenario.ContractVersion); err != nil {
+					t.Fatal(err)
+				}
+				ban := func() error {
+					_, err := pool.Exec(ctx, `UPDATE "User" SET "bannedAt" = CURRENT_TIMESTAMP WHERE id = $1`, userID)
+					return err
+				}
+				beforeSubmit := scenario.Action == "ban_before_submit"
+				if beforeSubmit {
+					if err := ban(); err != nil {
+						t.Fatal(err)
+					}
+				}
+				job, claimed, err := w.claimJob(ctx)
+				if err != nil || !claimed {
+					t.Fatalf("claimJob failed: claimed=%v err=%v", claimed, err)
+				}
+				storage := &Storage{cfg: Config{ImageStorageManagedEnabled: true, JobTimeout: time.Minute, WorkerID: w.cfg.WorkerID}, imageRepository: NewImageRepository(pool)}
+				if beforeSubmit {
+					if _, err := storage.acquireImageOutputReservation(ctx, job); err != nil {
+						t.Fatal(err)
+					}
+				}
+				var calls atomic.Int32
+				server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+					if calls.Add(1) == 1 && !beforeSubmit {
+						if err := ban(); err != nil {
+							t.Errorf("ban after accepted request: %v", err)
+							response.WriteHeader(http.StatusInternalServerError)
+							return
+						}
+					}
+					_, _ = fmt.Fprint(response, `{"output":[{"type":"image_generation_call","result":"harmless-fixture"}]}`)
+				}))
+				defer server.Close()
+				payload, cause := generateWithResponsesImageTool(w.withJobProviderLifecycle(ctx, job), job,
+					ProviderConfig{APIKey: "fixture-key", BaseURL: server.URL, AllowPrivateNetwork: true}, nil)
+				if beforeSubmit {
+					failure := classifyProviderFailure(cause)
+					if calls.Load() != 0 || failure.Code != scenario.Result.ErrorCode || failure.Retryable || failure.HandoffUnknown {
+						t.Fatalf("banned job was submitted or misclassified: calls=%d failure=%+v", calls.Load(), failure)
+					}
+					for range 2 {
+						if err := w.handleJobFailure(ctx, job, cause); err != nil {
+							t.Fatal(err)
+						}
+						if err := storage.closeFinishedImageReservation(ctx, job.ID); err != nil {
+							t.Fatal(err)
+						}
+					}
+					reservation, err := storage.imageRepository.GetReservationByJob(ctx, job.ID)
+					if err != nil || reservation == nil || reservation.State != "CLOSED" || reservation.RemainingBytes != 0 {
+						t.Fatalf("banned job left output space reserved: reservation=%+v error=%v", reservation, err)
+					}
+				} else {
+					if cause != nil || calls.Load() != 2 || len(payload.Data) != 2 {
+						t.Fatalf("ban interrupted an already submitted batch: calls=%d error=%v", calls.Load(), cause)
+					}
+					if err := w.completeJob(ctx, job, []GeneratedImage{{URL: "https://fixture.example/one.png"}, {URL: "https://fixture.example/two.png"}}); err != nil {
+						t.Fatal(err)
+					}
+				}
+				var credits, spent int
+				var status string
+				var refunded bool
+				if err := pool.QueryRow(ctx, `SELECT u.credits, j."creditsSpent", j.status::text, j."refundAppliedAt" IS NOT NULL
+FROM "GenerationJob" j JOIN "User" u ON u.id = j."userId" WHERE j.id = $1`, job.ID).Scan(&credits, &spent, &status, &refunded); err != nil {
+					t.Fatal(err)
+				}
+				if refunded != scenario.Result.Refund || (beforeSubmit && (credits != 110 || spent != 0 || status != "FAILED")) ||
+					(!beforeSubmit && (credits != 100 || spent != 10 || status != "SUCCEEDED")) {
+					t.Fatalf("incorrect ban outcome: credits=%d spent=%d status=%s refunded=%v", credits, spent, status, refunded)
+				}
+			})
+		}
+	})
 
 	t.Run("rollback preflight covers image storage and partial upgrades", func(t *testing.T) {
 		reset()

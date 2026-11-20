@@ -2,6 +2,38 @@
   "version": 1,
   "scenarios": [
     {
+      "id": "WC-BAN-before-legacy",
+      "contractVersion": 0,
+      "status": "PROCESSING",
+      "handoffState": null,
+      "action": "ban_before_submit",
+      "result": { "status": "FAILED", "errorCode": "GENERATION_CANCELLED", "refund": true, "upstreamRequests": 0 }
+    },
+    {
+      "id": "WC-BAN-before-v1",
+      "contractVersion": 1,
+      "status": "PROCESSING",
+      "handoffState": "NOT_STARTED",
+      "action": "ban_before_submit",
+      "result": { "status": "FAILED", "errorCode": "GENERATION_CANCELLED", "refund": true, "upstreamRequests": 0 }
+    },
+    {
+      "id": "WC-BAN-after-legacy",
+      "contractVersion": 0,
+      "status": "PROCESSING",
+      "handoffState": null,
+      "action": "ban_after_submit",
+      "result": { "jobChanged": false, "refund": false }
+    },
+    {
+      "id": "WC-BAN-after-v1",
+      "contractVersion": 1,
+      "status": "PROCESSING",
+      "handoffState": "SUBMITTED",
+      "action": "ban_after_submit",
+      "result": { "jobChanged": false, "refund": false }
+    },
+    {
       "id": "WC-C01",
       "status": "PENDING",
       "handoffState": "NOT_STARTED",

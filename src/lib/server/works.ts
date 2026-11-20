@@ -3,6 +3,7 @@ import "server-only";
 import { Prisma, ShowcaseStatus } from "@prisma/client";
 
 import { db } from "@/lib/db";
+import { publicWorkWhere, visibleWorkWhere } from "@/lib/server/public-work";
 import { imageAvailabilityInclude } from "@/lib/storage/image-availability";
 import {
   serializeAdminWork,
@@ -247,7 +248,7 @@ export async function listFeaturedWorksPage(
 
   const works = await db.generationImage.findMany({
     where: {
-      showcaseStatus: ShowcaseStatus.FEATURED,
+      ...publicWorkWhere,
       featuredAt: {
         not: null,
       },
@@ -361,9 +362,9 @@ export async function listAdminWorks(take = 120) {
   return works.map(serializeAdminWork);
 }
 
-export async function getWorkById(id: string) {
+export async function getWorkById(id: string, viewerId?: string | null) {
   const work = await db.generationImage.findUnique({
-    where: { id },
+    where: { id, ...visibleWorkWhere(viewerId) },
     include: workBaseInclude,
   });
 
@@ -390,6 +391,7 @@ export async function getWorkMutationTarget(id: string) {
         },
       },
       showcaseStatus: true,
+      submittedAt: true,
     },
   });
 }
@@ -437,7 +439,7 @@ export async function listFeaturedVideosPage(
 
   const videos = await db.generatedVideo.findMany({
     where: {
-      showcaseStatus: ShowcaseStatus.FEATURED,
+      ...publicWorkWhere,
       featuredAt: { not: null },
       ...(hasValidCursor
         ? {
@@ -480,6 +482,7 @@ export async function getVideoMutationTarget(id: string) {
       featuredAt: true,
       job: { select: { userId: true } },
       showcaseStatus: true,
+      submittedAt: true,
     },
   });
 }
@@ -670,6 +673,7 @@ export async function listAdminReviewPage(options: {
         ownerId: row.job.userId,
         posterUrl: row.posterUrl,
         prompt: row.job.prompt,
+        publicAuthorName: row.publicAuthorName,
         reviewNote: row.reviewNote,
         reviewedAt: row.reviewedAt?.toISOString() ?? null,
         reviewedById: row.reviewedById,
@@ -746,6 +750,7 @@ export async function listAdminReviewPage(options: {
     ownerId: row.job.userId,
     posterUrl: row.posterUrl,
     prompt: row.job.prompt,
+    publicAuthorName: row.publicAuthorName,
     reviewNote: row.reviewNote,
     reviewedAt: row.reviewedAt?.toISOString() ?? null,
     reviewedById: row.reviewedById,

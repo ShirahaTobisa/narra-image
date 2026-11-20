@@ -41,9 +41,6 @@ export async function GET(request: Request) {
       ? await listFeaturedWorksPage({ cursor, limit, viewerId: user.id })
       : await getAnonymousFeaturedPage(cursor, limit);
 
-  const headers: HeadersInit = user
-    ? { "Cache-Control": "private, no-store" }
-    : { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120" };
-
-  return Response.json(data, { headers });
+  // 只使用可按封禁/审核操作失效的服务端缓存，不让外部缓存继续展示已撤回作品。
+  return Response.json(data, { headers: { "Cache-Control": "private, no-store" } });
 }

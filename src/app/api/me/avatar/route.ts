@@ -4,12 +4,15 @@ import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
 import { db } from "@/lib/db";
 import { getEnv } from "@/lib/env";
+import { checkGenerationInput } from "@/lib/moderation/check";
 import { serializeUser } from "@/lib/prisma-mappers";
 import { getCurrentUserRecord } from "@/lib/server/current-user";
 import { jsonError, jsonOk, getErrorMessage } from "@/lib/server/http";
+import { createRateLimiter } from "@/lib/server/rate-limit";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_SIZE = 200 * 1024; // 200KB：头像按 data URL 存进数据库，每次随页面一起下发
+const uploads = createRateLimiter({ limit: 5, windowMs: 60_000 });
 
 function createS3Client() {
   const env = getEnv();
@@ -39,10 +42,13 @@ export async function POST(request: Request) {
     if (!user) {
       return jsonError("未登录", 401);
     }
+    if (!uploads.tryRecord(user.id)) {
+      return jsonError("头像上传过于频繁，请稍后再试", 429);
+    }
 
     const formData = await request.formData();
-    const file = formData.get("avatar") as File | null;
-    if (!file) {
+    const file = formData.get("avatar");
+    if (!file || typeof file === "string") {
       return jsonError("请上传头像文件");
     }
 
@@ -56,6 +62,13 @@ export async function POST(request: Request) {
 
     const env = getEnv();
     const buffer = Buffer.from(await file.arrayBuffer());
+    const moderation = await checkGenerationInput({
+      builtIn: true,
+      images: [{ data: buffer, mimeType: file.type }],
+      userId: user.id,
+    });
+    if (!moderation.allowed) return jsonError(moderation.message);
+
     const ext = file.type.split("/")[1] === "jpeg" ? "jpg" : file.type.split("/")[1];
     const fileName = `avatars/${user.id}/${randomUUID()}.${ext}`;
 

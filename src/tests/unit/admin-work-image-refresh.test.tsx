@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -10,7 +10,29 @@ import { AdminWorksBoard } from "@/components/admin/admin-works-board";
 import { serializeAdminWork } from "@/lib/prisma-mappers";
 import { createPrivacyWork } from "./helpers/work-privacy-fixtures";
 
+afterEach(() => vi.unstubAllGlobals());
+
 describe("admin image viewer follows current media presentation", () => {
+  it.each([null, "已送审署名"])("shows the submitted public authorship %j instead of the current profile name", (publicAuthorName) => {
+    const work = serializeAdminWork(createPrivacyWork({ publicAuthorName, showcaseStatus: "PENDING" }));
+    render(<AdminWorksBoard works={[work]} />);
+    expect(screen.getByText(`公开署名：${publicAuthorName ?? "匿名创作者"}`)).toBeInTheDocument();
+    expect(screen.queryByText("Public author nickname")).not.toBeInTheDocument();
+  });
+
+  it.each([false, true])("single/batch=%s approval submits the displayed revision", async (batch) => {
+    const user = userEvent.setup();
+    const work = serializeAdminWork(createPrivacyWork({ publicAuthorName: "已送审署名", showcaseStatus: "PENDING" }));
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ data: { updatedCount: 1, skippedCount: 0 } }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AdminWorksBoard works={[work]} activeStatus="PENDING" enableBatch={batch} />);
+    if (batch) await user.click(screen.getByRole("button", { name: "全选本页" }));
+    await user.click(screen.getByRole("button", { name: batch ? "批量通过投稿" : "通过投稿" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(batch ? body.items[0].submittedAt : body.submittedAt).toBe(work.submittedAt);
+    expect(body.action).toBe("approve_feature");
+  });
   it("refreshes an already-open viewer when an available historical image gains a managed URL", async () => {
     const user = userEvent.setup();
     const original = serializeAdminWork(createPrivacyWork());

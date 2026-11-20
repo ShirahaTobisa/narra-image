@@ -76,4 +76,17 @@ describe("worker contract v1 shared scenarios", () => {
     expect(GENERATION_ERRORS.GENERATION_CANCELLED.refundable).toBe(true);
     expect(GENERATION_ERRORS.GENERATION_WAIT_TIMEOUT.refundable).toBe(false);
   });
+
+  it("封禁只取消首次发送前的任务，legacy 和 v1 均保留已发送任务", () => {
+    for (const scenario of lifecycleScenarios.scenarios) {
+      if (!("contractVersion" in scenario) || scenario.contractVersion === undefined) continue;
+      if (scenario.action === "ban_before_submit") {
+        expect(scenario.result).toMatchObject({ errorCode: "GENERATION_CANCELLED", refund: true, upstreamRequests: 0 });
+        if (scenario.handoffState !== null && scenario.handoffState !== "NOT_STARTED") throw new Error("发送前封禁 fixture 状态错误");
+        expect(isGenerationRefundAllowed({ contractVersion: scenario.contractVersion, handoffState: scenario.handoffState })).toBe(true);
+      } else if (scenario.action === "ban_after_submit") {
+        expect(scenario.result).toEqual({ jobChanged: false, refund: false });
+      }
+    }
+  });
 });

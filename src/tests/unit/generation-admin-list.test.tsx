@@ -56,6 +56,7 @@ function createJob(input: Partial<GenerationAdminJob> = {}): GenerationAdminJob 
         jobId: "job_1",
         mediaStorage: "S3",
         mediaAssetId: null,
+        publicAuthorName: null,
         reviewNote: null,
         reviewedAt: null,
         reviewedById: null,

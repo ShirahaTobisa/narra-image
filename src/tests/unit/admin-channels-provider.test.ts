@@ -41,7 +41,9 @@ vi.mock("@/lib/env", () => ({
 vi.mock("@/lib/providers/provider-secret", () => ({
   decryptProviderSecret: mockDecryptProviderSecret,
 }));
+vi.mock("@/lib/server/api-auth", () => ({ requireApiUser: vi.fn().mockResolvedValue({ user: { id: "test-user" } }) }));
 
+import { GET as listModels } from "@/app/v1/models/route";
 import { getChannelById, getChannelsForAdmin, getGenerationChannelForModel } from "@/lib/providers/built-in-provider";
 
 describe("站内渠道兜底", () => {
@@ -53,9 +55,9 @@ describe("站内渠道兜底", () => {
   function withHistory(jobs: Array<ReturnType<typeof failed> & { errorCode?: string }>) {
     // 模拟数据库 WHERE 在 LIMIT 之前过滤，包括 SQL NULL 的语义。
     mockGenerationJobFindMany.mockImplementation(({ where, take }) => Promise.resolve(jobs.filter((job) =>
-      !where.OR || where.OR.some((filter: { errorCode: { not: string } | null }) =>
+      !where.OR || where.OR.some((filter: { errorCode: { not?: string; notIn?: string[] } | null }) =>
         filter.errorCode === null ? job.errorCode == null
-          : job.errorCode != null && job.errorCode !== filter.errorCode.not),
+          : job.errorCode != null && job.errorCode !== filter.errorCode.not && !filter.errorCode.notIn?.includes(job.errorCode)),
     ).slice(0, take)));
   }
 
@@ -71,6 +73,13 @@ describe("站内渠道兜底", () => {
   it("主渠道正常时用主渠道", async () => {
     mockGenerationJobFindMany.mockResolvedValue([{ errorMessage: null, status: "SUCCEEDED" }]);
     await expect(getGenerationChannelForModel("gpt-image-2.6-flare")).resolves.toMatchObject({ id: "primary" });
+  });
+
+  it("API 模型列表只公布实际允许请求的模型", async () => {
+    const response = await listModels(new Request("https://example.test/v1/models"));
+    expect(response.status).toBe(200);
+    expect((await response.json()).data.map((model: { id: string }) => model.id))
+      .toEqual(["gpt-image-2.6-sunburst", "gpt-image-2.6-flare"]);
   });
 
   it("主渠道最近 3 个任务都失败，就换到兜底渠道", async () => {
@@ -107,9 +116,30 @@ describe("站内渠道兜底", () => {
     await expect(getGenerationChannelForModel("gpt-image-2.6-flare")).resolves.toMatchObject({ id: "fallback" });
   });
 
-  it("主渠道不支持的模型直接由兜底渠道接", async () => {
-    await expect(getGenerationChannelForModel("gpt-image-9")).resolves.toMatchObject({ id: "fallback" });
+  it.each(["gpt-image-9", "gpt-image-2.6", "*"])("未公开模型 %s 不能绕过主渠道直达兜底", async (model) => {
+    await expect(getGenerationChannelForModel(model)).rejects.toMatchObject({ code: "MODEL_NOT_SUPPORTED_BY_CHANNEL" });
     expect(mockGenerationJobFindMany).not.toHaveBeenCalled();
+    expect(mockDecryptProviderSecret).not.toHaveBeenCalled();
+  });
+
+  it("只有兜底渠道时仍允许明确配置的模型，不接受任意模型", async () => {
+    mockProviderChannelFindMany.mockResolvedValue([channel("fallback", "fallback-model", ["*", "known-model"])]);
+    await expect(getGenerationChannelForModel("fallback-model")).resolves.toMatchObject({ id: "fallback" });
+    await expect(getGenerationChannelForModel("known-model")).resolves.toMatchObject({ id: "fallback" });
+    await expect(getGenerationChannelForModel("unknown-model")).rejects.toMatchObject({ code: "MODEL_NOT_SUPPORTED_BY_CHANNEL" });
+  });
+
+  it("缺少参考图的失败不会让全站切换渠道", async () => {
+    withHistory(Array.from({ length: 3 }, () => ({ ...failed("请先上传参考图"), errorCode: "SOURCE_IMAGE_INVALID" })));
+    await expect(getGenerationChannelForModel("gpt-image-2.6-flare")).resolves.toMatchObject({ id: "primary" });
+  });
+
+  it("参考图输入错误既不凑数，也不掩盖三个真实渠道故障", async () => {
+    const invalid = { ...failed("请先上传参考图"), errorCode: "SOURCE_IMAGE_INVALID" };
+    withHistory([failed("upstream 502"), invalid, failed("timeout")]);
+    await expect(getGenerationChannelForModel("gpt-image-2.6-flare")).resolves.toMatchObject({ id: "primary" });
+    withHistory([invalid, failed("upstream 502"), failed("timeout"), failed("upstream 503")]);
+    await expect(getGenerationChannelForModel("gpt-image-2.6-flare")).resolves.toMatchObject({ id: "fallback" });
   });
 });
 

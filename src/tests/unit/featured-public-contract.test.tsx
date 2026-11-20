@@ -72,6 +72,8 @@ describe.each([
     expect(apiPage.items).toEqual([initialWork]);
     expect(Object.keys(initialWork).sort()).toEqual(publicFeaturedKeys);
     expect(initialWork).toHaveProperty("showPromptPublic", showPromptPublic);
+    expect(initialWork.authorName).toBe("匿名创作者");
+    expect(JSON.stringify({ initialWork, apiPage })).not.toContain("Public author nickname");
     expect(initialWork.prompt).toBe(showPromptPublic ? workPrivacySentinels.prompt : "作者未公开提示词");
     const transferred = JSON.stringify({ initialWork, apiPage });
     for (const sentinel of [
@@ -88,9 +90,7 @@ describe.each([
     if (!showPromptPublic) {
       expect(transferred).not.toContain(workPrivacySentinels.prompt.split("\n")[0]);
     }
-    expect(response.headers.get("Cache-Control")).toBe(user
-      ? "private, no-store"
-      : "public, s-maxage=60, stale-while-revalidate=120");
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
     for (const [query] of mocks.findMany.mock.calls) {
       expect(query.take).toBe(17);
       expect(query.where.showcaseStatus).toBe("FEATURED");

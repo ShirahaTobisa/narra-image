@@ -1,6 +1,37 @@
+import { randomUUID } from "node:crypto";
 import { parseGenerateRequest } from "@/lib/generation/parse-generate-request";
 
 describe("生成请求解析", () => {
+  it.each(["image_to_image", "image_to_video"])("JSON %s 缺少受支持的参考图输入时拒绝", async (generationType) => {
+    const request = new Request("https://example.com/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ generationType, model: "test-model", prompt: "a blue landscape", imageUrls: ["https://untrusted.example/image.png"] }),
+    });
+    await expect(parseGenerateRequest(request)).rejects.toThrow("请先上传参考图");
+  });
+
+  it("Canvas 图生图保留规范引用，不按普通 JSON 的空文件列表拒绝", async () => {
+    vi.stubEnv("AUTH_SECRET", "canvas-parser-fixture-only-auth-secret");
+    vi.stubEnv("DATABASE_URL", "postgresql://127.0.0.1:1/canvas_parser_never_connect");
+    try {
+      const references = [{ sourceNodeId: randomUUID(), ordinal: 1, kind: "imported", assetId: "fixture-asset" }];
+      const result = await parseGenerateRequest(new Request("https://example.com/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Narra-Canvas-Run": "1" },
+        body: JSON.stringify({ canvasRun: {
+          canvasId: randomUUID(), nodeId: randomUUID(), runId: randomUUID(),
+          input: { prompt: { sourceNodeId: randomUUID(), text: "a blue landscape" }, references },
+          parameters: { model: "gpt-image-2", generationType: "image_to_image", count: 1 },
+        } }),
+      }));
+      expect(result.generationType).toBe("image_to_image");
+      expect(result.images).toEqual([]);
+      expect(result.canvasRun?.input.references).toEqual(references);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
   it("preserves mixed reference order across file aliases and URLs", async () => {
     const body = new FormData();
     body.append("model", "gpt-image-2");

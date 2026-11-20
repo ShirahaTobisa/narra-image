@@ -182,12 +182,14 @@ export const providerProbeSchema = z.object({
 export const workShowcaseUpdateSchema = z.object({
   action: z.enum(userWorkShowcaseActions),
   mediaType: z.enum(["image", "video"]).default("image"),
+  showAuthorPublic: z.boolean().default(false),
   showPromptPublic: z.boolean().optional(),
 });
 
 export const adminWorkReviewSchema = z.object({
   action: z.enum(adminWorkReviewActions),
   mediaType: z.enum(["image", "video"]).default("image"),
+  submittedAt: z.iso.datetime().nullable().optional(),
   reviewNote: z.string().trim().max(300, "审核备注最多 300 个字符").optional().nullable(),
 });
 
@@ -198,6 +200,7 @@ export const adminWorkBatchReviewSchema = z.object({
       z.object({
         id: z.string().trim().min(1),
         mediaType: z.enum(["image", "video"]).default("image"),
+        submittedAt: z.iso.datetime().nullable().optional(),
       }),
     )
     .min(1, "请至少选择一件作品")

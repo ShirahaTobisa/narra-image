@@ -113,12 +113,25 @@ describe.each(viewers)("image detail transfer: $label", ({ user }) => {
     expect(props.work.negativePrompt).toBe(showPromptPublic ? workPrivacySentinels.negativePrompt : null);
     expect(props.work.showPromptPublic).toBe(showPromptPublic);
     expect(props.work.url).toBe("https://media.unit.invalid/full-original-image.png");
+    expect(props.work.authorNickname).toBeNull();
+    expect(JSON.stringify(props)).not.toContain("Public author nickname");
     expectNoInternalData(props.work);
     if (!showPromptPublic) {
       expect(JSON.stringify(props)).not.toContain(workPrivacySentinels.prompt.split("\n")[0]);
       expect(JSON.stringify(props)).not.toContain(workPrivacySentinels.negativePrompt.split("\n")[0]);
     }
     expect(mocks.findVideo).not.toHaveBeenCalled();
+    const where = mocks.findUnique.mock.calls[0][0].where;
+    expect(user ? where.OR[0] : where).toMatchObject({ showcaseStatus: "FEATURED", job: { user: { bannedAt: null } } });
+  });
+
+  it("passes the submitted author name without disclosing a later profile change", async () => {
+    mocks.currentUser.mockResolvedValue(user);
+    mocks.findUnique.mockResolvedValue(createPrivacyWork({ publicAuthorName: "署名快照" }));
+    await renderDetail();
+    expect(panelProps().work.authorNickname).toBe("署名快照");
+    expect(JSON.stringify(panelProps())).not.toContain("Public author nickname");
+    expectNoInternalData(panelProps().work);
   });
 
   it.each(
@@ -214,6 +227,9 @@ describe("missing-image and video fallback compatibility", () => {
     await renderDetail();
 
     expect(screen.getByText(showPromptPublic ? "Video prompt fixture" : "作者未公开提示词")).toBeInTheDocument();
+    expect(mocks.findVideo).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "work_privacy_fixture", showcaseStatus: "FEATURED", job: { user: { bannedAt: null } } },
+    }));
     expect(mocks.panel).not.toHaveBeenCalled();
   });
 
@@ -222,5 +238,20 @@ describe("missing-image and video fallback compatibility", () => {
     mocks.findVideo.mockResolvedValue({ showcaseStatus: "PRIVATE", job: { userId: "video_owner" } });
     await expect(renderDetail()).rejects.toThrow("NEXT_NOT_FOUND");
     expect(mocks.panel).not.toHaveBeenCalled();
+  });
+
+  it("keeps a valid owner's private video accessible with the owner branch of the same guard", async () => {
+    mocks.currentUser.mockResolvedValue(createPrivacyUser("video_owner"));
+    mocks.findUnique.mockResolvedValue(null);
+    mocks.findVideo.mockResolvedValue({
+      id: "work_privacy_fixture", job: { prompt: "Owner video", userId: "video_owner" },
+      posterUrl: null, showcaseStatus: "PRIVATE", showPromptPublic: false, url: "https://media.unit.invalid/private-video.mp4",
+    });
+    await renderDetail();
+    expect(mocks.findVideo.mock.calls[0][0].where.OR).toEqual([
+      { showcaseStatus: "FEATURED", job: { user: { bannedAt: null } } },
+      { job: { userId: "video_owner" } },
+    ]);
+    expect(mocks.notFound).not.toHaveBeenCalled();
   });
 });

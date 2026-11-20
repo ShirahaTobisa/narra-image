@@ -188,12 +188,17 @@ function buildRequestBody(overrides: Record<string, unknown> = {}) {
 }
 
 function submissionTransaction() {
-  const create = vi.fn(async ({ data }) => ({ ...data, id: "new-job", images: [], videos: [] }));
+  let job: Record<string, unknown>;
+  const create = vi.fn(async ({ data }) => (job = { ...data, id: "new-job", images: [], videos: [] }));
   const charge = vi.fn().mockResolvedValue({ count: 1 });
   const tx = {
     $executeRaw: vi.fn().mockResolvedValue(0), $queryRaw: mockRawQuery,
-    generationJob: { count: vi.fn().mockResolvedValue(0), create },
-    user: { updateMany: charge }, imageUrlAlias: { findMany: vi.fn().mockResolvedValue([]) },
+    generationJob: {
+      count: vi.fn().mockResolvedValue(0), create,
+      updateMany: vi.fn(async ({ data }) => { Object.assign(job, data); return { count: 1 }; }),
+      findUniqueOrThrow: vi.fn(async () => job),
+    },
+    user: { updateMany: charge, findUnique: mockRequireCurrentUserRecord }, imageUrlAlias: { findMany: vi.fn().mockResolvedValue([]) },
   };
   mockDbTransaction.mockImplementation(async (operation: (client: typeof tx) => Promise<unknown>) => operation(tx));
   mockPersistGeneratedImage.mockResolvedValue("https://app.unit.invalid/upload.png");
@@ -226,6 +231,7 @@ describe("生成接口安全校验顺序", () => {
       videoCreditCost: 20,
     });
     mockRequireTurnstile.mockResolvedValue(undefined);
+    mockFailGenerationJobAndRefund.mockResolvedValue({ updated: true, refundedCredits: 5 });
     mockCheckGenerationInput.mockResolvedValue({ allowed: true });
     mockImageFindFirst.mockResolvedValue(null);
     mockJobFindFirst.mockResolvedValue(null);
@@ -409,15 +415,20 @@ describe("生成接口安全校验顺序", () => {
       expect(inTransaction).toBe(true);
       aliases.set(url, assetId);
     });
+    let stored: Record<string, unknown>;
     const create = vi.fn(async ({ data }: { data: { sourceImageUrls: string[] } }) => {
       expect(aliases.get(rawUrl)).toBe(image.asset.id);
       persistedInputs.push([...data.sourceImageUrls]);
-      return { ...data, id: "new-reference-job", images: [], videos: [] };
+      return stored = { ...data, id: "new-reference-job", images: [], videos: [] };
     });
     const charge = vi.fn().mockResolvedValue({ count: 1 });
     const tx = {
       $executeRaw: vi.fn().mockResolvedValue(0), $queryRaw: mockRawQuery,
-      generationJob: { count: vi.fn().mockResolvedValue(0), create }, user: { updateMany: charge },
+      generationJob: {
+        count: vi.fn().mockResolvedValue(0), create,
+        updateMany: vi.fn(async ({ data }) => { Object.assign(stored, data); return { count: 1 }; }),
+        findUniqueOrThrow: vi.fn(async () => stored),
+      }, user: { updateMany: charge, findUnique: mockRequireCurrentUserRecord },
       imageUrlAlias: { findMany: vi.fn(async () => [...aliases].map(([url]) => ({ url, asset: image.asset }))) },
     };
     mockDbTransaction.mockImplementation(async (operation: (client: typeof tx) => Promise<unknown>) => {
@@ -446,21 +457,14 @@ describe("生成接口安全校验顺序", () => {
     }
     expect(sourceUrls).toEqual([rawUrl]);
     expect(mockPersistGeneratedImage).not.toHaveBeenCalled();
-    expect(mockFailGenerationJobAndRefund).not.toHaveBeenCalled();
+    expect(mockFailGenerationJobAndRefund).toHaveBeenCalledTimes(cleanedBeforeCommit ? 1 : 0);
   });
 
   it("数据库旧图可继续生成，混合上传和旧图保持原顺序且都经过审核", async () => {
     const first = "data:image/png;base64,aW1hZ2UtMQ==";
     const second = "data:image/png;base64,aW1hZ2UtMg==";
     mockImageFindFirst.mockResolvedValue({ id: "own-image" });
-    const create = vi.fn(async ({ data }) => ({ ...data, id: "new-job", images: [], videos: [] }));
-    const tx = {
-      $executeRaw: vi.fn().mockResolvedValue(0), $queryRaw: mockRawQuery,
-      generationJob: { count: vi.fn().mockResolvedValue(0), create }, user: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
-      imageUrlAlias: { findMany: vi.fn().mockResolvedValue([]) },
-    };
-    mockDbTransaction.mockImplementation(async (operation: (client: typeof tx) => Promise<unknown>) => operation(tx));
-    mockPersistGeneratedImage.mockResolvedValue("https://app.unit.invalid/upload.png");
+    submissionTransaction();
     mockParseGenerateRequest.mockResolvedValue(buildRequestBody({ imageUrls: [first, second], imageInputOrder: ["url", "file", "url"] }));
     const response = await POST(new Request("https://app.unit.invalid/api/generate", { method: "POST" }));
     expect(response.status).toBe(200);
@@ -492,7 +496,7 @@ describe("生成接口安全校验顺序", () => {
     const create = vi.fn();
     const charge = vi.fn();
     const executeRaw = vi.fn().mockResolvedValue(1);
-    const tx = { $executeRaw: executeRaw, generationJob: { count: vi.fn().mockResolvedValue(2), create }, user: { updateMany: charge } };
+    const tx = { $executeRaw: executeRaw, generationJob: { count: vi.fn().mockResolvedValue(2), create }, user: { updateMany: charge, findUnique: mockRequireCurrentUserRecord } };
     mockDbTransaction.mockImplementation(async (operation: (client: typeof tx) => Promise<unknown>) => operation(tx));
     mockParseGenerateRequest.mockResolvedValue(buildRequestBody({ generationType: "text_to_image", image: null, imageUrls: [], images: [] }));
 
@@ -500,7 +504,8 @@ describe("生成接口安全校验顺序", () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({ error: expect.stringContaining("同时最多 2 个任务") });
-    expect(String(executeRaw.mock.calls[0][0].join("?"))).toContain("FOR UPDATE");
+    expect(String(executeRaw.mock.calls[0][0].join("?"))).toContain("image_lock_reference_epoch");
+    expect(String(executeRaw.mock.calls[1][0].join("?"))).toContain("FOR UPDATE");
     expect(create).not.toHaveBeenCalled();
     expect(charge).not.toHaveBeenCalled();
   });

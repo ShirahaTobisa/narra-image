@@ -279,7 +279,7 @@ describe("作品操作 schema 的 mediaType", () => {
   });
 
   it("审核 schema 默认 mediaType=image，可显式传 video", () => {
-    expect(adminWorkReviewSchema.parse({ action: "approve_feature" }).mediaType).toBe("image");
-    expect(adminWorkReviewSchema.parse({ action: "approve_feature", mediaType: "video" }).mediaType).toBe("video");
+    expect(adminWorkReviewSchema.parse({ action: "approve_feature", submittedAt: null }).mediaType).toBe("image");
+    expect(adminWorkReviewSchema.parse({ action: "approve_feature", mediaType: "video", submittedAt: null }).mediaType).toBe("video");
   });
 });

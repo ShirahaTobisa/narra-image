@@ -27,10 +27,10 @@ vi.mock("next/cache", () => ({
 vi.mock("@/lib/db", () => ({
   db: {
     generatedVideo: {
-      update: mockGeneratedVideoUpdate,
+      updateMany: mockGeneratedVideoUpdate,
     },
     generationImage: {
-      update: mockGenerationImageUpdate,
+      updateMany: mockGenerationImageUpdate,
     },
     user: {
       findUnique: mockFindUniqueUser,
@@ -174,6 +174,7 @@ describe("Stage 2 后台核心运营接口", () => {
 
   describe("POST /api/admin/works/batch-review", () => {
     it("支持图片与视频混合批量审核，跳过非法状态流转并触发缓存刷新", async () => {
+      const submittedAt = new Date("2026-11-17T00:00:00.000Z");
       mockRequireAdminRecord.mockResolvedValue({ id: "admin_1" });
       mockGetWorkMutationTarget.mockImplementation(async (id: string) => {
         if (id === "img_pending") {
@@ -181,6 +182,7 @@ describe("Stage 2 后台核心运营接口", () => {
             featuredAt: null,
             id: "img_pending",
             showcaseStatus: "PENDING",
+            submittedAt,
           };
         }
         if (id === "img_already_featured") {
@@ -188,6 +190,7 @@ describe("Stage 2 后台核心运营接口", () => {
             featuredAt: new Date("2026-11-17T00:00:00.000Z"),
             id: "img_already_featured",
             showcaseStatus: "FEATURED",
+            submittedAt,
           };
         }
         return null;
@@ -196,19 +199,26 @@ describe("Stage 2 后台核心运营接口", () => {
         featuredAt: null,
         id: "vid_pending",
         showcaseStatus: "PENDING",
+        submittedAt,
       });
-      mockGenerationImageUpdate.mockResolvedValue({});
-      mockGeneratedVideoUpdate.mockResolvedValue({});
+      mockGenerationImageUpdate.mockImplementation(async ({ where }) => ({
+        count: where.id === "img_pending" && where.showcaseStatus === "PENDING"
+          && where.submittedAt?.getTime() === submittedAt.getTime() ? 1 : 0,
+      }));
+      mockGeneratedVideoUpdate.mockImplementation(async ({ where }) => ({
+        count: where.id === "vid_pending" && where.showcaseStatus === "PENDING"
+          && where.submittedAt?.getTime() === submittedAt.getTime() ? 1 : 0,
+      }));
 
       const response = await batchReviewWorks(
         new Request("https://example.com/api/admin/works/batch-review", {
           body: JSON.stringify({
             action: "approve_feature",
             items: [
-              { id: "img_pending", mediaType: "image" },
-              { id: "vid_pending", mediaType: "video" },
-              { id: "img_already_featured", mediaType: "image" },
-              { id: "img_missing", mediaType: "image" },
+              { id: "img_pending", mediaType: "image", submittedAt: submittedAt.toISOString() },
+              { id: "vid_pending", mediaType: "video", submittedAt: submittedAt.toISOString() },
+              { id: "img_already_featured", mediaType: "image", submittedAt: submittedAt.toISOString() },
+              { id: "img_missing", mediaType: "image", submittedAt: submittedAt.toISOString() },
             ],
             reviewNote: "精选合集",
           }),

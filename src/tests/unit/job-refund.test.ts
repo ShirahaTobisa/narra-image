@@ -41,6 +41,7 @@ function createRefundJob(
     refundAppliedAt: Date | null;
     status: GenerationStatus;
     userId: string;
+    workerManaged: boolean;
   }> = {},
 ) {
   return {
@@ -53,6 +54,7 @@ function createRefundJob(
     refundAppliedAt: null,
     status: GenerationStatus.PENDING,
     userId: "user_1",
+    workerManaged: true,
     ...input,
   };
 }
@@ -177,6 +179,22 @@ describe("生成任务失败退款", () => {
       refundedCredits: 0,
       updated: false,
     });
+    expect(mockUpdateUser).not.toHaveBeenCalled();
+  });
+
+  it("预备任务补偿不会退款给已启用的legacy任务", async () => {
+    mockFindUnique.mockResolvedValue(createRefundJob());
+    await expect(failGenerationJobAndRefund({ jobId: "job_1", errorMessage: "lost acknowledgement", onlyUnmanagedPending: true }))
+      .resolves.toEqual({ blockedByWorkerState: true, refundedCredits: 0, updated: false });
+    expect(mockUpdateMany).not.toHaveBeenCalled(); expect(mockUpdateUser).not.toHaveBeenCalled();
+  });
+
+  it("退款读取后任务被启用时CAS失败，调用者必须保留输出预留", async () => {
+    mockFindUnique.mockResolvedValue(createRefundJob({ workerManaged: false }));
+    mockUpdateMany.mockResolvedValue({ count: 0 });
+    await expect(failGenerationJobAndRefund({ jobId: "job_1", errorMessage: "upload failed", onlyUnmanagedPending: true }))
+      .resolves.toEqual({ blockedByWorkerState: true, refundedCredits: 0, updated: false });
+    expect(mockUpdateMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ workerManaged: false, status: { in: [GenerationStatus.PENDING] } }) }));
     expect(mockUpdateUser).not.toHaveBeenCalled();
   });
 

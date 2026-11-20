@@ -18,6 +18,10 @@
 - 提示词权限沿用 `canShowWorkPrompt({ isOwner: false, ... })`。不允许公开时，正向和负向提示词均为 `null`；允许时保留原文。
 - 无论提示词是否公开，非作者 DTO 均不包含 `ownerId`、`jobId`、生成元数据、`submittedAt`、`reviewNote`、`reviewedAt`、`reviewedById`、`reviewer`。新增作者/管理字段不会自动成为公开字段。
 - 作者继续使用 `serializeWork`，后台继续使用 `serializeAdminWork`；不得全局剥离这些 serializer 的授权数据，也不得原地删除可能被复用对象的字段。
+- 公开署名只来自作品的 `publicAuthorName` 投稿快照；空值表示匿名，不得回退到当前 `User.nickname`。图片公开详情仍使用白名单内的 `authorNickname` 字段承载该快照，图片/视频精选的 `authorName` 使用同一规则，头像保持不公开。私有/管理 DTO 另外携带 `publicAuthorName`，私有的 `authorNickname` 仍可用于投稿前昵称预览。
+- 投稿的 `showAuthorPublic` 默认 `false`；只有作者明确选择时，服务端读取已鉴权用户的非空 trimmed 昵称，经现有严格文字审核后存入快照，不信任客户端提供的名字。自动通过投稿也执行同一状态和昵称审核。以后修改个人资料不改变已送审/公开内容；再次投稿重新选择，旧作品可空列不回填历史昵称。
+- 管理员单件和批量审批必须携带页面所见 `submittedAt`，与当前投稿匹配后，再按状态和该时间条件更新。撤回重投或读写期间状态变化返回冲突/批量跳过，不能让旧页面批准新的署名；审批不重写名字。
+- 图片/视频的公开资格统一使用 `src/lib/server/public-work.ts`：必须为 `FEATURED` 且作者 `bannedAt: null`，适用于精选、公开详情和点赞。详情只为服务端鉴权确认的作者增加私有访问分支，后台独立查询不受此限制。封禁/解封不改原作品状态，解封恢复已批准作品；成功后以 `revalidateTag("featured-works", { expire: 0 })` 立即失效服务端缓存，精选接口响应 `private, no-store`，防止外部缓存继续回放。已发送给浏览器的内容及媒体 token 不在此撤销范围。
 - 精选 DTO 显式携带 `showPromptPublic: boolean`。隐藏时服务端仍将 `prompt` 替换为说明文案；客户端不能用字符串非空或字符串不等于占位文案推断公开权限。
 - 公共提示词入口只在权限严格等于 `true` 时开放。旧缓存缺少该字段按不公开处理；真实公开文本即使恰好等于旧占位说明，也不能仅凭文本拒绝它。
 - `availability` 仅为 `available | cleaned | unavailable`：已纳管且 DELETED 映射 cleaned，其他不可读状态映射 unavailable，旧未纳管图片保持兼容。查询必须包含用于投影的媒体状态，不能从图片网络失败推断或把缺少关联投影的数据默认为可用。
@@ -50,6 +54,7 @@
 - `public-work-detail-serialization.test.ts`：冻结带未来管理字段的输入，检查纯投影和完整允许键；公开投影不得污染作者/后台结果。
 - `featured-public-contract.test.tsx`、`prisma-mappers.test.ts`：Home 首屏和分页接口合同一致，隐藏原文不出站，显式权限真/假及与占位说明相同的公开原文均覆盖。
 - `work-detail-panel.test.tsx`：作者投稿/撤回等管理能力及允许公开提示词保留。
+- `work-showcase-route.test.ts`、`public-author-privacy.test.ts`：匿名默认、空昵称、客户端伪造名、文字审核拒绝/异常、自动通过和视频兼容；修改资料后公开快照不变，单件/批量旧投稿版本不能获批。页面 props 与首页/API 传输继续核对私有昵称不出站；作者选择和后台展示用真实组件交互验证。
 - 媒体状态回归覆盖已清理占位、禁用下载/复用、任务终态/提示词保留，以及旧未纳管/缓存兼容；公开页面 props 的精确白名单只增加 `availability`，不能展开完整媒体关联。
 - 浏览器/Next 验证必须额外检查初次 HTML、导航及刷新 RSC 的原始响应敏感值，而不只检查可见 DOM。隔离模拟 DB 的结果不等于真实 DB/账户服务 E2E。
 

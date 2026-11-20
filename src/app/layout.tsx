@@ -6,7 +6,7 @@ import { PetCompanion } from "@/components/pet/pet-companion";
 
 export const metadata: Metadata = {
   title: "Narra Image",
-  description: "潮流感生图工作台，支持内置渠道与自填 OpenAI 兼容渠道。",
+  description: "AI 图像创作社区，支持文字生图、参考图编辑与多轮创作。",
 };
 
 export default function RootLayout({

@@ -52,6 +52,7 @@ afterEach(() => { vi.unstubAllGlobals(); });
 function createWork(input: Partial<SerializedWork> = {}): SerializedWork {
   return {
     authorNickname: "作者",
+    publicAuthorName: null,
     createdAt: "2026-05-12T10:00:00.000Z",
     featuredAt: "2026-05-12T11:00:00.000Z",
     generationCreatedAt: "2026-05-12T10:00:00.000Z",

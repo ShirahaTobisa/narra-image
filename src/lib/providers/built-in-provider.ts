@@ -8,6 +8,7 @@ import {
   normalizeProviderModels,
 } from "@/lib/generation/contracts";
 import { decryptProviderSecret } from "@/lib/providers/provider-secret";
+import { mergeChannelsForUsers } from "@/lib/providers/built-in-provider-core";
 
 /**
  * Resolved channel config used for generation.
@@ -207,16 +208,15 @@ export async function getGenerationChannelForModel(
     if (!fallback) {
       throw new GenerationContractError("PROVIDER_NOT_CONFIGURED");
     }
-    if (!channelSupportsModel({
-      defaultModel: fallback.defaultModel,
-      model: requestedModel,
-      models: fallback.models,
-    })) {
+    if (!mergeChannelsForUsers([fallback])[0]?.models.includes(requestedModel.trim())) {
       throw new GenerationContractError("MODEL_NOT_SUPPORTED_BY_CHANNEL");
     }
     return fallback;
   }
 
+  if (!mergeChannelsForUsers(channels)[0]?.models.includes(requestedModel.trim())) {
+    throw new GenerationContractError("MODEL_NOT_SUPPORTED_BY_CHANNEL");
+  }
   const supported = channels.filter((candidate) => channelSupportsModel({
     defaultModel: candidate.defaultModel,
     model: requestedModel,
@@ -233,7 +233,7 @@ export async function getGenerationChannelForModel(
   return resolveStoredChannel(last);
 }
 
-// 最近 10 分钟的最后 3 个任务都因渠道失败时才切换；主动取消和审核拒绝不算。
+// 最近 10 分钟的最后 3 个任务都因渠道失败时才切换；取消、参考图输入错误和审核拒绝不算。
 const CHANNEL_FAILURE_WINDOW_MS = 10 * 60 * 1000;
 const CHANNEL_FAILURE_STREAK = 3;
 
@@ -243,7 +243,7 @@ async function isChannelFailing(channelId: string) {
     select: { errorMessage: true, status: true },
     take: CHANNEL_FAILURE_STREAK,
     where: {
-      OR: [{ errorCode: null }, { errorCode: { not: "GENERATION_CANCELLED" } }],
+      OR: [{ errorCode: null }, { errorCode: { notIn: ["GENERATION_CANCELLED", "SOURCE_IMAGE_INVALID"] } }],
       providerChannelId: channelId,
       status: { in: [GenerationStatus.SUCCEEDED, GenerationStatus.FAILED] },
       updatedAt: { gte: new Date(Date.now() - CHANNEL_FAILURE_WINDOW_MS) },

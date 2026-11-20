@@ -168,6 +168,9 @@ export async function parseGenerateRequest(request: Request | FormData) {
     outputCompression: json.outputCompression ?? json.output_compression,
     outputFormat: json.outputFormat ?? json.output_format,
   });
+  if (body.generationType === "image_to_image" || body.generationType === "image_to_video") {
+    throw new Error("请先上传参考图");
+  }
 
   return {
     ...body,
