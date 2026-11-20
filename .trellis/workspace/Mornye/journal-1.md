@@ -89,3 +89,25 @@ Kept reference-image generation; added fixed local NSFWJS/WASM prescreen before 
 ### Status
 
 [OK] **Completed**
+
+
+## Session 5: 修复多图扣费与每分钟五张限额并上线
+
+**Date**: 2026-11-21
+**Task**: 修复多图扣费与每分钟五张限额并上线
+**Branch**: `fix/site-stability`
+
+### Summary
+
+按实际输出张数计费并共享每用户五张/60秒额度；修正Kelivo与SSE超限HTTP429。2514项测试、54项脚本测试、tsc/lint/build及Alpine镜像183项定向回归通过。已推送代码并部署Sakura，审核保持开启，Worker/数据库/图片卷未变，健康和上线日志检查通过。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1c50f24` | (see git log) |
+| `4801a8a` | (see git log) |
+
+### Status
+
+[OK] **Completed**
