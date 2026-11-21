@@ -1,0 +1,210 @@
+{
+  "sha": "ac2972713f1b381f7a60f613a1e8c9613ea661d9",
+  "containers": [
+    {
+      "name": "narra-image-app-1",
+      "id": "8f1f8f9c5b08645a10265d2ad90b444195945f4e32d8c728bcd90639fa00f0be",
+      "imageId": "sha256:54d3f91164c5d81549d7cae9ec197cadac0780a2c9db0285f68ed2156ee16d71",
+      "health": "healthy",
+      "logErrorMatches": 0
+    },
+    {
+      "name": "narra-image-worker-1",
+      "id": "71cc93c588bb8140e7b0fa0acd2cf2d190072911ee2b3227ef6173788be75b18",
+      "imageId": "sha256:d730fd157561d2c13564312acefca961d97f559e3e66b9b4f81b808439332b78",
+      "health": "healthy",
+      "logErrorMatches": 0
+    },
+    {
+      "name": "narra-image-db-1",
+      "id": "54a74cdcd4e6fa5121645b14e8f66cefcd2890a182d8b60b32058aea8beb9253",
+      "imageId": "sha256:526f86d93c6ea08fd3f1fe5605650cacc781b2c6013169a0ad8f42c7d3d84f32",
+      "health": "healthy",
+      "logErrorMatches": null
+    }
+  ],
+  "state": {
+    "jobs": [
+      {
+        "status": "SUCCEEDED",
+        "count": 2
+      }
+    ],
+    "moderation": {
+      "isEnabled": true,
+      "sensitiveWordsEnabled": true,
+      "aiEnabled": true,
+      "aiBaseUrl": "https://api.openai.com/v1",
+      "aiModel": "omni-moderation-latest",
+      "aiThreshold": 0.7,
+      "hasKey": true
+    },
+    "api": {
+      "isEnabled": false
+    }
+  },
+  "flags": {
+    "VIDEO_ENABLED": "false",
+    "CUSTOM_PROVIDER_ENABLED": "false",
+    "CANVAS_ENABLED": "false",
+    "GATEWAY_ENABLED": "false",
+    "WORKER_CONTRACTS_V1_ENABLED": "false",
+    "IMAGE_STORAGE_MANAGED_ENABLED": "true",
+    "IMAGE_STORAGE_BACKEND": "local"
+  },
+  "database": {
+    "migration": [
+      {
+        "checksum": "630ed573c4a45e329b5c296ef7813eb0a84a4eec0cb12cf227890c36f4a9480f",
+        "finished": true,
+        "active": true
+      }
+    ],
+    "columns": [
+      {
+        "table_name": "GeneratedVideo",
+        "is_nullable": "YES"
+      },
+      {
+        "table_name": "GenerationImage",
+        "is_nullable": "YES"
+      }
+    ],
+    "policy": [
+      {
+        "limitBytes": "5000000000",
+        "enabled": false,
+        "scheduleEnabled": false
+      }
+    ],
+    "benefits": []
+  },
+  "http": {
+    "local": [
+      {
+        "path": "/api/healthz",
+        "status": 200,
+        "ms": 5
+      },
+      {
+        "path": "/api/readyz",
+        "status": 200,
+        "ms": 97
+      },
+      {
+        "path": "/",
+        "status": 200,
+        "ms": 32
+      },
+      {
+        "path": "/login",
+        "status": 200,
+        "ms": 25
+      },
+      {
+        "path": "/login?admin=1",
+        "status": 200,
+        "ms": 11
+      },
+      {
+        "path": "/register",
+        "status": 200
+      },
+      {
+        "path": "/invite-claim",
+        "status": 200
+      },
+      {
+        "path": "/create",
+        "status": 200
+      },
+      {
+        "path": "/api/auth/oauth/linuxdo",
+        "status": 403
+      },
+      {
+        "path": "/api/auth/oauth/linuxdo/callback",
+        "status": 403
+      },
+      {
+        "path": "/api/me/generations",
+        "status": 401
+      },
+      {
+        "path": "/api/auth/register",
+        "status": 403
+      },
+      {
+        "path": "/api/invites/batches/release-check-invalid/claim",
+        "status": 403
+      },
+      {
+        "path": "/api/auth/login cross-origin",
+        "status": 403
+      },
+      {
+        "path": "/api/auth/login invalid",
+        "status": 400
+      }
+    ],
+    "public": [
+      {
+        "path": "/",
+        "status": 200,
+        "ms": 32
+      },
+      {
+        "path": "/login",
+        "status": 200,
+        "ms": 37
+      },
+      {
+        "path": "/login?admin=1",
+        "status": 200,
+        "ms": 32
+      },
+      {
+        "path": "/register",
+        "status": 200
+      },
+      {
+        "path": "/invite-claim",
+        "status": 200
+      },
+      {
+        "path": "/create",
+        "status": 200
+      },
+      {
+        "path": "/api/auth/oauth/linuxdo",
+        "status": 403
+      },
+      {
+        "path": "/api/auth/oauth/linuxdo/callback",
+        "status": 403
+      },
+      {
+        "path": "/api/me/generations",
+        "status": 401
+      },
+      {
+        "path": "/api/auth/register",
+        "status": 403
+      },
+      {
+        "path": "/api/invites/batches/release-check-invalid/claim",
+        "status": 403
+      },
+      {
+        "path": "/api/auth/login cross-origin",
+        "status": 403
+      },
+      {
+        "path": "/api/auth/login invalid",
+        "status": 400
+      }
+    ]
+  },
+  "candidateAndProbesRemoved": true,
+  "temporaryUploadsRemoved": true
+}
