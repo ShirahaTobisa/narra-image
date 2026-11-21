@@ -65,7 +65,7 @@ func generateImages(ctx context.Context, storage *Storage, job GenerationJob, pr
 	sourceImages := []SourceImage{}
 	var err error
 	if job.GenerationType == "IMAGE_TO_IMAGE" {
-		sourceImages, err = storage.loadImageSources(ctx, job.SourceImageURLs)
+		sourceImages, err = storage.loadImageSources(context.WithValue(ctx, imageInputJobContextKey{}, job.ID), job.SourceImageURLs)
 		if err != nil {
 			return nil, err
 		}

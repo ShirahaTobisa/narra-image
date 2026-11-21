@@ -9,7 +9,7 @@ import {
 } from "./image-contract";
 import { imageMaintenanceJobSchema } from "./image-maintenance-contract";
 
-if (history.contract !== "narra.image.history" || history.version !== 1 || history.storageRevision !== 3) {
+if (history.contract !== "narra.image.history" || history.version !== 1 || history.storageRevision !== 4) {
   throw new Error("Unsupported image history contract");
 }
 export const IMAGE_HISTORY_PAGE_LIMIT = history.limits.pageItems;
@@ -93,4 +93,4 @@ export type ImageHistoryAdoptInput = ImageHistoryOwnedInput & { observationId: s
 export type ImageHistoryPrepareCopyInput = ImageHistoryOwnedInput & { expectedSourceObjectId: string; targetLocationId: string };
 export type ImageHistoryReconcileInput = ImageHistoryOwnedInput & { expectedTargetObjectId: string };
 export type ImageHistoryFinishReconciliationInput = ImageHistoryOwnedInput & { observationId: string; expectedOriginalWriteToken: string };
-export type ImageHistorySwitchInput = ImageHistoryOwnedInput & { targetReadbackObservationId: string; expectedActiveObjectId: string; aliasUrls: string[]; readerProtocolRevision: 3 };
+export type ImageHistorySwitchInput = ImageHistoryOwnedInput & { targetReadbackObservationId: string; expectedActiveObjectId: string; aliasUrls: string[]; readerProtocolRevision: 4 };

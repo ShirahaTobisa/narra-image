@@ -76,7 +76,7 @@ beforeEach(() => {
   mocks.aliases.mockImplementation(async (query: unknown) => {
     expect(query).toEqual({
       where: { url: { in: ["https://media.invalid/original.png"] } },
-      select: { url: true, asset: { select: { id: true, state: true, activeObjectId: true, publicToken: true } } },
+      select: { url: true, asset: { select: { id: true, state: true, activeObjectId: true, publicToken: true, purpose: true, expiresAt: true } } },
     });
     return [];
   });

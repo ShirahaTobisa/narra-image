@@ -3,8 +3,9 @@ import "server-only";
 import type { Prisma } from "@prisma/client";
 
 import { getEnv } from "@/lib/env";
-import { ImageStorageError } from "./image-contract";
-import { managedImagePublicToken } from "./image-optimizer";
+import { ImageStorageError, imageAssetPublicPath } from "./image-contract";
+import { isImageExpired } from "./image-availability";
+import { managedImageAddress } from "./image-optimizer";
 import { lockImageReferenceEpoch } from "./image-reference-lock";
 import { ImageRepository } from "./image-repository";
 
@@ -20,8 +21,8 @@ export async function bindManagedImageInputAliases(
   if (!urls.length) return;
   const publicationBase = appUrl ?? getEnv().APP_URL;
   const sources = [...new Set(urls)].flatMap((url) => {
-    const token = managedImagePublicToken(url, publicationBase);
-    return token ? [{ url, token }] : [];
+    const address = managedImageAddress(url, publicationBase);
+    return address ? [{ url, ...address }] : [];
   });
   if (!sources.length) return;
 
@@ -31,7 +32,8 @@ export async function bindManagedImageInputAliases(
   for (const token of [...new Set(sources.map((source) => source.token))].sort()) {
     const image = await repository.getByToken(token);
     if (!image || image.asset.state !== "AVAILABLE" || image.object?.state !== "READY"
-      || image.asset.activeObjectId !== image.object.id) throw new ImageStorageError("IMAGE_UNAVAILABLE");
+      || image.asset.activeObjectId !== image.object.id || isImageExpired(image.asset)
+      || sources.some((source) => source.token === token && source.route !== imageAssetPublicPath(image.asset))) throw new ImageStorageError("IMAGE_UNAVAILABLE");
     assetIds.set(token, image.asset.id);
   }
   const aliases = sources.map(({ url, token }) => ({ url, assetId: assetIds.get(token)! }))

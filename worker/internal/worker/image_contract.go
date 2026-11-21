@@ -88,18 +88,23 @@ func NewImageS3Location(endpoint, region, bucket, publicBaseURL string) (ImageLo
 	return ImageLocationInput{ID: location.ID, Provider: "S3", Endpoint: location.Endpoint, Region: location.Region, Bucket: location.Bucket, PublicBaseURL: publicBaseURL}, nil
 }
 
-func ImagePublicURL(appURL, token string) (string, error) {
+func ImagePublicURL(appURL, token string, temporary ...bool) (string, error) {
 	parsed, err := url.Parse(strings.TrimSpace(appURL))
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || !imagePublicTokenPattern.MatchString(token) {
 		return "", ImageStorageError{Code: "IMAGE_INVALID_INPUT"}
 	}
-	return strings.TrimRight(parsed.String(), "/") + "/media/images/" + token, nil
+	path := "/media/images/"
+	if len(temporary) > 0 && temporary[0] {
+		path = "/media/temporary-images/"
+	}
+	return strings.TrimRight(parsed.String(), "/") + path + token, nil
 }
 
 type ImageAssetRecord struct {
 	ID             string  `json:"id"`
 	OwnerID        string  `json:"ownerId"`
 	Purpose        string  `json:"purpose"`
+	ExpiresAt      *string `json:"expiresAt"`
 	OriginID       *string `json:"originId"`
 	PublicToken    string  `json:"publicToken"`
 	ByteLength     int64   `json:"byteLength,string"`

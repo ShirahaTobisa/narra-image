@@ -20,7 +20,7 @@ export const IMAGE_MAXIMUM_LEASE_SECONDS = fixture.limits.maximumLeaseSeconds;
 export const IMAGE_MIME_TYPES = Object.freeze(fixture.mimeTypes);
 export type ImageErrorCode = keyof typeof fixture.errors;
 export type ImageProvider = "S3" | "LOCAL";
-export type ImagePurpose = "GENERATED" | "REFERENCE" | "CANVAS_IMPORT";
+export type ImagePurpose = "GENERATED" | "REFERENCE" | "CANVAS_IMPORT" | "GALLERY_UPLOAD";
 export type ImageReferenceKind = "JOB_INPUT" | "CANVAS_SAVED" | "SHOWCASE" | "SITE_COVER";
 
 // JavaScript's $ can match before a trailing line terminator. Use an absolute
@@ -85,7 +85,7 @@ export const imageLocationSchema = z.object({
 export const imageAssetSchema = z.object({
   id: uuid,
   ownerId: z.string(),
-  purpose: z.enum(["GENERATED", "REFERENCE", "CANVAS_IMPORT"]),
+  purpose: z.enum(["GENERATED", "REFERENCE", "CANVAS_IMPORT", "GALLERY_UPLOAD"]),
   originId: nullableText,
   publicToken: z.string().regex(digestPattern),
   byteLength: byteString,
@@ -94,6 +94,7 @@ export const imageAssetSchema = z.object({
   state: z.enum(["PENDING", "AVAILABLE", "QUARANTINED", "DELETING", "DELETED"]),
   activeObjectId: uuid.nullable(),
   detachedAt: timestamp.nullable(),
+  expiresAt: timestamp.nullable(),
   deletedAt: timestamp.nullable(),
   deleteReason: nullableText,
   createdAt: timestamp,
@@ -218,7 +219,7 @@ export type ImageAcquireForJobInput = { jobId: string; workerId: string; leaseSe
 export type ImageCloseReservationInput = { reservationId: string; token: string };
 export type ImageBeginObjectInput = {
   reservationId: string; token: string; slot: number; locationId: string; key: string;
-  byteLength: number | bigint | string; mimeType: string; sha256: string; purpose: ImagePurpose; originId?: string; assetId?: string;
+  byteLength: number | bigint | string; mimeType: string; sha256: string; purpose: ImagePurpose; originId?: string; assetId?: string; temporary?: boolean;
 };
 export type ImageFinishObjectInput = { objectId: string; writeToken: string; outcome: "CONFIRMED" | "UNKNOWN" | "NOT_WRITTEN"; versionId?: string | null; errorCode?: ImageErrorCode | null };
 export type ImageReferenceInput = { ownerId: string; kind: ImageReferenceKind; referenceKey: string; assetIds: string[] };
@@ -251,13 +252,20 @@ export function imageS3Location(input: { endpoint: string; region: string; bucke
   return { id: `s3-v1:${digest}`, provider: "S3", endpoint: origin, region, bucket, volumeId: null, publicBaseUrl };
 }
 
-export function imagePublicUrl(appUrl: string, publicToken: string): string {
+export type ImagePublicPath = "images" | "temporary-images" | "gallery-images";
+
+export function imagePublicUrl(appUrl: string, publicToken: string, route: ImagePublicPath = "images"): string {
   if (!digestPattern.test(publicToken)) throw new ImageStorageError("IMAGE_INVALID_INPUT");
   try {
     const base = new URL(appUrl);
     if (!["http:", "https:"].includes(base.protocol) || /^[a-z]+:\/\/[^/]*@/i.test(appUrl.trim()) || base.search || base.hash) throw new Error("invalid base");
-    return `${base.toString().replace(/\/+$/, "")}/media/images/${publicToken}`;
+    return `${base.toString().replace(/\/+$/, "")}/media/${route}/${publicToken}`;
   } catch { throw new ImageStorageError("IMAGE_INVALID_INPUT"); }
+}
+
+export function imageAssetPublicPath(asset: { purpose?: string; expiresAt?: string | Date | null }): ImagePublicPath {
+  // An approved upload has no deadline and is public, so it shares the cacheable route.
+  return asset.expiresAt == null ? "images" : asset.purpose === "GALLERY_UPLOAD" ? "gallery-images" : "temporary-images";
 }
 
 export function imageDatabaseError(error: unknown): ImageStorageError | null {

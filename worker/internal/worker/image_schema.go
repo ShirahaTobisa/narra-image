@@ -87,7 +87,7 @@ func validImageSchemaRow(row ImageSchemaCatalogRow) bool {
 func validateImageSchemaContract(schema ImageSchemaContract) error {
 	invalid := errors.New("image schema contract is unsupported or incomplete")
 	if schema.Contract != "narra.image.schema" || schema.Version != ImageContractVersion || schema.StorageRevision != ImageStorageRevision ||
-		schema.Migration != "20261115180000_image_history" || !imagePublicTokenPattern.MatchString(schema.MigrationSHA256) || len(schema.Migrations) < 4 ||
+		schema.Migration != "20261121160000_transient_images" || !imagePublicTokenPattern.MatchString(schema.MigrationSHA256) || len(schema.Migrations) < 4 ||
 		schema.BodyFingerprint == "" || schema.BodyLineEndings != "CRLF_TO_LF_ONLY" || schema.ExpressionComparison != "POSTGRESQL_17_EXACT" ||
 		!strings.HasPrefix(schema.CatalogQuery, "WITH ") || canvasCatalogMutation.MatchString(schema.CatalogQuery) || len(schema.Objects) == 0 {
 		return invalid

@@ -5,6 +5,7 @@ import { Prisma, ShowcaseStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { publicWorkWhere, visibleWorkWhere } from "@/lib/server/public-work";
 import { imageAvailabilityInclude } from "@/lib/storage/image-availability";
+import { galleryWorkInclude, publicGalleryWhere, reviewableGalleryWhere, serializeAdminGalleryWork, serializeFeaturedGalleryWork, serializeGalleryWork } from "@/lib/server/gallery-work-data";
 import {
   serializeAdminWork,
   serializeFeaturedVideo,
@@ -148,14 +149,21 @@ export async function listUserWorksPage({
     take: take + 1,
   });
 
-  const hasMore = works.length > take;
-  const visible = works.slice(0, take);
-  const items = visible.map(serializeWork);
-  const last = visible[visible.length - 1];
+  const uploads = await db.galleryWork.findMany({
+    where: { userId, ...(decoded && cursorDate ? { OR: [
+      { createdAt: { lt: cursorDate } }, { createdAt: cursorDate, id: { lt: decoded.id } },
+    ] } : {}) }, include: galleryWorkInclude,
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: take + 1,
+  });
+  const combined = [...works.map(serializeWork), ...uploads.map(serializeGalleryWork)]
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
+  const hasMore = combined.length > take;
+  const items = combined.slice(0, take);
+  const last = items.at(-1);
   const nextCursor =
     hasMore && last
       ? encodeUserWorksCursor({
-          createdAt: last.createdAt.toISOString(),
+          createdAt: last.createdAt,
           id: last.id,
         })
       : null;
@@ -182,11 +190,17 @@ export async function getUserWorksCounts(
   ]);
 
   const counts: UserWorksCounts = { featured: 0, pending: 0, total };
+  const uploads = await db.galleryWork.groupBy({ by: ["showcaseStatus"], where: { userId }, _count: { _all: true } });
+  for (const group of uploads) {
+    counts.total += group._count._all;
+    if (group.showcaseStatus === "PENDING") counts.pending += group._count._all;
+    if (group.showcaseStatus === "FEATURED") counts.featured += group._count._all;
+  }
   for (const group of statusGroups) {
     if (group.showcaseStatus === ShowcaseStatus.PENDING) {
-      counts.pending = group._count._all;
+      counts.pending += group._count._all;
     } else if (group.showcaseStatus === ShowcaseStatus.FEATURED) {
-      counts.featured = group._count._all;
+      counts.featured += group._count._all;
     }
   }
   return counts;
@@ -315,20 +329,32 @@ export async function listFeaturedWorksPage(
     take: limit + 1,
   });
 
-  const hasMore = works.length > limit;
-  const pageItems = hasMore ? works.slice(0, limit) : works;
-  const last = pageItems[pageItems.length - 1];
+  const uploads = await db.galleryWork.findMany({
+    where: { ...publicGalleryWhere, featuredAt: { not: null }, ...(hasValidCursor ? { OR: [
+      { featuredAt: { lt: cursorFeaturedAt } }, { featuredAt: cursorFeaturedAt, id: { lt: cursor.id } },
+    ] } : {}) },
+    include: { ...galleryWorkInclude, _count: { select: { likes: true } },
+      ...(options.viewerId ? { likes: { where: { userId: options.viewerId }, select: { userId: true }, take: 1 } } : {}) },
+    orderBy: [{ featuredAt: "desc" }, { id: "desc" }], take: limit + 1,
+  });
+  const combined = [
+    ...works.map((work) => serializeFeaturedWork(work as unknown as FeaturedWorkRecord)),
+    ...uploads.map(serializeFeaturedGalleryWork),
+  ].sort((a, b) => (b.featuredAt ?? "").localeCompare(a.featuredAt ?? "") || b.id.localeCompare(a.id));
+  const hasMore = combined.length > limit;
+  const pageItems = combined.slice(0, limit);
+  const last = pageItems.at(-1);
   const nextCursor =
     hasMore && last && last.featuredAt
       ? encodeFeaturedWorksCursor({
-          featuredAt: last.featuredAt.toISOString(),
+          featuredAt: last.featuredAt,
           id: last.id,
         })
       : null;
 
   return {
     hasMore,
-    items: pageItems.map((w) => serializeFeaturedWork(w as unknown as FeaturedWorkRecord)),
+    items: pageItems,
     nextCursor,
   };
 }
@@ -363,6 +389,13 @@ export async function listAdminWorks(take = 120) {
 }
 
 export async function getWorkById(id: string, viewerId?: string | null) {
+  if (id.startsWith("gallery_")) {
+    const upload = await db.galleryWork.findUnique({
+      where: { id, ...(viewerId ? { OR: [publicGalleryWhere, { userId: viewerId }] } : publicGalleryWhere) },
+      include: galleryWorkInclude,
+    });
+    return upload ? serializeGalleryWork(upload) : null;
+  }
   const work = await db.generationImage.findUnique({
     where: { id, ...visibleWorkWhere(viewerId) },
     include: workBaseInclude,
@@ -372,6 +405,10 @@ export async function getWorkById(id: string, viewerId?: string | null) {
 }
 
 export async function getAdminWorkById(id: string) {
+  if (id.startsWith("gallery_")) {
+    const upload = await db.galleryWork.findUnique({ where: { id }, include: galleryWorkInclude });
+    return upload ? serializeAdminGalleryWork(upload) : null;
+  }
   const work = await db.generationImage.findUnique({
     where: { id },
     include: workAdminInclude,
@@ -384,6 +421,7 @@ export async function getWorkMutationTarget(id: string) {
   return db.generationImage.findUnique({
     where: { id },
     select: {
+      ...imageAvailabilityInclude,
       featuredAt: true,
       job: {
         select: {
@@ -496,6 +534,8 @@ export type AdminReviewCounts = {
 };
 
 export async function getAdminReviewCounts(): Promise<AdminReviewCounts> {
+  const uploaded = await db.galleryWork.groupBy({ by: ["showcaseStatus"], where: reviewableGalleryWhere(), _count: { _all: true } });
+  const uploadCount = (status: ShowcaseStatus) => uploaded.find((group) => group.showcaseStatus === status)?._count._all ?? 0;
   const countImg =
     typeof db.generationImage?.count === "function"
       ? (status: ShowcaseStatus) =>
@@ -524,9 +564,9 @@ export async function getAdminReviewCounts(): Promise<AdminReviewCounts> {
   ]);
 
   return {
-    featured: imgFeatured + vidFeatured,
-    pending: imgPending + vidPending,
-    takedownPending: imgTakedown + vidTakedown,
+    featured: imgFeatured + vidFeatured + uploadCount("FEATURED"),
+    pending: imgPending + vidPending + uploadCount("PENDING"),
+    takedownPending: imgTakedown + vidTakedown + uploadCount("TAKEDOWN_PENDING"),
   };
 }
 
@@ -612,27 +652,6 @@ export async function listAdminReviewPage(options: {
   const canQueryVideo = typeof db.generatedVideo?.findMany === "function";
   const canCountVideo = typeof db.generatedVideo?.count === "function";
 
-  if (mediaType === "image") {
-    const rows = await db.generationImage.findMany({
-      include: workAdminInclude,
-      orderBy: [
-        { submittedAt: "desc" },
-        { featuredAt: "desc" },
-        { createdAt: "desc" },
-      ],
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-      where: imageWhere,
-    });
-    const totalCount = canCountImage
-      ? await db.generationImage.count({ where: imageWhere })
-      : rows.length;
-    return {
-      items: rows.map(serializeAdminWork),
-      totalCount,
-    };
-  }
-
   if (mediaType === "video") {
     const rows = canQueryVideo
       ? await db.generatedVideo.findMany({
@@ -703,7 +722,7 @@ export async function listAdminReviewPage(options: {
       take: windowLimit,
       where: imageWhere,
     }),
-    canQueryVideo
+    canQueryVideo && mediaType !== "image"
       ? db.generatedVideo.findMany({
           include: videoAdminInclude,
           orderBy: [
@@ -721,7 +740,7 @@ export async function listAdminReviewPage(options: {
     canCountImage
       ? db.generationImage.count({ where: imageWhere })
       : Promise.resolve(imgRows.length),
-    canCountVideo
+    canCountVideo && mediaType !== "image"
       ? db.generatedVideo.count({ where: videoWhere })
       : Promise.resolve(vidRows.length),
   ]);
@@ -764,14 +783,26 @@ export async function listAdminReviewPage(options: {
     url: row.url,
   }));
 
-  const combined = [...mappedImages, ...mappedVideos].sort((a, b) => {
+  const galleryWhere: Prisma.GalleryWorkWhereInput = {
+    showcaseStatus: options.status,
+    AND: [reviewableGalleryWhere(), ...(q ? [{ OR: [
+      { prompt: { contains: q, mode: "insensitive" as const } },
+      { user: { OR: [{ email: { contains: q, mode: "insensitive" as const } }, { nickname: { contains: q, mode: "insensitive" as const } }] } },
+    ] }] : [])],
+  };
+  const [uploads, uploadCount] = await Promise.all([
+    db.galleryWork.findMany({ where: galleryWhere, include: galleryWorkInclude,
+      orderBy: [{ submittedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }], take: windowLimit }),
+    db.galleryWork.count({ where: galleryWhere }),
+  ]);
+  const combined = [...mappedImages, ...mappedVideos, ...uploads.map(serializeAdminGalleryWork)].sort((a, b) => {
     const timeA = Date.parse(a.submittedAt ?? a.featuredAt ?? a.createdAt);
     const timeB = Date.parse(b.submittedAt ?? b.featuredAt ?? b.createdAt);
-    return timeB - timeA;
+    return timeB - timeA || b.id.localeCompare(a.id);
   });
 
   return {
     items: combined.slice((page - 1) * pageSize, page * pageSize),
-    totalCount: imgCount + vidCount,
+    totalCount: imgCount + vidCount + uploadCount,
   };
 }

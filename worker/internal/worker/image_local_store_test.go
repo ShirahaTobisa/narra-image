@@ -307,7 +307,7 @@ func TestLocalImageObjectLookupRechecksConcurrentStage(t *testing.T) {
 					}
 				}
 			}}
-			file, _, err := store.openObject(context.Background(), hooked, object, stage, input.LocalImageObject)
+			file, _, err := store.openObject(context.Background(), hooked, object, stage, input.LocalImageObject, func() error { return store.verifyMarker(context.Background(), hooked) })
 			if file != nil {
 				file.Close()
 			}

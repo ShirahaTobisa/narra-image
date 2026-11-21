@@ -28,7 +28,7 @@ function managedImage(): ManagedImage {
   const location = imageLocalLocation("37bea8ac-809f-4298-92d8-a3597a8437c6");
   return { asset: { id: assetId, ownerId: "owner", purpose: "REFERENCE", originId: null, publicToken: "a".repeat(64),
     byteLength: String(bytes.length), mimeType: "image/png", sha256, state: "AVAILABLE", activeObjectId: objectId,
-    detachedAt: stamp, deletedAt: null, deleteReason: null, createdAt: stamp, updatedAt: stamp },
+    detachedAt: stamp, expiresAt: null, deletedAt: null, deleteReason: null, createdAt: stamp, updatedAt: stamp },
     object: { id: objectId, assetId, provenance: "WRITE", sourceObservationId: null, reconciliationObservationId: null,
       reservationId: "22334455-6677-4899-aabb-ccddeeff0011", slot: 0,
       locationId: location.id, physicalNamespace: location.id, key: "images/guarded.png", byteLength: String(bytes.length), mimeType: "image/png", sha256,
@@ -57,6 +57,15 @@ afterEach(async () => {
 });
 
 describe("managed readers share the deletion fence", () => {
+  it("forwards an actual consumer identity for the database to authorize expired input reads", async () => {
+    const image = managedImage(); image.asset.expiresAt = stamp;
+    mocks.beginRead.mockResolvedValue(null);
+    await expect(readManagedImage(image)).rejects.toMatchObject({ code: "IMAGE_UNAVAILABLE" });
+    mocks.beginRead.mockImplementation(async (input) => input.jobId === "accepted-job" ? lease(managedImage()) : null);
+    expect(await readManagedImage(image, new AbortController().signal, { jobId: "accepted-job" })).toEqual(bytes);
+    expect(mocks.beginRead).toHaveBeenLastCalledWith({ assetId, jobId: "accepted-job" });
+    await expect(readManagedImage(image, new AbortController().signal, { jobId: "different-job" })).rejects.toMatchObject({ code: "IMAGE_UNAVAILABLE" });
+  });
   it("uses the fresh protected replica for buffer, HEAD and streaming consumers", async () => {
     const stale = managedImage();
     stale.object = { ...stale.object!, key: "images/old-replica.png" };

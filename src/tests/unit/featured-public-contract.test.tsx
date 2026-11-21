@@ -11,7 +11,7 @@ vi.mock("next/cache", () => ({
   unstable_cache: <T extends (...args: never[]) => unknown>(callback: T) => callback,
 }));
 vi.mock("@/lib/db", () => ({
-  db: { generationImage: { findMany: mocks.findMany } },
+  db: { generationImage: { findMany: mocks.findMany }, galleryWork: { findMany: async () => [] } },
 }));
 vi.mock("@/lib/server/current-user", () => ({ getCurrentUserRecord: mocks.currentUser }));
 vi.mock("@/components/marketing/site-header", () => ({ SiteHeader: () => null }));

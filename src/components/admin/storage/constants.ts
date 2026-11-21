@@ -8,7 +8,7 @@ export const STORAGE_JOB_LABELS: Record<ImageMaintenanceState, string> = {
 };
 export const STORAGE_MODE_LABELS: Record<ImageMaintenanceMode, string> = {
   MANUAL_AGE: "按保留天数清理", MANUAL_ALL: "清理全部可清理图片", SCHEDULE: "定时清理",
-  QUOTA: "容量回收", SOURCE_RETIREMENT: "迁移源副本清理",
+  QUOTA: "容量回收", SOURCE_RETIREMENT: "迁移源副本清理", EXPIRY: "到期清理",
 };
 export const STORAGE_ACTIVE_STATES: readonly ImageMaintenanceState[] = ["QUEUED", "RUNNING", "WAITING"];
 export const STORAGE_REASON_LABELS: Record<string, string> = {

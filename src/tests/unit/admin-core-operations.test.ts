@@ -237,7 +237,7 @@ describe("Stage 2 后台核心运营接口", () => {
       });
       expect(mockGenerationImageUpdate).toHaveBeenCalledTimes(1);
       expect(mockGeneratedVideoUpdate).toHaveBeenCalledTimes(1);
-      expect(mockRevalidateTag).toHaveBeenCalledWith("featured-works", "max");
+      expect(mockRevalidateTag).toHaveBeenCalledWith("featured-works", { expire: 0 });
     });
   });
 

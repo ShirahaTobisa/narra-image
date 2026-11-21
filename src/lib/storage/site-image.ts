@@ -47,7 +47,7 @@ async function readImage(url: string, options: ReadOptions, ownerId?: string): P
   const managed = isData ? null : await resolveManagedImageUrl(url);
   if (managed) {
     if (BigInt(managed.asset.byteLength) > BigInt(maximumBytes)) throw tooLarge();
-    const data = await readManagedImage(managed, signal);
+    const data = await readManagedImage(managed, signal, ownerId === undefined ? {} : { viewerId: ownerId });
     if (data.length > maximumBytes) throw tooLarge();
     return { data, mimeType: managed.asset.mimeType };
   }

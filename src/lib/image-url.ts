@@ -32,7 +32,15 @@ function getOptimizerBypassHosts() {
     : DEFAULT_OPTIMIZER_BYPASS_HOSTS;
 }
 
+export function isUncacheableImageUrl(src: string) {
+  try {
+    const pathname = decodeURIComponent(new URL(src, "https://local.invalid").pathname).replaceAll("\\", "/");
+    return /\/media\/(?:temporary-images|gallery-images)(?:\/|$)/.test(pathname);
+  } catch { return true; }
+}
+
 function shouldBypassOptimizer(src: string) {
+  if (isUncacheableImageUrl(src)) return true;
   try {
     const url = new URL(src);
     return getOptimizerBypassHosts().includes(url.hostname.toLowerCase());

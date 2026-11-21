@@ -26,8 +26,10 @@ function optional(value: unknown, check: (value: unknown) => boolean, nullable =
 }
 
 function isImage(value: unknown): boolean {
-  return isRecord(value) && isIdentity(value.id) && isIdentity(value.url)
+  return isRecord(value) && isIdentity(value.id)
+    && (isIdentity(value.url) || (value.url === "" && (value.availability === "cleaned" || value.availability === "unavailable")))
     && optional(value.availability, isImageAvailability)
+    && optional(value.expiresAt, isTimestamp, true)
     && optional(value.actualSize, isString, true)
     && optional(value.actualWidth, isNumber, true)
     && optional(value.actualHeight, isNumber, true);
@@ -68,5 +70,7 @@ export function isGenerationItem(value: unknown): value is GenerationItem {
     && optional(value.durationSeconds, isNumber, true)
     && optional(value.providerChannelId, isIdentity, true)
     && optional(value.sourceImageUrl, isString, true)
+    && optional(value.sourceImagesReusable, (reusable) => typeof reusable === "boolean")
+    && optional(value.sourceImagesExpiresAt, isTimestamp, true)
     && optional(value.sourceImageUrls, (urls) => Array.isArray(urls) && urls.every(isString));
 }

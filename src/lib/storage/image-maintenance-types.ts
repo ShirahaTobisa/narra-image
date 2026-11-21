@@ -15,7 +15,7 @@ export const IMAGE_QUOTA_WAIT_MS = maintenance.limits.quotaWaitMilliseconds;
 export const IMAGE_CLEANUP_PREVIEW_LIMIT = maintenance.limits.previewAssets;
 export const IMAGE_MAINTENANCE_ITEM_LIMIT = maintenance.limits.jobItems;
 
-export type ImageMaintenanceMode = "MANUAL_AGE" | "MANUAL_ALL" | "SCHEDULE" | "QUOTA" | "SOURCE_RETIREMENT";
+export type ImageMaintenanceMode = "MANUAL_AGE" | "MANUAL_ALL" | "SCHEDULE" | "QUOTA" | "SOURCE_RETIREMENT" | "EXPIRY";
 export type ImageMaintenanceState = "PREVIEW" | "QUEUED" | "RUNNING" | "WAITING" | "SUCCEEDED" | "PARTIAL" | "CANCELLED" | "EXPIRED";
 export type ImageMaintenanceItem = {
   id: string; assetId: string; state: "CANDIDATE" | "CLAIMED" | "RETRY" | "DONE" | "SKIPPED";

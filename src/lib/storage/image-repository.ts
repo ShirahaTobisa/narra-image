@@ -176,6 +176,11 @@ export class ImageRepository {
   beginRead(input: ImageReadInput) {
     return this.query(Prisma.sql`SELECT image_begin_read(${JSON.stringify(input)}::jsonb) AS result`, imageReadLeaseSchema.nullable());
   }
+
+  reviewGalleryWork(input: { workId: string; actorId: string; action: "APPROVE" | "REJECT" | "WITHDRAW" | "REQUEST_TAKEDOWN" | "TAKEDOWN" | "KEEP" | "FORCE_TAKEDOWN"; expectedSubmittedAt: string | null; reviewNote?: string }) {
+    return this.query(Prisma.sql`SELECT image_review_gallery_work(${JSON.stringify(input)}::jsonb) AS result`,
+      z.object({ id: z.string(), showcaseStatus: z.enum(["PRIVATE", "PENDING", "FEATURED", "TAKEDOWN_PENDING"]), expiresAt: z.iso.datetime({ offset: true }).nullable() }).strict());
+  }
   prepareCopy(input: ImagePrepareCopyInput) {
     return this.query(Prisma.sql`SELECT image_prepare_copy(${JSON.stringify(input)}::jsonb) AS result`, imageReservationSchema);
   }

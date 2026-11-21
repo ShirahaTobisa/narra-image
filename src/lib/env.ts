@@ -200,6 +200,7 @@ const envSchema = z.object({
   EXTERNAL_GENERATION_WAIT_TIMEOUT_SECONDS: integerEnv(900, 1, 86_400),
   GATEWAY_ENABLED: booleanEnv(false),
   IMAGE_STORAGE_MANAGED_ENABLED: booleanEnv(false),
+  IMAGE_TEMPORARY_STORAGE_ENABLED: booleanEnv(false),
   IMAGE_STORAGE_BACKEND: z.enum(["s3", "local"]).default("s3"),
   IMAGE_STORAGE_PATH: z.string().trim().min(1).default("/data/images"),
   IMAGE_STORAGE_VOLUME_ID: optionalString(),
@@ -241,6 +242,9 @@ const envSchema = z.object({
   WORKER_SHUTDOWN_HARD_TIMEOUT_SECONDS: integerEnv(10, 1, 300),
   WORKER_VIDEO_POLL_INTERVAL_MS: integerEnv(5_000, 100, 60_000),
 }).superRefine((env, ctx) => {
+  if (env.IMAGE_TEMPORARY_STORAGE_ENABLED && (!env.IMAGE_STORAGE_MANAGED_ENABLED || env.IMAGE_STORAGE_BACKEND !== "local" || env.CANVAS_ENABLED)) {
+    ctx.addIssue({ code: "custom", path: ["IMAGE_TEMPORARY_STORAGE_ENABLED"], message: "临时存图需要受管理本地存储，并关闭 Canvas" });
+  }
   if (env.IMAGE_STORAGE_MANAGED_ENABLED && env.WORKER_JOB_TIMEOUT_SECONDS > 3480) {
     ctx.addIssue({ code: "custom", path: ["WORKER_JOB_TIMEOUT_SECONDS"], message: "受管理图片存储的任务超时不能超过 3480 秒" });
   }

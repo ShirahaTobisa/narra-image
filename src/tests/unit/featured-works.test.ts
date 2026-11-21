@@ -7,6 +7,7 @@ const { mockFindMany } = vi.hoisted(() => ({
 
 vi.mock("@/lib/db", () => ({
   db: {
+    galleryWork: { findMany: async () => [] },
     generationImage: {
       findMany: mockFindMany,
     },

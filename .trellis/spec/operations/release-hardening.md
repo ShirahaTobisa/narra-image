@@ -86,7 +86,7 @@ docker compose -f docker-compose.e2e.yml config --quiet
 
 - 回滚代码前必须运行 `pnpm rollback:preflight`（调用 `CheckRollbackSafety`）；存在活动 contract v1 或未决 handoff 时不得启动旧 Worker/finalizer。
 - 图片清单升级后，preflight 还在同一只读 REPEATABLE READ 快照中检查 ledger、业务绑定和新 GC/history 标记，并复用完整实际 Image/Canvas catalogue 校验。partial schema 不能假报 legacy-safe；已存在受管理 image schema（当前 storage revision 3）/ Canvas storage revision 3 就拒绝旧 Worker，即使计数为零。完全没有新标记的历史库才保留原 v1/handoff 检查逻辑。
-- 图片管理 readiness 的 storage/reader/executor revision 当前均为 3，并要求 `maintenance=running`，与原 version/schema/provider/locationId 一同精确校验。清理默认停用，升级 schema 不自动启用破坏性策略；旧无读保护进程须 drain，再启用新执行器/LOCAL。maintenance loop 的就绪不依赖 Next 媒体路由，避免 embedded 启动循环。显式迁移源退休的 published reader GET 仅属于 CLI 运维动作。
+- 图片管理 readiness 的 storage/reader/executor revision 当前均为 4，并要求 `maintenance=running`，与原 version/schema/provider/locationId 一同精确校验。清理默认停用，升级 schema 不自动启用破坏性策略；旧无读保护进程须 drain，再启用新执行器/LOCAL。maintenance loop 的就绪不依赖 Next 媒体路由，避免 embedded 启动循环。显式迁移源退休的 published reader GET 仅属于 CLI 运维动作。
 - `/app/narra-image-history` 在两个镜像内均可执行，默认只读，显式 apply/源绑定/目标/退休的运维协议见 `docs/image-storage.md` 与 [Image Storage](./image-storage.md#9-历史登记复制和读取投影revision-3)。代码/镜像准备与隔离验证不代表已对生产 R2 执行操作。
 - 回滚报告补充 `active_image_history_jobs`、`unresolved_image_history_items`、`unresolved_image_observations`、`active_image_history_holds`。部分 history/provenance 标记必须触发 catalogue 验证，不能在没有 ImageObject 时忽略已观察而未决的历史数据；输出保留固定错误码，不泄露连接配置、文件路径或 SQL。
 - 回滚报告 JSON 保持 `schema_version=1` 并追加图片/Canvas 修订、managed/local/active reservation/unresolved object 计数；错误不得打印原始 SQL、DSN 或本地路径。测试需要 current/legacy/partial 三类真实数据库夹具，不能只 mock 计数。

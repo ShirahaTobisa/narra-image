@@ -96,7 +96,7 @@ export function WorkDetailPanel({
             </h1>
 
             <div className="mt-4 grid gap-2.5 text-sm text-[var(--ink-soft)]">
-              <p>模型：{work.model}</p>
+              <p>{work.source === "uploaded" ? "用户上传作品" : `模型：${work.model}`}</p>
               <p>尺寸：{work.size}</p>
               <p>作品创建时间：{formatTime(work.createdAt)}</p>
               {work.featuredAt ? <p>公开时间：{formatTime(work.featuredAt)}</p> : null}

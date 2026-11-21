@@ -114,8 +114,8 @@ describe("batched immutable input URL presentation", () => {
     ]);
     const result = await projectGenerationSourceUrls(rows);
     expect(result).toEqual([
-      { id: "one", sourceImageUrl: publicUrl, sourceImageUrls: [publicUrl, external, publicUrl] },
-      { id: "two", sourceImageUrl: signedVariant, sourceImageUrls: [signedVariant] },
+      { id: "one", sourceImageUrl: publicUrl, sourceImageUrls: [publicUrl, external, publicUrl], sourceImagesReusable: true, sourceImagesExpiresAt: null },
+      { id: "two", sourceImageUrl: null, sourceImageUrls: [], sourceImagesReusable: false, sourceImagesExpiresAt: null },
     ]);
     expect(rows[0].sourceImageUrls).toEqual([oldUrl, external, oldUrl]);
     expect(rows[1].sourceImageUrls).toEqual([signedVariant, cleaned]);
@@ -125,7 +125,7 @@ describe("batched immutable input URL presentation", () => {
 
   it("keeps empty and data-URL-only sources free of database reads, and propagates an unknown lookup failure", async () => {
     const rows = [{ id: "empty", sourceImageUrls: [] }, { id: "data", sourceImageUrls: ["data:image/png;base64,AA=="] }];
-    expect(await projectGenerationSourceUrls(rows)).toEqual(rows);
+    expect(await projectGenerationSourceUrls(rows)).toEqual(rows.map((row) => ({ ...row, sourceImagesReusable: true, sourceImagesExpiresAt: null })));
     expect(mocks.aliases).not.toHaveBeenCalled();
     mocks.aliases.mockRejectedValue(new Error("fixture lookup failure"));
     await expect(projectGenerationSourceUrls([{ sourceImageUrls: [oldUrl] }])).rejects.toThrow("fixture lookup failure");

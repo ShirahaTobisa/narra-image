@@ -9,11 +9,13 @@ import { useState } from "react";
 
 import { getAspectRatio as getGenerationAspectRatio } from "@/lib/generation/sizes";
 import { getThumbUrl } from "@/lib/image-url";
-import { isImageAvailable } from "@/lib/storage/image-availability";
+import { isImageAvailable, isImageExpired } from "@/lib/storage/image-availability";
 import { ImageUnavailable } from "@/components/ui/image-unavailable";
+import { useExpiryClock } from "@/hooks/use-expiry-clock";
 
 import {
   describeSizeDowngrade,
+  canReuseGenerationSources,
   getImageDimensionLabel,
   getImageRatioLabel,
   getGenerationOptionSummary,
@@ -58,7 +60,9 @@ export function GenerationBubble({
   onRetry,
   onCancel,
 }: GenerationBubbleProps) {
-  const sourceUrls = getGenerationSourceImageUrls(generation);
+  const now = useExpiryClock([generation.sourceImagesExpiresAt, ...generation.images.map((image) => image.expiresAt)]);
+  const sourcesReusable = canReuseGenerationSources(generation, now);
+  const sourceUrls = sourcesReusable ? getGenerationSourceImageUrls(generation) : [];
   const durationLabel = formatDuration(generation.durationMs);
   // 仅当这条记录是"当场等出来的"（挂载时还在 pending）才播结果入场动画；
   // 历史记录初次挂载直接静态呈现，避免整个列表集体重放。
@@ -82,6 +86,7 @@ export function GenerationBubble({
           </div>
           <div className="whitespace-pre-wrap break-words rounded-[1.15rem] rounded-tl-md border border-[var(--line)] bg-[#fffaf2]/82 px-4 py-3 text-sm leading-relaxed text-[var(--ink)] shadow-[0_10px_24px_rgba(84,52,29,0.08)] sm:px-5 sm:py-3.5">
             {generation.prompt}
+            {!sourcesReusable && <p className="mt-2 text-xs text-[var(--ink-soft)]">参考图已过期或不可用，提示词和参数仍可复用。</p>}
             {sourceUrls.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-2">
                 {sourceUrls.map((url, index) => (
@@ -146,6 +151,9 @@ export function GenerationBubble({
             >
               <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--ink-soft)]">
                 <span>结果 {generation.images.length}</span>
+                {generation.images.some((image) => image.expiresAt && !isImageExpired(image, now)) && (
+                  <span>图片仅保留 1 小时，请及时下载</span>
+                )}
                 {durationLabel && (
                   <span
                     className="inline-flex items-center gap-1 rounded-full border border-[var(--line)]/70 bg-[#fffaf2]/70 px-2 py-0.5"
@@ -164,7 +172,8 @@ export function GenerationBubble({
                 }`}
               >
                 {generation.images.map((image) => {
-                  const imageAvailable = isImageAvailable(image.availability);
+                  const expired = isImageExpired(image, now);
+                  const imageAvailable = isImageAvailable(image.availability) && !expired;
                   const downgrade = describeSizeDowngrade(generation, image);
                   const dimensionLabel = getImageDimensionLabel(generation, image);
                   const ratioLabel = getImageRatioLabel(generation, image);
@@ -184,7 +193,8 @@ export function GenerationBubble({
                           decoding="async"
                           className="size-full cursor-pointer object-cover transition-transform duration-200 ease-out hover:scale-[1.015]"
                           onClick={() => onZoom(image.url, { dimensionLabel, ratioLabel })}
-                        /> : <ImageUnavailable availability={image.availability} className="size-full min-h-40" />}
+                        /> : expired ? <div className="flex size-full min-h-40 items-center justify-center text-sm text-[var(--ink-soft)]">图片已过期</div>
+                          : <ImageUnavailable availability={image.availability} className="size-full min-h-40" />}
                         <div className="absolute bottom-2 left-2 flex flex-wrap gap-1.5">
                           <span className="inline-flex items-center gap-1 rounded-full bg-black/58 px-2 py-1 text-[10px] font-medium text-white shadow-sm backdrop-blur-sm">
                             <Ruler className="size-3" />

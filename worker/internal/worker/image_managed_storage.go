@@ -108,7 +108,7 @@ func (storage *Storage) initializeManagedImages(ctx context.Context) error {
 		return ImageStorageError{Code: "IMAGE_STORAGE_UNAVAILABLE", Cause: err}
 	}
 	if storage.cfg.ImageStorageBackend == "local" {
-		local, err := NewLocalImageStore(LocalImageStoreConfig{RootDirectory: storage.cfg.ImageStoragePath, VolumeID: storage.cfg.ImageStorageVolumeID})
+		local, err := NewLocalImageStore(LocalImageStoreConfig{RootDirectory: storage.cfg.ImageStoragePath, VolumeID: storage.cfg.ImageStorageVolumeID, TemporaryEnabled: storage.cfg.ImageTemporaryStorageEnabled})
 		if err != nil {
 			return ImageStorageError{Code: "IMAGE_STORAGE_UNAVAILABLE", Cause: err}
 		}
@@ -231,16 +231,20 @@ func (storage *Storage) persistManagedImage(ctx context.Context, ownerID string,
 	if output || historical {
 		purpose = "GENERATED"
 	}
+	temporary := storage.cfg.ImageTemporaryStorageEnabled && !historical
 	digest := sha256.Sum256(data)
 	key := fmt.Sprintf("images/%s.%s", randomHex(24), extensionFromMime(mimeType))
 	if historical {
 		identity := sha256.Sum256([]byte(historicalID))
 		key = fmt.Sprintf("images/backfill-%x.%s", identity, extensionFromMime(mimeType))
 	}
+	if temporary {
+		key = "temporary/" + key
+	}
 	ticket, err := storage.imageRepository.BeginObject(ctx, ImageBeginObjectInput{
 		ReservationID: write.Reservation.ID, Token: write.Reservation.Token, Slot: write.Slot,
 		LocationID: location.ID, Key: key, ByteLength: int64(len(data)), MimeType: mimeType,
-		SHA256: hex.EncodeToString(digest[:]), Purpose: purpose, OriginID: write.OriginID,
+		SHA256: hex.EncodeToString(digest[:]), Purpose: purpose, OriginID: write.OriginID, Temporary: temporary,
 	})
 	if err != nil {
 		return PersistedMedia{}, err
@@ -256,7 +260,7 @@ func (storage *Storage) persistManagedImage(ctx context.Context, ownerID string,
 			_, _ = storage.imageRepository.FinishObject(finishCtx, ImageFinishObjectInput{ObjectID: ticket.Object.ID, WriteToken: ticket.Object.WriteToken, Outcome: "NOT_WRITTEN", ErrorCode: "IMAGE_STORAGE_UNAVAILABLE"})
 		}()
 	}
-	publicURL, err := ImagePublicURL(storage.cfg.AppURL, ticket.Asset.PublicToken)
+	publicURL, err := ImagePublicURL(storage.cfg.AppURL, ticket.Asset.PublicToken, ticket.Asset.ExpiresAt != nil)
 	if err != nil {
 		return PersistedMedia{}, err
 	}
@@ -323,12 +327,16 @@ func managedImagePublicToken(rawURL, appURL string) string {
 	if len(rawURL) > 2048 || (!strings.HasPrefix(rawURL, "http://") && !strings.HasPrefix(rawURL, "https://")) || strings.ContainsAny(rawURL, "?#\\\r\n\t") {
 		return ""
 	}
-	marker := strings.LastIndex(rawURL, "/media/images/")
+	prefix := "/media/images/"
+	if strings.Contains(rawURL, "/media/temporary-images/") {
+		prefix = "/media/temporary-images/"
+	}
+	marker := strings.LastIndex(rawURL, prefix)
 	if marker < 0 {
 		return ""
 	}
-	token := rawURL[marker+len("/media/images/"):]
-	canonical, err := ImagePublicURL(appURL, token)
+	token := rawURL[marker+len(prefix):]
+	canonical, err := ImagePublicURL(appURL, token, prefix == "/media/temporary-images/")
 	if err != nil {
 		return ""
 	}
@@ -410,7 +418,7 @@ func (storage *Storage) readManagedImage(ctx context.Context, image ManagedImage
 	if storage.imageRepository == nil {
 		return nil, ImageStorageError{Code: "IMAGE_STORAGE_UNAVAILABLE"}
 	}
-	lease, err := storage.imageRepository.BeginRead(ctx, ImageReadInput{AssetID: image.Asset.ID})
+	lease, err := storage.imageRepository.BeginRead(ctx, ImageReadInput{AssetID: image.Asset.ID, JobID: imageInputJobID(ctx)})
 	if err != nil {
 		return nil, err
 	}
@@ -524,4 +532,11 @@ func (storage *Storage) loadImageSources(ctx context.Context, urls []string) ([]
 
 func isImageGeneration(job GenerationJob) bool {
 	return strings.EqualFold(job.GenerationType, "TEXT_TO_IMAGE") || strings.EqualFold(job.GenerationType, "IMAGE_TO_IMAGE")
+}
+
+type imageInputJobContextKey struct{}
+
+func imageInputJobID(ctx context.Context) string {
+	id, _ := ctx.Value(imageInputJobContextKey{}).(string)
+	return id
 }

@@ -1,7 +1,7 @@
 {
   "contract": "narra.image.history",
   "version": 1,
-  "storageRevision": 3,
+  "storageRevision": 4,
   "limits": { "pageItems": 1000, "claimScanItems": 100, "leaseSeconds": 90 },
   "scopes": ["ALL", "GENERATED", "CANVAS_IMPORT", "REFERENCE_URL"],
   "provenances": ["WRITE", "OBSERVED"],

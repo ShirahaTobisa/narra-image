@@ -1,9 +1,9 @@
 {
   "contract": "narra.image.maintenance",
   "version": 1,
-  "storageRevision": 3,
-  "readerRevision": 3,
-  "executorRevision": 3,
+  "storageRevision": 4,
+  "readerRevision": 4,
+  "executorRevision": 4,
   "limits": {
     "previewAssets": 1000,
     "previewSeconds": 600,

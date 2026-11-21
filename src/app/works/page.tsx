@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { SiteHeader } from "@/components/marketing/site-header";
 import { MyWorksBoard } from "@/components/works/my-works-board";
+import { GalleryUploadForm } from "@/components/works/gallery-upload-form";
 import { VideoWorksSection } from "@/components/works/video-works-section";
 import { serializeUser } from "@/lib/prisma-mappers";
 import { getCurrentUserRecord } from "@/lib/server/current-user";
@@ -49,8 +50,7 @@ export default async function WorksPage() {
               </div>
             </div>
             <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--ink-soft)]">
-              管理你的生成图片、投稿精选与公开状态。
-              每张图都可以在这里查看详情、下载、分享或投稿首页精选。
+              生成的图片只保留 1 小时，请及时下载。
             </p>
           </div>
 
@@ -71,6 +71,8 @@ export default async function WorksPage() {
             </div>
           </div>
         </div>
+
+        <GalleryUploadForm nickname={user.nickname} />
 
         <MyWorksBoard
           counts={counts}

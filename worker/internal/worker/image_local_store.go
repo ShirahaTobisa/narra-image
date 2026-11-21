@@ -49,8 +49,9 @@ func localImageAborted(ctx context.Context) error {
 }
 
 type LocalImageStoreConfig struct {
-	RootDirectory string
-	VolumeID      string
+	RootDirectory    string
+	VolumeID         string
+	TemporaryEnabled bool
 }
 
 type LocalImageVolume struct {
@@ -105,14 +106,90 @@ func LocalImageObjectNames(key string) (object, staging string, err error) {
 	}
 	digest := sha256.Sum256([]byte(key))
 	encoded := hex.EncodeToString(digest[:])
-	return "image-" + encoded + ".bin", ".image-" + encoded + ".writing", nil
+	prefix := ""
+	if strings.HasPrefix(key, "temporary/") {
+		prefix = "temporary/"
+	}
+	return prefix + "image-" + encoded + ".bin", prefix + ".image-" + encoded + ".writing", nil
 }
 
 func validateLocalImageObject(input LocalImageObject) (string, string, error) {
 	if input.ByteLength < 1 || input.ByteLength > ImageMaxBytes || !localImageDigest.MatchString(input.SHA256) {
 		return "", "", localImageError("LOCAL_IMAGE_INVALID_OBJECT")
 	}
-	return LocalImageObjectNames(input.Key)
+	object, staging, err := LocalImageObjectNames(input.Key)
+	return filepath.Base(object), filepath.Base(staging), err
+}
+
+// Each temporary operation pins the child directory and keeps the volume root
+// open for marker/identity checks. A missing child is never object absence.
+func (store *LocalImageStore) openObjectRoot(ctx context.Context, key string) (*os.Root, func() error, func() error, error) {
+	volume, err := store.openRoot(ctx)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	verify := func() error { return store.verifyMarker(ctx, volume) }
+	if err := verify(); err != nil {
+		volume.Close()
+		return nil, nil, nil, err
+	}
+	if !strings.HasPrefix(key, "temporary/") {
+		return volume, verify, volume.Close, nil
+	}
+	before, err := volume.Lstat("temporary")
+	if err != nil || !before.IsDir() || before.Mode()&os.ModeSymlink != 0 {
+		volume.Close()
+		return nil, nil, nil, localImageError("LOCAL_IMAGE_UNSAFE_PATH")
+	}
+	child, err := volume.OpenRoot("temporary")
+	if err != nil {
+		volume.Close()
+		return nil, nil, nil, normalizeLocalImageError(err)
+	}
+	closeRoots := func() error { return errors.Join(child.Close(), volume.Close()) }
+	verifyChild := func() error {
+		if err := verify(); err != nil {
+			return err
+		}
+		current, err := volume.Lstat("temporary")
+		identity, statErr := child.Stat(".")
+		if err != nil || statErr != nil || !current.IsDir() || current.Mode()&os.ModeSymlink != 0 || !os.SameFile(before, current) || !os.SameFile(before, identity) {
+			return localImageError("LOCAL_IMAGE_UNSAFE_PATH")
+		}
+		return nil
+	}
+	if err := verifyChild(); err != nil {
+		closeRoots()
+		return nil, nil, nil, err
+	}
+	return child, verifyChild, closeRoots, nil
+}
+
+func InitializeLocalImageTemporaryDirectory(ctx context.Context, config LocalImageStoreConfig) error {
+	store, err := NewLocalImageStore(config)
+	if err != nil {
+		return err
+	}
+	root, err := store.openRoot(ctx)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	if err := store.verifyMarker(ctx, root); err != nil {
+		return err
+	}
+	if err := root.Mkdir("temporary", 0o700); err != nil && !errors.Is(err, os.ErrExist) {
+		return normalizeLocalImageError(err)
+	}
+	_, verify, closeRoots, err := store.openObjectRoot(ctx, "temporary/check")
+	if err != nil {
+		return err
+	}
+	defer closeRoots()
+	if err := verify(); err != nil {
+		return err
+	}
+	return syncLocalImageDirectory(root)
 }
 
 func (store *LocalImageStore) volume() LocalImageVolume {
@@ -240,7 +317,7 @@ func localImageNoPending(root localImageReadRoot, staging string) error {
 	return nil
 }
 
-func (store *LocalImageStore) openObject(ctx context.Context, root localImageReadRoot, objectName, stageName string, input LocalImageObject) (*os.File, os.FileInfo, error) {
+func (store *LocalImageStore) openObject(ctx context.Context, root localImageReadRoot, objectName, stageName string, input LocalImageObject, verify func() error) (*os.File, os.FileInfo, error) {
 	if err := localImageNoPending(root, stageName); err != nil {
 		return nil, nil, err
 	}
@@ -250,7 +327,7 @@ func (store *LocalImageStore) openObject(ctx context.Context, root localImageRea
 		if errors.As(err, &known) && known.Code == "LOCAL_IMAGE_NOT_FOUND" {
 			// A writer can create its stage after the first pending check.
 			// Definitive absence also requires a current volume/stage check.
-			if err := store.verifyMarker(ctx, root); err != nil {
+			if err := verify(); err != nil {
 				return nil, nil, err
 			}
 			if err := localImageNoPending(root, stageName); err != nil {
@@ -308,22 +385,40 @@ func (store *LocalImageStore) Verify(ctx context.Context) (LocalImageVolume, err
 	if err := store.verifyMarker(ctx, root); err != nil {
 		return LocalImageVolume{}, err
 	}
+	if store.config.TemporaryEnabled {
+		_, verify, closeRoots, err := store.openObjectRoot(ctx, "temporary/check")
+		if err != nil {
+			return LocalImageVolume{}, err
+		}
+		defer closeRoots()
+		if err := verify(); err != nil {
+			return LocalImageVolume{}, err
+		}
+	}
 	return store.volume(), nil
 }
 
 // ProbeWritable tests creation, non-overwriting hard-link publication and removal.
 // Verify is read-only; these two zero-byte probe paths are not managed images.
-func (store *LocalImageStore) ProbeWritable(ctx context.Context) (result LocalImageVolume, resultErr error) {
-	root, err := store.openRoot(ctx)
+func (store *LocalImageStore) ProbeWritable(ctx context.Context) (LocalImageVolume, error) {
+	result, err := store.probeWritable(ctx, "")
+	if err == nil && store.config.TemporaryEnabled {
+		return store.probeWritable(ctx, "temporary/probe")
+	}
+	return result, err
+}
+
+func (store *LocalImageStore) probeWritable(ctx context.Context, key string) (result LocalImageVolume, resultErr error) {
+	root, verify, closeRoots, err := store.openObjectRoot(ctx, key)
 	if err != nil {
 		return result, err
 	}
 	defer func() {
-		if err := root.Close(); resultErr == nil {
+		if err := closeRoots(); resultErr == nil {
 			resultErr = normalizeLocalImageError(err)
 		}
 	}()
-	if err := store.verifyMarker(ctx, root); err != nil {
+	if err := verify(); err != nil {
 		return result, err
 	}
 	var token [16]byte
@@ -383,7 +478,7 @@ func (store *LocalImageStore) ProbeWritable(ctx context.Context) (result LocalIm
 	if err := syncLocalImageDirectory(root); err != nil {
 		return result, err
 	}
-	if err := store.verifyMarker(ctx, root); err != nil {
+	if err := verify(); err != nil {
 		return result, err
 	}
 	return store.volume(), nil
@@ -498,12 +593,12 @@ func (store *LocalImageStore) Put(ctx context.Context, input LocalImagePutInput)
 	if hex.EncodeToString(digest[:]) != input.SHA256 {
 		return result, localImageError("LOCAL_IMAGE_CONTENT_MISMATCH")
 	}
-	root, err := store.openRoot(ctx)
+	root, verify, closeRoots, err := store.openObjectRoot(ctx, input.Key)
 	if err != nil {
 		return result, err
 	}
-	defer root.Close()
-	if err := store.verifyMarker(ctx, root); err != nil {
+	defer closeRoots()
+	if err := verify(); err != nil {
 		return result, err
 	}
 	if err := localImageNoPending(root, stageName); err != nil {
@@ -553,7 +648,7 @@ func (store *LocalImageStore) Put(ctx context.Context, input LocalImagePutInput)
 	if err := verifyLocalImageContent(ctx, stage, input.LocalImageObject); err != nil {
 		return result, err
 	}
-	if err := store.verifyMarker(ctx, root); err != nil {
+	if err := verify(); err != nil {
 		return result, err
 	}
 	beforePublish, err := root.Lstat(stageName)
@@ -581,23 +676,23 @@ func (store *LocalImageStore) Put(ctx context.Context, input LocalImagePutInput)
 
 type LocalImageReader struct {
 	LocalImageMetadata
-	expected  LocalImageMetadata
-	ctx       context.Context
-	file      *os.File
-	root      *os.Root
-	digest    hash.Hash
-	offset    int64
-	readMu    sync.Mutex
-	closeOnce sync.Once
-	done      chan struct{}
-	closeErr  error
-	verified  bool
+	expected   LocalImageMetadata
+	ctx        context.Context
+	file       *os.File
+	closeRoots func() error
+	digest     hash.Hash
+	offset     int64
+	readMu     sync.Mutex
+	closeOnce  sync.Once
+	done       chan struct{}
+	closeErr   error
+	verified   bool
 }
 
 func (reader *LocalImageReader) Close() error {
 	reader.closeOnce.Do(func() {
 		close(reader.done)
-		reader.closeErr = normalizeLocalImageError(errors.Join(reader.file.Close(), reader.root.Close()))
+		reader.closeErr = normalizeLocalImageError(errors.Join(reader.file.Close(), reader.closeRoots()))
 	})
 	return reader.closeErr
 }
@@ -660,23 +755,23 @@ func (store *LocalImageStore) Open(ctx context.Context, input LocalImageObject) 
 	if err != nil {
 		return nil, err
 	}
-	root, err := store.openRoot(ctx)
+	root, verify, closeRoots, err := store.openObjectRoot(ctx, input.Key)
 	if err != nil {
 		return nil, err
 	}
-	if err := store.verifyMarker(ctx, root); err != nil {
-		root.Close()
+	if err := verify(); err != nil {
+		closeRoots()
 		return nil, err
 	}
-	file, _, err := store.openObject(ctx, root, objectName, stageName, input)
+	file, _, err := store.openObject(ctx, root, objectName, stageName, input, verify)
 	if err != nil {
-		root.Close()
+		closeRoots()
 		return nil, err
 	}
 	expected := LocalImageMetadata{ByteLength: input.ByteLength, SHA256: input.SHA256}
 	reader := &LocalImageReader{
 		LocalImageMetadata: expected, expected: expected,
-		ctx: ctx, file: file, root: root, digest: sha256.New(), done: make(chan struct{}),
+		ctx: ctx, file: file, closeRoots: closeRoots, digest: sha256.New(), done: make(chan struct{}),
 	}
 	go func() {
 		select {
@@ -710,15 +805,15 @@ func (store *LocalImageStore) Head(ctx context.Context, input LocalImageObject) 
 	if err != nil {
 		return LocalImageMetadata{}, err
 	}
-	root, err := store.openRoot(ctx)
+	root, verify, closeRoots, err := store.openObjectRoot(ctx, input.Key)
 	if err != nil {
 		return LocalImageMetadata{}, err
 	}
-	defer root.Close()
-	if err := store.verifyMarker(ctx, root); err != nil {
+	defer closeRoots()
+	if err := verify(); err != nil {
 		return LocalImageMetadata{}, err
 	}
-	file, _, err := store.openObject(ctx, root, objectName, stageName, input)
+	file, _, err := store.openObject(ctx, root, objectName, stageName, input, verify)
 	if err != nil {
 		return LocalImageMetadata{}, err
 	}
@@ -734,15 +829,15 @@ func (store *LocalImageStore) Delete(ctx context.Context, input LocalImageObject
 	if err != nil {
 		return "", err
 	}
-	root, err := store.openRoot(ctx)
+	root, verify, closeRoots, err := store.openObjectRoot(ctx, input.Key)
 	if err != nil {
 		return "", err
 	}
-	defer root.Close()
-	if err := store.verifyMarker(ctx, root); err != nil {
+	defer closeRoots()
+	if err := verify(); err != nil {
 		return "", err
 	}
-	file, identity, err := store.openObject(ctx, root, objectName, stageName, input)
+	file, identity, err := store.openObject(ctx, root, objectName, stageName, input, verify)
 	if err != nil {
 		var known *LocalImageStoreError
 		if errors.As(err, &known) && known.Code == "LOCAL_IMAGE_NOT_FOUND" {
@@ -755,7 +850,7 @@ func (store *LocalImageStore) Delete(ctx context.Context, input LocalImageObject
 	if verifyErr != nil || closeErr != nil {
 		return "", normalizeLocalImageError(errors.Join(verifyErr, closeErr))
 	}
-	if err := store.verifyMarker(ctx, root); err != nil {
+	if err := verify(); err != nil {
 		return "", err
 	}
 	if err := localImageNoPending(root, stageName); err != nil {

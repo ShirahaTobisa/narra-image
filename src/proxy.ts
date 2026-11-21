@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { getEnv } from "@/lib/env";
+import { isUncacheableImageUrl } from "@/lib/image-url";
 import { externalApiCorsHeaders, isExternalApiPath } from "@/lib/external-api/cors";
 import { managedImageOptimizerRewrite } from "@/lib/storage/image-optimizer";
 
@@ -27,6 +28,9 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
+  if (request.nextUrl.pathname === "/_next/image" && request.nextUrl.searchParams.getAll("url").some(isUncacheableImageUrl)) {
+    return new NextResponse(null, { status: 400, headers: { "Cache-Control": "private, no-store" } });
+  }
   const rewritten = environment.IMAGE_STORAGE_MANAGED_ENABLED
     ? managedImageOptimizerRewrite(request.url, environment.APP_URL) : null;
   return rewritten ? NextResponse.rewrite(rewritten) : NextResponse.next();

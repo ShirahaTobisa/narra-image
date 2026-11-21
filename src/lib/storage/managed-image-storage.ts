@@ -8,7 +8,7 @@ import type { Prisma } from "@prisma/client";
 import { getEnv, type RuntimeEnvironment } from "@/lib/env";
 import {
   IMAGE_MIME_TYPES, MAX_IMAGE_BYTES, ImageStorageError, imageLocalLocation,
-  imagePublicUrl, imageS3Location, imageOutputBudget,
+  imageAssetPublicPath, imagePublicUrl, imageS3Location, imageOutputBudget,
   type ImageLocation, type ImageLocationInput, type ImagePurpose,
   type ImageReservation, type ImageWriteTicket, type ManagedImage,
 } from "./image-contract";
@@ -16,7 +16,8 @@ import { ImageRepository } from "./image-repository";
 import { createLocalImageStore } from "./local-image-store";
 import { IMAGE_STORAGE_REVISION, IMAGE_READER_REVISION, IMAGE_MAINTENANCE_REVISION, IMAGE_READ_TIMEOUT_MS } from "./image-maintenance-types";
 import { reserveImageWithCleanup } from "./image-quota-cleanup";
-import { managedImagePublicToken } from "./image-optimizer";
+import { managedImageAddress } from "./image-optimizer";
+import type { ImageReadInput } from "./image-maintenance-contract";
 
 const IMAGE_IO_TIMEOUT_MS = 30_000;
 const MIME_EXTENSIONS: Record<string, string> = {
@@ -56,7 +57,8 @@ export function managedImageLocation(environment: RuntimeEnvironment = getEnv())
 function localStore(location: Pick<ImageLocation, "id" | "provider" | "volumeId">, environment: RuntimeEnvironment) {
   if (location.provider !== "LOCAL" || !location.volumeId || location.volumeId !== environment.IMAGE_STORAGE_VOLUME_ID
     || imageLocalLocation(location.volumeId).id !== location.id) throw new ImageStorageError("IMAGE_LOCATION_CONFLICT");
-  return createLocalImageStore({ rootDirectory: environment.IMAGE_STORAGE_PATH, volumeId: location.volumeId });
+  return createLocalImageStore({ rootDirectory: environment.IMAGE_STORAGE_PATH, volumeId: location.volumeId,
+    requireTemporaryDirectory: environment.IMAGE_TEMPORARY_STORAGE_ENABLED === true });
 }
 
 function s3Client(location: Pick<ImageLocation, "provider" | "endpoint" | "region" | "bucket">, environment: RuntimeEnvironment) {
@@ -120,6 +122,7 @@ export async function prepareManagedImageWrite(input: {
 }): Promise<PreparedManagedImageWrite> {
   const environment = getEnv();
   if (!isManagedImageStorageEnabled(environment)) throw new ImageStorageError("IMAGE_STORAGE_UNAVAILABLE");
+  const temporary = environment.IMAGE_TEMPORARY_STORAGE_ENABLED === true && (input.purpose === "GENERATED" || input.purpose === "REFERENCE");
   const bytes = Buffer.from(input.bytes);
   const mimeType = detectManagedImageMime(bytes);
   if (!IMAGE_MIME_TYPES.includes(mimeType)) throw new ImageStorageError("IMAGE_INVALID_INPUT");
@@ -135,11 +138,11 @@ export async function prepareManagedImageWrite(input: {
   try {
     ticket = await repository.beginObject({
       reservationId: reservation.id, token: reservation.token, slot: 0, locationId: location.id,
-      key: input.key ?? `images/${randomUUID()}.${MIME_EXTENSIONS[mimeType]}`,
+      key: `${temporary ? "temporary/" : ""}${input.key ?? `images/${randomUUID()}.${MIME_EXTENSIONS[mimeType]}`}`,
       byteLength: bytes.length, mimeType, sha256: createHash("sha256").update(bytes).digest("hex"),
-      purpose: input.purpose, originId: input.originId, assetId: input.assetId,
+      purpose: input.purpose, originId: input.originId, assetId: input.assetId, ...(temporary ? { temporary: true } : {}),
     });
-    const url = imagePublicUrl(environment.APP_URL, ticket.asset.publicToken);
+    const url = imagePublicUrl(environment.APP_URL, ticket.asset.publicToken, imageAssetPublicPath(ticket.asset));
     await repository.registerAlias({ assetId: ticket.asset.id, url });
     return { bytes, location, reservation, ticket, url };
   } catch (error) {
@@ -219,10 +222,10 @@ export async function persistManagedImageBytes(bytes: Buffer, ownerId: string): 
 
 export async function resolveManagedImageUrl(url: string): Promise<ManagedImage | null> {
   const repository = new ImageRepository();
-  const token = managedImagePublicToken(url, getEnv().APP_URL);
-  if (token) {
-    const image = await repository.getByToken(token);
-    if (!image) throw new ImageStorageError("IMAGE_UNAVAILABLE");
+  const address = managedImageAddress(url, getEnv().APP_URL);
+  if (address) {
+    const image = await repository.getByToken(address.token);
+    if (!image || address.route !== imageAssetPublicPath(image.asset)) throw new ImageStorageError("IMAGE_UNAVAILABLE");
     return image;
   }
   // Disabling new managed writes cannot make existing aliases unreadable.
@@ -243,9 +246,11 @@ function imageReadFailure(error: unknown): ImageStorageError {
   return new ImageStorageError("IMAGE_STORAGE_UNAVAILABLE", { cause: error });
 }
 
-async function protectManagedImageRead(image: ManagedImage, signal: AbortSignal) {
+export type ManagedImageReadContext = Pick<ImageReadInput, "jobId" | "viewerId">;
+
+async function protectManagedImageRead(image: ManagedImage, signal: AbortSignal, context: ManagedImageReadContext = {}) {
   if (signal.aborted) throw new ImageStorageError("IMAGE_UNAVAILABLE");
-  const lease = await new ImageRepository().beginRead({ assetId: image.asset.id });
+  const lease = await new ImageRepository().beginRead({ ...context, assetId: image.asset.id });
   if (!lease) throw new ImageStorageError("IMAGE_UNAVAILABLE");
   // Keep the IO deadline strictly inside the database's deletion fence,
   // including time spent waiting for the descriptor response.
@@ -254,8 +259,8 @@ async function protectManagedImageRead(image: ManagedImage, signal: AbortSignal)
   return { image: lease.image, signal: AbortSignal.any([signal, AbortSignal.timeout(Math.floor(timeout))]) };
 }
 
-export async function readManagedImage(image: ManagedImage, signal: AbortSignal = AbortSignal.timeout(IMAGE_READ_TIMEOUT_MS)): Promise<Buffer> {
-  const protectedRead = await protectManagedImageRead(image, signal);
+export async function readManagedImage(image: ManagedImage, signal: AbortSignal = AbortSignal.timeout(IMAGE_READ_TIMEOUT_MS), context: ManagedImageReadContext = {}): Promise<Buffer> {
+  const protectedRead = await protectManagedImageRead(image, signal, context);
   return readManagedImageBytes(protectedRead.image, protectedRead.signal);
 }
 
@@ -296,8 +301,8 @@ async function readManagedImageBytes(image: ManagedImage, signal: AbortSignal): 
   } finally { signal.removeEventListener("abort", abort); body?.destroy(); client.destroy(); }
 }
 
-export async function headManagedImage(image: ManagedImage, signal: AbortSignal): Promise<void> {
-  const protectedRead = await protectManagedImageRead(image, signal);
+export async function headManagedImage(image: ManagedImage, signal: AbortSignal, context: ManagedImageReadContext = {}): Promise<void> {
+  const protectedRead = await protectManagedImageRead(image, signal, context);
   image = protectedRead.image;
   signal = protectedRead.signal;
   const { asset, object, location } = image;
@@ -318,8 +323,8 @@ export async function headManagedImage(image: ManagedImage, signal: AbortSignal)
   finally { client.destroy(); }
 }
 
-export async function openManagedImage(image: ManagedImage, signal: AbortSignal): Promise<ReadableStream<Uint8Array>> {
-  const protectedRead = await protectManagedImageRead(image, signal);
+export async function openManagedImage(image: ManagedImage, signal: AbortSignal, context: ManagedImageReadContext = {}): Promise<ReadableStream<Uint8Array>> {
+  const protectedRead = await protectManagedImageRead(image, signal, context);
   image = protectedRead.image;
   signal = protectedRead.signal;
   const { asset, object, location } = image;

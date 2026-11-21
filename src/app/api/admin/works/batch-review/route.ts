@@ -6,6 +6,7 @@ import { getErrorMessage, jsonError, jsonOk, parseJsonBody } from "@/lib/server/
 import { getVideoMutationTarget, getWorkMutationTarget } from "@/lib/server/works";
 import { adminWorkBatchReviewSchema } from "@/lib/validators";
 import { applyAdminWorkReview } from "@/lib/work-showcase";
+import { reviewGalleryWork } from "@/lib/server/gallery-uploads";
 
 export async function POST(request: Request) {
   try {
@@ -16,6 +17,14 @@ export async function POST(request: Request) {
     const skippedIds: string[] = [];
 
     for (const item of body.items) {
+      if (item.id.startsWith("gallery_")) {
+        try {
+          await reviewGalleryWork({ id: item.id, actorId: admin.id, action: body.action,
+            submittedAt: item.submittedAt, reviewNote: body.reviewNote });
+          updatedIds.push(item.id);
+        } catch { skippedIds.push(item.id); }
+        continue;
+      }
       const target =
         item.mediaType === "video"
           ? await getVideoMutationTarget(item.id)
@@ -52,7 +61,7 @@ export async function POST(request: Request) {
     }
 
     if (updatedIds.length > 0) {
-      revalidateTag("featured-works", "max");
+      revalidateTag("featured-works", { expire: 0 });
     }
 
     return jsonOk({

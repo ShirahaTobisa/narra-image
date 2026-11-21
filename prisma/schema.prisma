@@ -124,6 +124,8 @@ model User {
   featuredGenerations  GenerationJob[]      @relation("FeaturedByAdmin")
   reviewedWorks        GenerationImage[]    @relation("ReviewedWorks")
   reviewedVideos       GeneratedVideo[]     @relation("ReviewedVideos")
+  galleryWorks         GalleryWork[]
+  reviewedGalleryWorks GalleryWork[]        @relation("ReviewedGalleryWorks")
   likedWorks           WorkLike[]
   redeemBatches        RedeemCodeBatch[]    @relation("RedeemBatchCreatedBy")
   createdRedeemCodes   RedeemCode[]         @relation("RedeemCodeCreatedBy")
@@ -344,17 +346,51 @@ model WorkLike {
   id        String           @id @default(cuid())
   workId    String?
   videoId   String?
+  galleryWorkId String?
   userId    String
   createdAt DateTime         @default(now())
   work      GenerationImage? @relation(fields: [workId], references: [id], onDelete: Cascade)
   video     GeneratedVideo?  @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  galleryWork GalleryWork?   @relation(fields: [galleryWorkId], references: [id], onDelete: Cascade)
   user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([workId, userId])
   @@unique([videoId, userId])
+  @@unique([galleryWorkId, userId])
   @@index([userId])
   @@index([workId])
   @@index([videoId])
+  @@index([galleryWorkId])
+}
+
+model GalleryWork {
+  id               String         @id @default(cuid())
+  userId           String
+  mediaAssetId     String         @unique @db.Uuid
+  requestKey       String         @db.VarChar(64)
+  payloadHash      String         @db.Char(64)
+  prompt           String?
+  negativePrompt   String?
+  width            Int?
+  height           Int?
+  showcaseStatus   ShowcaseStatus @default(PENDING)
+  showPromptPublic Boolean        @default(false)
+  publicAuthorName String?
+  submittedAt      DateTime
+  featuredAt       DateTime?
+  reviewedAt       DateTime?
+  reviewNote       String?
+  reviewedById     String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mediaAsset       ImageAsset     @relation(fields: [mediaAssetId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  reviewedBy       User?          @relation("ReviewedGalleryWorks", fields: [reviewedById], references: [id], onDelete: SetNull)
+  likes            WorkLike[]
+
+  @@unique([userId, requestKey])
+  @@index([userId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([showcaseStatus, featuredAt(sort: Desc), id(sort: Desc)])
 }
 
 model RedeemCodeBatch {
@@ -748,6 +784,7 @@ model ImageAsset {
   id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   ownerId        String       @db.VarChar(128)
   purpose        String       @db.VarChar(24)
+  expiresAt      DateTime?     @db.Timestamptz(3)
   originId       String?      @db.VarChar(128)
   publicToken    String       @unique @default(dbgenerated("replace(((gen_random_uuid())::text || (gen_random_uuid())::text), '-'::text, ''::text)")) @db.VarChar(64)
   byteLength     BigInt
@@ -768,6 +805,7 @@ model ImageAsset {
   references     ImageReference[]
   aliases        ImageUrlAlias[]
   generationImage GenerationImage?
+  galleryWork    GalleryWork?
   canvasImport   CanvasImportAsset?
   deleteJob      ImageMaintenanceJob? @relation("ImageAssetDeleteJob", fields: [deleteJobId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   copyReservation ImageWriteReservation? @relation("ImageAssetCopy", fields: [copyReservationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -781,6 +819,7 @@ model ImageAsset {
   @@unique([ownerId, purpose, originId], map: "ImageAsset_origin_key")
   @@index([ownerId, createdAt], map: "ImageAsset_owner_idx")
   @@index([state, createdAt, id], map: "ImageAsset_cleanup_idx")
+  @@index([state, expiresAt, id], map: "ImageAsset_expiry_idx")
 }
 
 model ImageStorageLocation {

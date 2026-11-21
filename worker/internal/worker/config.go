@@ -35,6 +35,7 @@ type Config struct {
 	EnableLocalImageFallback       bool
 	HTTPAddr                       string
 	ImageStorageManagedEnabled     bool
+	ImageTemporaryStorageEnabled   bool
 	ImageStorageBackend            string
 	ImageStoragePath               string
 	ImageStorageVolumeID           string
@@ -116,18 +117,24 @@ func LoadConfig() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	imageTemporary, err := getenvStrictBool("IMAGE_TEMPORARY_STORAGE_ENABLED", false)
+	if err != nil {
+		return Config{}, err
+	}
 	jobTimeoutSeconds, err := getenvBoundedInt("WORKER_JOB_TIMEOUT_SECONDS", 900, 1, 86400)
 	if err != nil {
 		return Config{}, err
 	}
 	imageConfig := Config{
-		AppURL:                     getenv("APP_URL", "http://localhost:3000"),
-		ImageStorageManagedEnabled: imageManaged,
-		ImageStorageBackend:        strings.TrimSpace(getenv("IMAGE_STORAGE_BACKEND", "s3")),
-		ImageStoragePath:           strings.TrimSpace(getenv("IMAGE_STORAGE_PATH", "/data/images")),
-		ImageStorageVolumeID:       strings.TrimSpace(os.Getenv("IMAGE_STORAGE_VOLUME_ID")),
-		JobTimeout:                 time.Duration(jobTimeoutSeconds) * time.Second,
-		NodeEnv:                    strings.TrimSpace(os.Getenv("NODE_ENV")),
+		AppURL:                       getenv("APP_URL", "http://localhost:3000"),
+		ImageStorageManagedEnabled:   imageManaged,
+		ImageTemporaryStorageEnabled: imageTemporary,
+		CanvasEnabled:                canvasEnabled,
+		ImageStorageBackend:          strings.TrimSpace(getenv("IMAGE_STORAGE_BACKEND", "s3")),
+		ImageStoragePath:             strings.TrimSpace(getenv("IMAGE_STORAGE_PATH", "/data/images")),
+		ImageStorageVolumeID:         strings.TrimSpace(os.Getenv("IMAGE_STORAGE_VOLUME_ID")),
+		JobTimeout:                   time.Duration(jobTimeoutSeconds) * time.Second,
+		NodeEnv:                      strings.TrimSpace(os.Getenv("NODE_ENV")),
 	}
 	if err := ValidateImageStorageConfig(imageConfig); err != nil {
 		return Config{}, err
@@ -162,6 +169,7 @@ func LoadConfig() (Config, error) {
 		EnableLocalImageFallback:       getenvBool("ENABLE_LOCAL_IMAGE_FALLBACK", true),
 		HTTPAddr:                       getenv("WORKER_HTTP_ADDR", "127.0.0.1:8081"),
 		ImageStorageManagedEnabled:     imageConfig.ImageStorageManagedEnabled,
+		ImageTemporaryStorageEnabled:   imageConfig.ImageTemporaryStorageEnabled,
 		ImageStorageBackend:            imageConfig.ImageStorageBackend,
 		ImageStoragePath:               imageConfig.ImageStoragePath,
 		ImageStorageVolumeID:           imageConfig.ImageStorageVolumeID,
@@ -195,6 +203,14 @@ func LoadConfig() (Config, error) {
 // LoadStorageConfig 只读取媒体持久化相关配置，供回填等运维命令使用，
 // 不校验 AUTH_SECRET / WORKER_RUNTIME_MODE 等运行时要求。
 func LoadStorageConfig() (Config, error) {
+	temporary, err := getenvStrictBool("IMAGE_TEMPORARY_STORAGE_ENABLED", false)
+	if err != nil {
+		return Config{}, err
+	}
+	canvas, err := getenvStrictBool("CANVAS_ENABLED", false)
+	if err != nil {
+		return Config{}, err
+	}
 	managed, err := getenvStrictBool("IMAGE_STORAGE_MANAGED_ENABLED", false)
 	if err != nil {
 		return Config{}, err
@@ -204,20 +220,22 @@ func LoadStorageConfig() (Config, error) {
 		return Config{}, err
 	}
 	cfg := Config{
-		AppURL:                     getenv("APP_URL", "http://localhost:3000"),
-		EnableDatabaseImageStorage: databaseImageStorage,
-		EnableLocalImageFallback:   getenvBool("ENABLE_LOCAL_IMAGE_FALLBACK", true),
-		NodeEnv:                    strings.TrimSpace(os.Getenv("NODE_ENV")),
-		ImageStorageManagedEnabled: managed,
-		ImageStorageBackend:        strings.TrimSpace(getenv("IMAGE_STORAGE_BACKEND", "s3")),
-		ImageStoragePath:           strings.TrimSpace(getenv("IMAGE_STORAGE_PATH", "/data/images")),
-		ImageStorageVolumeID:       strings.TrimSpace(os.Getenv("IMAGE_STORAGE_VOLUME_ID")),
-		S3AccessKeyID:              os.Getenv("S3_ACCESS_KEY_ID"),
-		S3Bucket:                   os.Getenv("S3_BUCKET"),
-		S3Endpoint:                 os.Getenv("S3_ENDPOINT"),
-		S3PublicBaseURL:            os.Getenv("S3_PUBLIC_BASE_URL"),
-		S3Region:                   getenv("S3_REGION", "auto"),
-		S3SecretAccessKey:          os.Getenv("S3_SECRET_ACCESS_KEY"),
+		AppURL:                       getenv("APP_URL", "http://localhost:3000"),
+		EnableDatabaseImageStorage:   databaseImageStorage,
+		EnableLocalImageFallback:     getenvBool("ENABLE_LOCAL_IMAGE_FALLBACK", true),
+		NodeEnv:                      strings.TrimSpace(os.Getenv("NODE_ENV")),
+		ImageStorageManagedEnabled:   managed,
+		ImageTemporaryStorageEnabled: temporary,
+		CanvasEnabled:                canvas,
+		ImageStorageBackend:          strings.TrimSpace(getenv("IMAGE_STORAGE_BACKEND", "s3")),
+		ImageStoragePath:             strings.TrimSpace(getenv("IMAGE_STORAGE_PATH", "/data/images")),
+		ImageStorageVolumeID:         strings.TrimSpace(os.Getenv("IMAGE_STORAGE_VOLUME_ID")),
+		S3AccessKeyID:                os.Getenv("S3_ACCESS_KEY_ID"),
+		S3Bucket:                     os.Getenv("S3_BUCKET"),
+		S3Endpoint:                   os.Getenv("S3_ENDPOINT"),
+		S3PublicBaseURL:              os.Getenv("S3_PUBLIC_BASE_URL"),
+		S3Region:                     getenv("S3_REGION", "auto"),
+		S3SecretAccessKey:            os.Getenv("S3_SECRET_ACCESS_KEY"),
 	}
 	return cfg, ValidateImageStorageConfig(cfg)
 }
@@ -232,6 +250,9 @@ func ValidateImageStorageConfig(cfg Config) error {
 	backend := cfg.ImageStorageBackend
 	if backend == "" {
 		backend = "s3"
+	}
+	if cfg.ImageTemporaryStorageEnabled && (!cfg.ImageStorageManagedEnabled || backend != "local" || cfg.CanvasEnabled) {
+		return errors.New("临时图片必须启用受管理 LOCAL 存储且关闭 Canvas")
 	}
 	if backend != "s3" && backend != "local" {
 		return errors.New("IMAGE_STORAGE_BACKEND 必须为 s3 或 local")

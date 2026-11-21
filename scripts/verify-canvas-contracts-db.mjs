@@ -16,7 +16,8 @@ export const CANVAS_DB_TEST_TARGET = "src/tests/integration/canvas-contracts/can
 export const IMAGE_DB_TEST_TARGET = "src/tests/integration/canvas-contracts/image-storage-db.test.ts";
 export const IMAGE_RETENTION_DB_TEST_TARGET = "src/tests/integration/canvas-contracts/image-retention-db.test.ts";
 export const IMAGE_HISTORY_DB_TEST_TARGET = "src/tests/integration/canvas-contracts/image-history-db.test.ts";
-export const CANVAS_DB_TEST_TARGETS = [CANVAS_DB_TEST_TARGET, IMAGE_DB_TEST_TARGET, IMAGE_RETENTION_DB_TEST_TARGET, IMAGE_HISTORY_DB_TEST_TARGET];
+export const IMAGE_EXPIRY_DB_TEST_TARGET = "src/tests/integration/canvas-contracts/image-expiry-db.test.ts";
+export const CANVAS_DB_TEST_TARGETS = [CANVAS_DB_TEST_TARGET, IMAGE_DB_TEST_TARGET, IMAGE_RETENTION_DB_TEST_TARGET, IMAGE_HISTORY_DB_TEST_TARGET, IMAGE_EXPIRY_DB_TEST_TARGET];
 export const CANVAS_DB_CONFIG_TARGET = "src/tests/integration/canvas-contracts/runner-vitest.config.ts";
 export const CANVAS_DB_VITEST_ARGS = ["exec", "vitest", "run", ...CANVAS_DB_TEST_TARGETS, "--config", CANVAS_DB_CONFIG_TARGET, "--reporter=dot", "--testTimeout=15000", "--hookTimeout=15000"];
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");

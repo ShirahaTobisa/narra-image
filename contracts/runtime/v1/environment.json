@@ -208,6 +208,19 @@
       "documentation": { "envExample": true, "readme": true }
     },
     {
+      "name": "IMAGE_TEMPORARY_STORAGE_ENABLED",
+      "owner": "shared",
+      "type": "boolean",
+      "default": false,
+      "requiredInProduction": false,
+      "secret": false,
+      "phase": "runtime",
+      "constraints": { "requiresManagedLocalStorage": true, "requiresCanvasDisabled": true },
+      "consumers": ["next", "worker", "compose"],
+      "allowedReadPaths": ["src/lib/env.ts", "worker/internal/worker/config.go"],
+      "documentation": { "envExample": true, "readme": true }
+    },
+    {
       "name": "IMAGE_STORAGE_BACKEND",
       "owner": "shared",
       "type": "enum",

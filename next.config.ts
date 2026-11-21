@@ -21,6 +21,8 @@ const nextConfig: NextConfig = {
     // 只替 Discord 头像做缩放；本站图片由 proxy.ts 改写成本地路径，不走远程下载。
     // 放开通配会让 /_next/image 变成谁都能用的图片代理（下载、转码、缓存全由本机承担）
     remotePatterns: [{ protocol: "https", hostname: "cdn.discordapp.com", pathname: "/avatars/**" }],
+    localPatterns: ["/media/images/*", "/pet/**", "/marketing/**", "/_next/static/media/**", "/*.svg", "/logo.png"]
+      .map((pathname) => ({ pathname, search: "" })),
     formats: ["image/avif", "image/webp"],
     // 缩略图常用宽度（imageSizes）+ 屏幕宽度档位（deviceSizes）
     // 调用 /_next/image?w=xxx 时，xxx 必须落在这两个集合的并集里。

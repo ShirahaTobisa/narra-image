@@ -400,7 +400,7 @@ describe("image retention on disposable PostgreSQL", () => {
       await repo.finishObject({ objectId: third.object.id, writeToken: third.object.writeToken, outcome: "CONFIRMED" });
       await repo.closeReservation({ reservationId: thirdCopy.id, token: thirdCopy.token });
       await expectedFailure(client, "IMAGE_MAINTENANCE_CONFLICT", () => repo.requestSourceRetirement({ requestId: randomUUID(), assetId: image.assetId, sourceObjectId: image.objectId, targetObjectId: ticket.object.id, verificationId: randomUUID() }));
-      const proof = await repo.recordReplicaVerification({ assetId: image.assetId, sourceObjectId: image.objectId, targetObjectId: ticket.object.id, byteLength: "10", sha256: "a".repeat(64), aliasUrls: [image.url], readerProtocolRevision: 3 });
+      const proof = await repo.recordReplicaVerification({ assetId: image.assetId, sourceObjectId: image.objectId, targetObjectId: ticket.object.id, byteLength: "10", sha256: "a".repeat(64), aliasUrls: [image.url], readerProtocolRevision: 4 });
       await repo.requestSourceRetirement({ requestId: randomUUID(), assetId: image.assetId, sourceObjectId: image.objectId, targetObjectId: ticket.object.id, verificationId: proof.id });
       const lease = await executor(repo); const claims = await repo.claimMaintenance({ executorToken: lease.token, verifiedLocationIds: [image.location.id, targetLocation.id] });
       expect(claims.map(({ object }) => object.id)).toEqual([image.objectId]);

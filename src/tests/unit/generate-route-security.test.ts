@@ -148,7 +148,7 @@ function readyManagedInput(): ManagedImage {
   return {
     asset: { id, ownerId: "original-image-owner", purpose: "REFERENCE", originId: null, publicToken: "a".repeat(64),
       byteLength: "10", mimeType: "image/png", sha256: "b".repeat(64), state: "AVAILABLE", activeObjectId: objectId,
-      detachedAt: stamp, deletedAt: null, deleteReason: null, createdAt: stamp, updatedAt: stamp },
+      detachedAt: stamp, expiresAt: null, deletedAt: null, deleteReason: null, createdAt: stamp, updatedAt: stamp },
     object: { id: objectId, assetId: id, provenance: "OBSERVED", sourceObservationId: "44444444-4444-4444-8444-444444444444", reconciliationObservationId: null,
       reservationId: null, slot: null, writeToken: null, writeExpiresAt: null, putOutcome: "NOT_APPLICABLE",
       locationId: location.id, physicalNamespace: location.id, key: "images/original.png", byteLength: "10", mimeType: "image/png", sha256: "b".repeat(64),

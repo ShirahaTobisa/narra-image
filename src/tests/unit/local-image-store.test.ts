@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createLocalImageStore,
   initializeLocalImageVolume,
+  initializeLocalImageTemporaryDirectory,
   localImageObjectNames,
   LOCAL_IMAGE_VOLUME_MARKER,
   LocalImageStoreError,
@@ -59,6 +60,31 @@ afterEach(async () => {
 });
 
 describe("local image volume", () => {
+  it("requires explicit temporary-directory initialization and keeps old flat bytes intact", async () => {
+    const { config, rootDirectory, store } = await fixture();
+    const old = object();
+    const temporary = object(Buffer.from("temporary fixture"), "temporary/images/new.png");
+    await store.put(old);
+    await expect(store.put(temporary)).rejects.toMatchObject({ code: "LOCAL_IMAGE_VOLUME_UNAVAILABLE" });
+    await initializeLocalImageTemporaryDirectory(config);
+    await initializeLocalImageTemporaryDirectory(config);
+    await store.put(temporary);
+    expect(await readFile(path.join(rootDirectory, localImageObjectNames(temporary.key).object))).toEqual(temporary.bytes);
+    expect(await store.read(temporary)).toEqual(temporary.bytes);
+    expect(await store.delete(temporary)).toBe("deleted");
+    expect(await store.read(old)).toEqual(old.bytes);
+    expect(await readdir(path.join(rootDirectory, "temporary"))).toEqual([]);
+  });
+
+  it.skipIf(process.platform === "win32")("rejects a symlink instead of adopting a temporary directory", async () => {
+    const { config, rootDirectory, store } = await fixture();
+    const other = await directory();
+    await symlink(other, path.join(rootDirectory, "temporary"), "dir");
+    await expect(initializeLocalImageTemporaryDirectory(config)).rejects.toMatchObject({ code: "LOCAL_IMAGE_UNSAFE_PATH" });
+    await expect(store.put(object(Buffer.from("x"), "temporary/x"))).rejects.toMatchObject({ code: "LOCAL_IMAGE_UNSAFE_PATH" });
+    expect(await readdir(other)).toEqual([]);
+  });
+
   it("requires explicit initialization and reopens the exact shared marker", async () => {
     const rootDirectory = await directory();
     const config = { rootDirectory, volumeId };

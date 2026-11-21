@@ -6,8 +6,10 @@ import { requireAdminRecord } from "@/lib/server/current-user";
 import { getErrorMessage, jsonError, jsonOk, parseJsonBody } from "@/lib/server/http";
 import { applyAdminWorkReview } from "@/lib/work-showcase";
 import { adminWorkReviewSchema } from "@/lib/validators";
+import { GalleryUploadError, reviewGalleryWork } from "@/lib/server/gallery-uploads";
 
 function resolveStatusCode(error: unknown) {
+  if (error instanceof GalleryUploadError) return error.status;
   if (error instanceof Error && error.message === "当前状态不允许执行该审核操作") {
     return 409;
   }
@@ -23,6 +25,13 @@ export async function PATCH(
     const admin = await requireAdminRecord();
     const body = adminWorkReviewSchema.parse(await parseJsonBody(request));
     const { id } = await context.params;
+
+    if (id.startsWith("gallery_")) {
+      await reviewGalleryWork({ id, actorId: admin.id, action: body.action,
+        submittedAt: body.submittedAt, reviewNote: body.reviewNote });
+      revalidateTag("featured-works", { expire: 0 });
+      return jsonOk({ work: await getAdminWorkById(id), mediaType: "image" });
+    }
 
     const isVideo = body.mediaType === "video";
     const work = isVideo ? await getVideoMutationTarget(id) : await getWorkMutationTarget(id);

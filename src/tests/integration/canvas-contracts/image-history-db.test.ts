@@ -459,7 +459,7 @@ describe("image history real PostgreSQL contracts", () => {
       await repo.closeReservation({ reservationId: prepared.reservation.id, token: prepared.reservation.token });
       const read = await repo.prepareImageCopyReconciliation({ itemId: run.item.id, token: run.token, expectedTargetObjectId: prepared.ticket.object.id });
       const bad = await targetObservation(repo, run, read.item, { hash: "d".repeat(64) });
-      const switchInput = { itemId: run.item.id, token: run.token, expectedActiveObjectId: adopted.item.sourceObjectId!, aliasUrls: await repo.getImageHistoryAliases({ assetId: adopted.item.assetId! }), readerProtocolRevision: 3 as const };
+      const switchInput = { itemId: run.item.id, token: run.token, expectedActiveObjectId: adopted.item.sourceObjectId!, aliasUrls: await repo.getImageHistoryAliases({ assetId: adopted.item.assetId! }), readerProtocolRevision: 4 as const };
       await failure(client, "IMAGE_OBSERVATION_REQUIRED", () => repo.commitImageMigrationSwitch({ ...switchInput, targetReadbackObservationId: bad.id }));
       expect((await repo.resolveUrl(source.imageUrl))?.object?.id).toBe(adopted.item.sourceObjectId);
       const good = await targetObservation(repo, run, read.item); const receipt = await repo.commitImageMigrationSwitch({ ...switchInput, targetReadbackObservationId: good.id });
@@ -475,7 +475,7 @@ describe("image history real PostgreSQL contracts", () => {
       expect(await repo.getUsage()).toEqual(beforeReuse);
       const fresh = await targetObservation(repo, later, reused.prepared.item);
       const verifiedAgain = await repo.commitImageMigrationSwitch({ itemId: later.item.id, token: later.token, expectedActiveObjectId: prepared.ticket.object.id, targetReadbackObservationId: fresh.id,
-        aliasUrls: await repo.getImageHistoryAliases({ assetId: adopted.item.assetId! }), readerProtocolRevision: 3 });
+        aliasUrls: await repo.getImageHistoryAliases({ assetId: adopted.item.assetId! }), readerProtocolRevision: 4 });
       expect(verifiedAgain.item.targetObjectId).toBe(prepared.ticket.object.id);
       expect(verifiedAgain.replicaVerificationId).not.toBe(receipt.replicaVerificationId);
     });
@@ -509,7 +509,7 @@ describe("image history real PostgreSQL contracts", () => {
       await repo.closeReservation({ reservationId: prepared.reservation.id, token: prepared.reservation.token });
       const read = await repo.prepareImageCopyReconciliation({ itemId: run.item.id, token: run.token, expectedTargetObjectId: prepared.ticket.object.id });
       const proof = await targetObservation(repo, run, read.item);
-      await repo.commitImageMigrationSwitch({ itemId: run.item.id, token: run.token, targetReadbackObservationId: proof.id, expectedActiveObjectId: adopted.item.sourceObjectId!, aliasUrls: await repo.getImageHistoryAliases({ assetId: adopted.item.assetId! }), readerProtocolRevision: 3 });
+      await repo.commitImageMigrationSwitch({ itemId: run.item.id, token: run.token, targetReadbackObservationId: proof.id, expectedActiveObjectId: adopted.item.sourceObjectId!, aliasUrls: await repo.getImageHistoryAliases({ assetId: adopted.item.assetId! }), readerProtocolRevision: 4 });
       // A process can stop after the switch commits and before requesting
       // retirement. Another token cannot steal its live lease, and job progress
       // must still report that pending request as incomplete.

@@ -110,7 +110,7 @@ function matchesSearch(work: SerializedWork, search: string) {
   return [
     work.prompt,
     work.negativePrompt ?? "",
-    work.model,
+    work.model ?? "用户上传",
     work.size,
     work.id,
   ].some((value) => value.toLowerCase().includes(keyword));
@@ -422,7 +422,7 @@ export function MyWorksBoard({
                         {work.prompt}
                       </p>
                       <p className="mt-1 text-xs text-white/72">
-                        {work.model} · {getRatioLabel(work.size)}
+                        {work.model ?? "用户上传"} · {getRatioLabel(work.size)}
                       </p>
                     </div>
                     <div className="absolute left-3 top-3">
@@ -557,7 +557,7 @@ export function MyWorksBoard({
                   <div className="flex justify-between gap-3 border-b border-[var(--line)] pb-2">
                     <dt className="text-[var(--ink-soft)]">模型</dt>
                     <dd className="font-medium text-[var(--ink)]">
-                      {selectedWork.model}
+                      {selectedWork.model ?? "用户上传"}
                     </dd>
                   </div>
                   <div className="flex justify-between gap-3 border-b border-[var(--line)] pb-2">
@@ -786,7 +786,7 @@ export function MyWorksBoard({
                     <div className="flex justify-between gap-3 border-b border-[var(--line)] pb-2">
                       <dt className="text-[var(--ink-soft)]">模型</dt>
                       <dd className="font-medium text-[var(--ink)]">
-                        {selectedWork.model}
+                        {selectedWork.model ?? "用户上传"}
                       </dd>
                     </div>
                     <div className="flex justify-between gap-3 border-b border-[var(--line)] pb-2">

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ images: vi.fn(), videos: vi.fn(), image: vi.fn() }));
 vi.mock("@/lib/db", () => ({ db: {
+  galleryWork: { findMany: async () => [] },
   generationImage: { findMany: mocks.images, findUnique: mocks.image },
   generatedVideo: { findMany: mocks.videos },
 } }));
@@ -43,7 +44,7 @@ describe("封禁作者的公开作品资格", () => {
     expect((await list()).items.map((item) => item.id)).toEqual(["visible"]);
     expect(query.mock.calls[0][0].where).toMatchObject({ showcaseStatus: "FEATURED", job: { user: { bannedAt: null } } });
     banned.job.user.bannedAt = null;
-    expect((await list()).items.map((item) => item.id)).toEqual(["banned", "visible"]);
+    expect((await list()).items.map((item) => item.id).sort()).toEqual(["banned", "visible"]);
     expect(banned.showcaseStatus).toBe("FEATURED");
   });
 

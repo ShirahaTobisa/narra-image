@@ -14,8 +14,8 @@ export const imageSchemaInventorySchema = z.array(catalogRowSchema);
 const schemaContractSchema = z.object({
   contract: z.literal("narra.image.schema"),
   version: z.literal(1),
-  storageRevision: z.literal(3),
-  migration: z.literal("20261115180000_image_history"),
+  storageRevision: z.literal(4),
+  migration: z.literal("20261121160000_transient_images"),
   migrationSha256: z.string().length(64).regex(/^[0-9a-f]{64}$/),
   migrations: z.array(z.object({ name: z.string().regex(/^[0-9]{14}_[a-z0-9_]+$/), sha256: z.string().regex(/^[0-9a-f]{64}$/) }).strict()).min(4),
   bodyFingerprint: z.string().min(1),
@@ -36,14 +36,14 @@ export type ImageSchemaIssue = {
 };
 export type ImageSchemaReport = {
   version: 1;
-  storageRevision: 3;
+  storageRevision: 4;
   ready: boolean;
   code: "IMAGE_STORAGE_UNAVAILABLE" | null;
   issues: ImageSchemaIssue[];
 };
 
 function report(issues: ImageSchemaIssue[]): ImageSchemaReport {
-  return { version: 1, storageRevision: 3, ready: issues.length === 0, code: issues.length === 0 ? null : "IMAGE_STORAGE_UNAVAILABLE", issues };
+  return { version: 1, storageRevision: 4, ready: issues.length === 0, code: issues.length === 0 ? null : "IMAGE_STORAGE_UNAVAILABLE", issues };
 }
 
 function failure(reason: ImageSchemaIssue["reason"]): ImageSchemaReport {

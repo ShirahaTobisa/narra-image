@@ -30,7 +30,7 @@ function readyImage(): ManagedImage {
   return {
     asset: { id: assetId, ownerId: "original-owner", purpose: "REFERENCE", originId: null, publicToken: token,
       byteLength: "10", mimeType: "image/png", sha256: "b".repeat(64), state: "AVAILABLE", activeObjectId: objectId,
-      detachedAt: stamp, deletedAt: null, deleteReason: null, createdAt: stamp, updatedAt: stamp },
+      detachedAt: stamp, expiresAt: null, deletedAt: null, deleteReason: null, createdAt: stamp, updatedAt: stamp },
     object: { id: objectId, assetId, provenance: "OBSERVED", sourceObservationId: "44444444-4444-4444-8444-444444444444", reconciliationObservationId: null,
       reservationId: null, slot: null, writeToken: null, writeExpiresAt: null, putOutcome: "NOT_APPLICABLE",
       locationId: location.id, physicalNamespace: location.id, key: "images/original.png", byteLength: "10", mimeType: "image/png", sha256: "b".repeat(64),
@@ -73,6 +73,16 @@ beforeEach(() => {
 });
 
 describe("accepted token inputs retain exact URL identities", () => {
+  it("rejects an expired input and a permanent-path alias before adding any accepted URL", async () => {
+    const temporary = canonical.replace("/media/images/", "/media/temporary-images/");
+    image!.asset.expiresAt = new Date(Date.now() - 1).toISOString();
+    await expect(bindManagedImageInputAliases(transaction, [temporary])).rejects.toMatchObject({ code: "IMAGE_UNAVAILABLE" });
+    expect(events).not.toContain("alias");
+    image!.asset.expiresAt = new Date(Date.now() + 60_000).toISOString();
+    await expect(bindManagedImageInputAliases(transaction, [canonical])).rejects.toMatchObject({ code: "IMAGE_UNAVAILABLE" });
+    await bindManagedImageInputAliases(transaction, [temporary]);
+    expect(aliases.get(temporary)).toBe(assetId);
+  });
   it("binds normalized-authority variants with managed writes disabled without rewriting frozen inputs", async () => {
     const sources = Object.freeze([variant, canonical, variant]);
     await bindManagedImageInputAliases(transaction, sources);

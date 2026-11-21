@@ -2,7 +2,7 @@ import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
 import { constants, type BigIntStats } from "node:fs";
-import { access, link, lstat, open, readdir, realpath, unlink, type FileHandle } from "node:fs/promises";
+import { access, link, lstat, mkdir, open, readdir, realpath, unlink, type FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 
@@ -29,7 +29,7 @@ export class LocalImageStoreError extends Error {
   }
 }
 
-export type LocalImageStoreConfig = { rootDirectory: string; volumeId: string };
+export type LocalImageStoreConfig = { rootDirectory: string; volumeId: string; requireTemporaryDirectory?: boolean };
 export type LocalImageObject = { key: string; byteLength: number; sha256: string; signal?: AbortSignal };
 export type LocalImageMetadata = { byteLength: number; sha256: string };
 export type LocalImageVolume = { volumeId: string; locationId: string };
@@ -44,7 +44,7 @@ export type LocalImageStore = {
   delete: (input: LocalImageObject) => Promise<"deleted" | "missing">;
 };
 
-type Root = { ioPath: string; handle: FileHandle; assertIdentity: () => Promise<void>; close: () => Promise<void> };
+type Root = { ioPath: string; handle: FileHandle; volumeRoot?: Root; assertIdentity: () => Promise<void>; close: () => Promise<void> };
 
 function fail(code: LocalImageStoreErrorCode): never { throw new LocalImageStoreError(code); }
 function errorCode(error: unknown): string | undefined {
@@ -64,7 +64,7 @@ function validateConfig(input: LocalImageStoreConfig): LocalImageStoreConfig {
     || input.rootDirectory.includes("\0") || typeof input.volumeId !== "string" || !UUID.test(input.volumeId)) fail("LOCAL_IMAGE_INVALID_CONFIG");
   const rootDirectory = path.resolve(input.rootDirectory);
   if (rootDirectory === path.parse(rootDirectory).root) fail("LOCAL_IMAGE_INVALID_CONFIG");
-  return { rootDirectory, volumeId: input.volumeId };
+  return { rootDirectory, volumeId: input.volumeId, requireTemporaryDirectory: input.requireTemporaryDirectory };
 }
 
 export function localImageObjectNames(key: string): { object: string; staging: string } {
@@ -72,14 +72,16 @@ export function localImageObjectNames(key: string): { object: string; staging: s
     fail("LOCAL_IMAGE_INVALID_OBJECT");
   }
   const digest = createHash("sha256").update(key, "utf8").digest("hex");
-  return { object: `image-${digest}.bin`, staging: `.image-${digest}.writing` };
+  const prefix = key.startsWith("temporary/") ? "temporary/" : "";
+  return { object: `${prefix}image-${digest}.bin`, staging: `${prefix}.image-${digest}.writing` };
 }
 
 function validateObject(input: LocalImageObject): ReturnType<typeof localImageObjectNames> {
   if (!input || !Number.isSafeInteger(input.byteLength) || input.byteLength < 1 || input.byteLength > MAX_IMAGE_BYTES
     || typeof input.sha256 !== "string" || !SHA256.test(input.sha256)) fail("LOCAL_IMAGE_INVALID_OBJECT");
   checkAbort(input.signal);
-  return localImageObjectNames(input.key);
+  const names = localImageObjectNames(input.key);
+  return { object: path.basename(names.object), staging: path.basename(names.staging) };
 }
 
 async function statOrMissing(filePath: string): Promise<BigIntStats | null> {
@@ -137,6 +139,19 @@ async function openRegular(root: Root, name: string, expectedLength: number): Pr
   } catch (error) { await file?.close().catch(() => undefined); throw error; }
 }
 
+async function openImageRoot(config: LocalImageStoreConfig, signal?: AbortSignal, key?: string): Promise<Root> {
+  const parent = await openRoot(config, signal);
+  if (!key?.startsWith("temporary/")) return parent;
+  try {
+    await verifyMarker(parent, config, signal);
+    const child = await openRoot({ ...config, rootDirectory: path.join(parent.ioPath, "temporary") }, signal);
+    return { ...child, volumeRoot: parent,
+      assertIdentity: async () => { await parent.assertIdentity(); await child.assertIdentity(); },
+      close: async () => { try { await child.close(); } finally { await parent.close(); } },
+    };
+  } catch (error) { await parent.close(); throw error; }
+}
+
 async function readExact(file: FileHandle, length: number, signal?: AbortSignal): Promise<Buffer> {
   const bytes = Buffer.alloc(length);
   let offset = 0;
@@ -153,6 +168,7 @@ async function readExact(file: FileHandle, length: number, signal?: AbortSignal)
 }
 
 async function verifyMarker(root: Root, config: LocalImageStoreConfig, signal?: AbortSignal): Promise<void> {
+  if (root.volumeRoot) { await root.assertIdentity(); return verifyMarker(root.volumeRoot, config, signal); }
   if (await statOrMissing(path.join(root.ioPath, `${LOCAL_IMAGE_VOLUME_MARKER}.writing`))) fail("LOCAL_IMAGE_VOLUME_UNAVAILABLE");
   const expected = markerBytes(config);
   let file: FileHandle;
@@ -211,13 +227,17 @@ async function removeOwned(root: Root, name: string, identity: BigIntStats): Pro
   await syncDirectory(root);
 }
 
-async function withRoot<T>(config: LocalImageStoreConfig, signal: AbortSignal | undefined, operation: (root: Root) => Promise<T>): Promise<T> {
-  const root = await openRoot(config, signal);
+async function withRoot<T>(config: LocalImageStoreConfig, signal: AbortSignal | undefined, operation: (root: Root) => Promise<T>, key?: string): Promise<T> {
+  const root = await openImageRoot(config, signal, key);
   try {
     try { await verifyMarker(root, config, signal); return await operation(root); }
     finally { await root.close(); }
   }
   catch (error) { throw storageError(error); }
+}
+
+function withObjectRoot<T>(config: LocalImageStoreConfig, input: LocalImageObject, operation: (root: Root) => Promise<T>): Promise<T> {
+  return withRoot(config, input.signal, operation, input.key);
 }
 
 async function* verifiedChunks(file: FileHandle, input: LocalImageObject): AsyncGenerator<Buffer> {
@@ -278,10 +298,22 @@ export async function initializeLocalImageVolume(input: LocalImageStoreConfig): 
   }
 }
 
+export async function initializeLocalImageTemporaryDirectory(input: LocalImageStoreConfig): Promise<void> {
+  const config = validateConfig(input);
+  await withRoot(config, undefined, async (root) => {
+    await root.assertIdentity();
+    try { await mkdir(path.join(root.ioPath, "temporary"), { mode: 0o700 }); }
+    catch (error) { if (errorCode(error) !== "EEXIST") throw error; }
+    await syncDirectory(root);
+    const child = await openImageRoot(config, undefined, "temporary/probe");
+    await child.close();
+  });
+}
+
 export function createLocalImageStore(input: LocalImageStoreConfig): LocalImageStore {
   const config = validateConfig(input);
   const store: LocalImageStore = {
-    verify: (signal) => withRoot(config, signal, async () => volume(config)),
+    verify: (signal) => withRoot(config, signal, async () => volume(config), config.requireTemporaryDirectory ? "temporary/probe" : undefined),
     probeWritable: (signal) => withRoot(config, signal, async (root) => {
       const name = `.narra-image-probe-${randomUUID()}`;
       const linkedName = `${name}.linked`;
@@ -323,13 +355,13 @@ export function createLocalImageStore(input: LocalImageStoreConfig): LocalImageS
         }
         if (failures.length) throw storageError(failures[0]);
       }
-    }),
+    }, config.requireTemporaryDirectory ? "temporary/probe" : undefined),
     async put(request) {
       const input = { ...request };
       const names = validateObject(input);
       if (!Buffer.isBuffer(input.bytes) || input.bytes.length !== input.byteLength
         || createHash("sha256").update(input.bytes).digest("hex") !== input.sha256) fail("LOCAL_IMAGE_CONTENT_MISMATCH");
-      return withRoot(config, input.signal, async (root) => {
+      return withObjectRoot(config, input, async (root) => {
         await noPending(root, names.staging);
         if (await statOrMissing(path.join(root.ioPath, names.object))) fail("LOCAL_IMAGE_OBJECT_EXISTS");
         let stage: FileHandle | undefined;
@@ -370,7 +402,7 @@ export function createLocalImageStore(input: LocalImageStoreConfig): LocalImageS
     async open(request) {
       const input = { ...request };
       const names = validateObject(input);
-      const root = await openRoot(config, input.signal);
+      const root = await openImageRoot(config, input.signal, input.key);
       let file: FileHandle | undefined;
       try {
         await verifyMarker(root, config, input.signal);
@@ -415,7 +447,7 @@ export function createLocalImageStore(input: LocalImageStoreConfig): LocalImageS
     async head(request) {
       const input = { ...request };
       const names = validateObject(input);
-      return withRoot(config, input.signal, async (root) => {
+      return withObjectRoot(config, input, async (root) => {
         const { file } = await openObject(root, config, names, input);
         try { checkAbort(input.signal); return metadata(input); }
         finally { await file.close(); }
@@ -424,7 +456,7 @@ export function createLocalImageStore(input: LocalImageStoreConfig): LocalImageS
     async delete(request) {
       const input = { ...request };
       const names = validateObject(input);
-      return withRoot(config, input.signal, async (root) => {
+      return withObjectRoot(config, input, async (root) => {
         let opened: Awaited<ReturnType<typeof openRegular>>;
         try { opened = await openObject(root, config, names, input); }
         catch (error) {

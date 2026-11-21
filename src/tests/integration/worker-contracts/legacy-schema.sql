@@ -315,6 +315,27 @@ CREATE TABLE "OAuthProvider" (
 
 CREATE UNIQUE INDEX "OAuthProvider_type_key" ON "OAuthProvider"("type");
 
+-- Fixture-only prerequisite from the immutable likes and video migrations: the
+-- later transient_images migration alters this table; this snapshot stays partial.
+CREATE TABLE "WorkLike" (
+  "id" TEXT NOT NULL,
+  "workId" TEXT,
+  "userId" TEXT NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "videoId" TEXT,
+  CONSTRAINT "WorkLike_pkey" PRIMARY KEY ("id")
+);
+
+CREATE UNIQUE INDEX "WorkLike_workId_userId_key" ON "WorkLike"("workId", "userId");
+CREATE UNIQUE INDEX "WorkLike_videoId_userId_key" ON "WorkLike"("videoId", "userId");
+CREATE INDEX "WorkLike_userId_idx" ON "WorkLike"("userId");
+CREATE INDEX "WorkLike_workId_idx" ON "WorkLike"("workId");
+CREATE INDEX "WorkLike_videoId_idx" ON "WorkLike"("videoId");
+
+ALTER TABLE "WorkLike" ADD CONSTRAINT "WorkLike_workId_fkey" FOREIGN KEY ("workId") REFERENCES "GenerationImage"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "WorkLike" ADD CONSTRAINT "WorkLike_videoId_fkey" FOREIGN KEY ("videoId") REFERENCES "GeneratedVideo"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "WorkLike" ADD CONSTRAINT "WorkLike_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
 CREATE TABLE "_prisma_migrations" (
   "id" VARCHAR(36) NOT NULL,
   "checksum" VARCHAR(64) NOT NULL,

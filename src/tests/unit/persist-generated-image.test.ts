@@ -213,7 +213,7 @@ describe("persistGeneratedImage", () => {
       asset: {
         id: "00112233-4455-4677-8899-aabbccddeeff", ownerId: "user-1", purpose: "REFERENCE",
         originId: null, publicToken: "a".repeat(64), byteLength: "3", mimeType: "image/webp", sha256: "b".repeat(64),
-        state: "DELETED", activeObjectId: null, detachedAt: null, deletedAt: time,
+        state: "DELETED", activeObjectId: null, detachedAt: null, expiresAt: null, deletedAt: time,
         deleteReason: "RETENTION", createdAt: time, updatedAt: time,
       },
       object: null, location: null,

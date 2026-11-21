@@ -8,16 +8,22 @@ export function isImageAvailability(value: unknown): value is ImageAvailability 
 
 export type ImageAvailabilitySource = {
   mediaAssetId?: string | null;
-  mediaAsset?: { state: string; activeObjectId: string | null; publicToken?: string | null } | null;
+  mediaAsset?: { state: string; activeObjectId: string | null; publicToken?: string | null; purpose?: string; expiresAt?: Date | string | null } | null;
 };
 
 export const imageAvailabilityInclude = {
-  mediaAsset: { select: { state: true, activeObjectId: true, publicToken: true } },
+  mediaAsset: { select: { state: true, activeObjectId: true, publicToken: true, purpose: true, expiresAt: true } },
 } as const;
+
+export function isImageExpired(asset: { expiresAt?: Date | string | null }, now = Date.now()): boolean {
+  if (asset.expiresAt == null) return false;
+  const deadline = new Date(asset.expiresAt).getTime();
+  return !Number.isFinite(deadline) || deadline <= now;
+}
 
 export function getImageAvailability(image: ImageAvailabilitySource): ImageAvailability {
   if (!image.mediaAssetId) return "available";
-  if (image.mediaAsset?.state === "DELETED") return "cleaned";
+  if (image.mediaAsset?.state === "DELETED" || (image.mediaAsset && isImageExpired(image.mediaAsset))) return "cleaned";
   return image.mediaAsset?.state === "AVAILABLE" && image.mediaAsset.activeObjectId
     ? "available" : "unavailable";
 }

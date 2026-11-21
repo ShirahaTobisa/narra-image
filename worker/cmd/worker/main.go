@@ -30,6 +30,12 @@ func main() {
 			logger.Error("图片卷初始化失败，目标必须是已存在的空目录", "event", "image_volume_init_failed")
 			os.Exit(1)
 		}
+		if cfg.ImageTemporaryStorageEnabled {
+			if err := narraw.InitializeLocalImageTemporaryDirectory(ctx, narraw.LocalImageStoreConfig{RootDirectory: cfg.ImageStoragePath, VolumeID: cfg.ImageStorageVolumeID}); err != nil {
+				logger.Error("临时图片目录初始化失败", "event", "image_temporary_init_failed")
+				os.Exit(1)
+			}
+		}
 		logger.Info("图片卷已初始化", "event", "image_volume_initialized")
 		return
 	}

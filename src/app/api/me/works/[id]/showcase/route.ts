@@ -8,8 +8,10 @@ import { applyUserShowcaseAction } from "@/lib/work-showcase";
 import { workShowcaseUpdateSchema } from "@/lib/validators";
 import { isAutoApproveShowcase } from "@/lib/benefits/config";
 import { checkGenerationInput, MODERATION_BLOCK_MESSAGE } from "@/lib/moderation/check";
+import { GalleryUploadError, reviewGalleryWork } from "@/lib/server/gallery-uploads";
 
 function resolveStatusCode(error: unknown) {
+  if (error instanceof GalleryUploadError) return error.status;
   if (error instanceof Error && error.message === "当前状态不允许执行该操作") {
     return 409;
   }
@@ -26,8 +28,16 @@ export async function PATCH(
     const body = workShowcaseUpdateSchema.parse(await parseJsonBody(request));
     const { id } = await context.params;
 
+    if (id.startsWith("gallery_")) {
+      if (body.action === "submit") return jsonError("这张图要重新上传才能再投稿", 409);
+      await reviewGalleryWork({ id, actorId: user.id, action: body.action, submittedAt: body.submittedAt });
+      revalidateTag("featured-works", { expire: 0 });
+      return jsonOk({ work: await getWorkById(id, user.id), mediaType: "image" });
+    }
+
     const isVideo = body.mediaType === "video";
-    const work = isVideo ? await getVideoMutationTarget(id) : await getWorkMutationTarget(id);
+    const imageWork = isVideo ? null : await getWorkMutationTarget(id);
+    const work = isVideo ? await getVideoMutationTarget(id) : imageWork;
     if (!work || work.job.userId !== user.id) {
       return jsonError("作品不存在", 404);
     }
@@ -38,6 +48,9 @@ export async function PATCH(
       showPromptPublic: body.showPromptPublic,
     });
     if (body.action === "submit") {
+      if (imageWork?.mediaAsset?.expiresAt) {
+        return jsonError("生成的图片只保留 1 小时，不能直接投稿。请先下载，再上传到广场", 409);
+      }
       const publicAuthorName = body.showAuthorPublic ? user.nickname?.trim() : null;
       if (body.showAuthorPublic && !publicAuthorName) {
         return jsonError("请先设置昵称，或选择匿名投稿", 400);

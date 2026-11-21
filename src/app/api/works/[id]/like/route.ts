@@ -3,6 +3,7 @@ import { ShowcaseStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { getCurrentUserRecord } from "@/lib/server/current-user";
 import { publicWorkWhere } from "@/lib/server/public-work";
+import { publicGalleryWhere } from "@/lib/server/gallery-work-data";
 import { getErrorMessage, jsonError, jsonOk } from "@/lib/server/http";
 
 export async function PUT(
@@ -18,6 +19,19 @@ export async function PUT(
     const { id } = await context.params;
     const { searchParams } = new URL(_request.url);
     const isVideo = searchParams.get("mediaType") === "video";
+
+    if (id.startsWith("gallery_")) {
+      const result = await db.$transaction(async (tx) => {
+        const work = await tx.galleryWork.findUnique({ where: { id, ...publicGalleryWhere }, select: { id: true } });
+        if (!work) return null;
+        const where = { galleryWorkId_userId: { galleryWorkId: id, userId: user.id } };
+        const existing = await tx.workLike.findUnique({ where });
+        if (existing) await tx.workLike.delete({ where });
+        else await tx.workLike.create({ data: { galleryWorkId: id, userId: user.id } });
+        return { liked: !existing, likeCount: await tx.workLike.count({ where: { galleryWorkId: id } }) };
+      });
+      return result ? jsonOk(result) : jsonError("作品未公开，暂不能点赞", 404);
+    }
 
     if (isVideo) {
       const video = await db.generatedVideo.findUnique({

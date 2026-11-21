@@ -49,6 +49,16 @@ App 与 Worker 必须在同一宿主机使用同一物理卷和 UUID；相同路
 两个镜像默认使用相同 UID，图片为0600文件。自行改 UID 时先验证两端都可读写并创建硬链接。
 重建服务保留卷与 UUID；不要用 `down --volumes`、临时文件系统或容器可写层保存图片。
 
+### 临时图片（保留一小时）
+
+`IMAGE_TEMPORARY_STORAGE_ENABLED=true` 时，新生成的图片和上传的参考图只保留一小时，之后停止访问并由 Worker 删除文件；
+生成记录、提示词和计费不变，开启前已有的图片仍然长期保留。要求受管理 LOCAL 存储并关闭 Canvas。
+
+开启步骤对已有图片卷同样适用：停掉 App 和 Worker，执行 migrate，在环境里打开开关后再运行一次
+`dc run --rm --no-deps worker /app/narra-worker --init-image-volume`。卷标记匹配时它只补建 `temporary/` 子目录，不动已有文件；
+缺少该子目录时 Worker 会启动失败。随后按上面的顺序启动 Worker 和 App。数据库会话时区须为 UTC（官方镜像默认）。
+升级到 revision 4 之后，旧版本的 Worker 不能再回滚启动。
+
 ### Embedded / Zeabur
 
 使用完整 App 镜像，挂载持久卷到 `/data/images`，显式设置上述四项变量，保持

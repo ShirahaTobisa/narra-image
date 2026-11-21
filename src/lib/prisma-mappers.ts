@@ -37,6 +37,7 @@ export type SerializedGeneration = {
   durationSeconds: number | null;
   images: Array<{
     availability?: ImageAvailability;
+    expiresAt?: string | null;
     actualHeight: number | null;
     actualSize: string | null;
     actualWidth: number | null;
@@ -63,6 +64,8 @@ export type SerializedGeneration = {
   size: string;
   sourceImageUrl: string | null;
   sourceImageUrls: string[];
+  sourceImagesReusable?: boolean;
+  sourceImagesExpiresAt?: string | null;
   startedAt: string | null;
   status: "pending" | "succeeded" | "failed";
   updatedAt: string;
@@ -113,15 +116,17 @@ export type AdminWorkRecord = GenerationImage & ImageAvailabilitySource & {
 };
 
 export type SerializedWork = {
+  source?: "uploaded";
+  expiresAt?: string | null;
   availability?: ImageAvailability;
   authorNickname: string | null;
   createdAt: string;
   featuredAt: string | null;
-  generationCreatedAt: string;
-  generationStatus: "failed" | "pending" | "succeeded";
+  generationCreatedAt: string | null;
+  generationStatus: "failed" | "pending" | "succeeded" | null;
   id: string;
-  jobId: string;
-  model: string;
+  jobId: string | null;
+  model: string | null;
   negativePrompt: string | null;
   ownerId: string;
   prompt: string;
@@ -148,12 +153,13 @@ export type SerializedAdminWork = SerializedWork & {
 };
 
 export type SerializedPublicWorkDetail = {
+  source?: "uploaded";
   availability?: ImageAvailability;
   authorNickname: string | null;
   createdAt: string;
   featuredAt: string | null;
   id: string;
-  model: string;
+  model: string | null;
   negativePrompt: string | null;
   prompt: string | null;
   showcaseStatus: WorkShowcaseStatus;
@@ -241,6 +247,7 @@ export function serializeWork(work: WorkRecord): SerializedWork {
   const presentation = presentGenerationImage(work);
   return {
     availability: presentation.availability,
+    ...(work.mediaAsset?.expiresAt ? { expiresAt: new Date(work.mediaAsset.expiresAt).toISOString() } : {}),
     authorNickname: work.job.user?.nickname ?? null,
     createdAt: work.createdAt.toISOString(),
     featuredAt: work.featuredAt?.toISOString() ?? null,
@@ -294,6 +301,7 @@ export function serializePublicWorkDetail(work: SerializedWork): SerializedPubli
   });
 
   return {
+    ...(work.source === "uploaded" ? { source: "uploaded" as const } : {}),
     availability: work.availability ?? "available",
     authorNickname: work.publicAuthorName ?? null,
     createdAt: work.createdAt,
@@ -465,6 +473,7 @@ export function serializeGeneration(
       return {
         availability: presentation.availability,
         actualHeight: height,
+        expiresAt: image.mediaAsset?.expiresAt ? new Date(image.mediaAsset.expiresAt).toISOString() : null,
         actualSize,
         actualWidth: width,
         id: image.id,

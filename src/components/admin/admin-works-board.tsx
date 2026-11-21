@@ -439,7 +439,7 @@ export function AdminWorksBoard({
 
                           <div className="mt-2.5 flex flex-wrap gap-1.5 text-xs text-[var(--ink-soft)]">
                             <span className="rounded-md bg-[#f4ede1] px-2.5 py-0.5 font-mono">
-                              {work.model}
+                              {work.model ?? "用户上传"}
                             </span>
                             <span className="rounded-md bg-[#f4ede1] px-2.5 py-0.5 font-mono">
                               {work.size}

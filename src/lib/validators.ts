@@ -184,6 +184,7 @@ export const workShowcaseUpdateSchema = z.object({
   mediaType: z.enum(["image", "video"]).default("image"),
   showAuthorPublic: z.boolean().default(false),
   showPromptPublic: z.boolean().optional(),
+  submittedAt: z.iso.datetime().nullable().optional(),
 });
 
 export const adminWorkReviewSchema = z.object({

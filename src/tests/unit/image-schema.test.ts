@@ -17,7 +17,7 @@ function inventory(): ImageSchemaCatalogRow[] {
 
 describe("managed image schema readiness", () => {
   it("requires every image invariant and tolerates unrelated additive objects", () => {
-    expect(checkImageSchemaInventory(inventory())).toEqual({ version: 1, storageRevision: 3, ready: true, code: null, issues: [] });
+    expect(checkImageSchemaInventory(inventory())).toEqual({ version: 1, storageRevision: 4, ready: true, code: null, issues: [] });
     expect(checkImageSchemaInventory([...inventory(), { kind: "table", name: "FutureTable", definition: {} }]).ready).toBe(true);
     for (const kind of ["table", "column", "enum", "index", "constraint", "function", "trigger"]) {
       const rows = inventory();

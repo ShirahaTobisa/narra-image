@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	ImageStorageRevision             = 3
-	ImageReaderRevision              = 3
-	ImageMaintenanceRevision         = 3
+	ImageStorageRevision             = 4
+	ImageReaderRevision              = 4
+	ImageMaintenanceRevision         = 4
 	ImageMaintenanceLeaseSeconds     = 90
 	ImageReadLeaseSeconds            = 45
 	ImageReadTimeoutMilliseconds     = 30000
@@ -43,7 +43,7 @@ func validateImageMaintenanceContract(data []byte) error {
 		return errors.New("invalid image maintenance contract")
 	}
 	expected := map[string]any{
-		"contract": "narra.image.maintenance", "version": json.Number("1"), "storageRevision": json.Number("3"), "readerRevision": json.Number("3"), "executorRevision": json.Number("3"),
+		"contract": "narra.image.maintenance", "version": json.Number("1"), "storageRevision": json.Number("4"), "readerRevision": json.Number("4"), "executorRevision": json.Number("4"),
 		"limits": map[string]any{"previewAssets": json.Number("1000"), "previewSeconds": json.Number("600"), "jobItems": json.Number("100"), "leaseSeconds": json.Number("90"), "readLeaseSeconds": json.Number("45"), "readTimeoutMilliseconds": json.Number("30000"), "deleteSeconds": json.Number("30"), "passSeconds": json.Number("45"), "pollMilliseconds": json.Number("1000"), "quotaWaitMilliseconds": json.Number("10000")},
 	}
 	if !reflect.DeepEqual(actual, expected) {
@@ -152,6 +152,8 @@ type ImageReadInput struct {
 	PublicToken string `json:"publicToken,omitempty"`
 	URL         string `json:"url,omitempty"`
 	OwnerID     string `json:"ownerId,omitempty"`
+	JobID       string `json:"jobId,omitempty"`
+	ViewerID    string `json:"viewerId,omitempty"`
 }
 type ImagePrepareCopyInput struct {
 	AssetID      string `json:"assetId"`
@@ -332,7 +334,7 @@ func (repository *ImageRepository) CancelMaintenance(ctx context.Context, input 
 
 func validImageMaintenanceJob(value ImageMaintenanceJob) bool {
 	validState := value.State == "PREVIEW" || value.State == "QUEUED" || value.State == "RUNNING" || value.State == "WAITING" || value.State == "SUCCEEDED" || value.State == "PARTIAL" || value.State == "CANCELLED" || value.State == "EXPIRED"
-	validMode := value.Mode == "MANUAL_AGE" || value.Mode == "MANUAL_ALL" || value.Mode == "SCHEDULE" || value.Mode == "QUOTA" || value.Mode == "SOURCE_RETIREMENT"
+	validMode := value.Mode == "MANUAL_AGE" || value.Mode == "MANUAL_ALL" || value.Mode == "SCHEDULE" || value.Mode == "QUOTA" || value.Mode == "SOURCE_RETIREMENT" || value.Mode == "EXPIRY"
 	return imageUUIDPattern.MatchString(value.ID) && validState && validMode && value.PolicyVersion > 0 && value.EstimatedBytes >= 0 && value.ReleasedBytes >= 0 && value.ReleasedBytes <= value.EstimatedBytes && value.TotalItems >= 0 && value.CompletedItems >= 0 && value.SkippedItems >= 0 && value.PendingItems >= 0 && value.FailedItems >= 0 && value.FailedItems <= value.PendingItems && value.CompletedItems+value.SkippedItems+value.PendingItems == value.TotalItems && len(value.Items) <= 100
 }
 func validateImageMaintenanceResult(target any) bool {

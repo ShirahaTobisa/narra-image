@@ -3,7 +3,7 @@ import "server-only";
 import { getEnv } from "@/lib/env";
 import type { ImageAvailability } from "@/lib/types";
 import { getImageAvailability, type ImageAvailabilitySource } from "./image-availability";
-import { imagePublicUrl } from "./image-contract";
+import { imageAssetPublicPath, imagePublicUrl } from "./image-contract";
 
 export type ImagePresentation = { availability: ImageAvailability; url: string };
 
@@ -16,7 +16,7 @@ export function presentGenerationImage(image: ImageAvailabilitySource & { url: s
   const token = image.mediaAsset?.publicToken;
   if (!token) return { availability: "unavailable", url: "" };
   try {
-    return { availability, url: imagePublicUrl(appUrl ?? getEnv().APP_URL, token) };
+    return { availability, url: imagePublicUrl(appUrl ?? getEnv().APP_URL, token, imageAssetPublicPath(image.mediaAsset!)) };
   } catch {
     return { availability: "unavailable", url: "" };
   }

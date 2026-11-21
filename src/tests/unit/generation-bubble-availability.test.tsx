@@ -1,11 +1,34 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { GenerationBubble } from "@/components/create/parts/generation-bubble";
+import { isGenerationItem } from "@/components/create/generation-item";
+import { canReuseGenerationSources } from "@/components/create/utils";
 
 import { conversationGeneration } from "./helpers/conversation-fixtures";
 
 describe("conversation image cleanup", () => {
+  it("expires visible media without changing the successful job or losing parameters", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-21T00:00:00Z"));
+    try {
+      const expiresAt = "2026-11-21T00:00:01Z";
+      const generation = conversationGeneration("temporary", "conversation_a", {
+        sourceImageUrls: ["https://app.invalid/reference"], sourceImagesExpiresAt: expiresAt,
+        images: [{ id: "image", url: "/media/temporary-images/token", expiresAt, actualWidth: null, actualHeight: null, actualSize: null }],
+      });
+      render(<GenerationBubble generation={generation} onZoom={vi.fn()} onDownload={vi.fn()} onUseForEdit={vi.fn()} onReuseConfig={vi.fn()} />);
+      expect(screen.getAllByRole("img")).toHaveLength(2);
+      act(() => { vi.advanceTimersByTime(1000); });
+      expect(screen.queryByRole("img")).not.toBeInTheDocument();
+      expect(screen.getByText("图片已过期")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "下载保存" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "复用配置" })).toBeEnabled();
+      expect(canReuseGenerationSources(generation)).toBe(false);
+      expect(generation.status).toBe("succeeded");
+      expect(isGenerationItem({ ...generation, images: [{ id: "image", url: "", availability: "cleaned", expiresAt }] })).toBe(true);
+    } finally { vi.useRealTimers(); }
+  });
   it.each(["cleaned", "unavailable"] as const)("keeps a %s result and its prompt while blocking file actions", async (availability) => {
     const user = userEvent.setup();
     const generation = conversationGeneration("retained_job", "conversation_a", {

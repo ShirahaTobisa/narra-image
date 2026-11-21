@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createPortal } from "react-dom";
@@ -97,6 +98,7 @@ export function WorkShowcaseControls({
         },
         body: JSON.stringify({
           action,
+          ...(work.source === "uploaded" ? { submittedAt: work.submittedAt } : {}),
           showPromptPublic: options?.showPromptPublic,
           showAuthorPublic: options?.showAuthorPublic,
         }),
@@ -134,7 +136,7 @@ export function WorkShowcaseControls({
         ) : null}
 
         <div className="flex flex-wrap gap-2">
-          {work.showcaseStatus === "PRIVATE" ? (
+          {work.showcaseStatus === "PRIVATE" && work.source !== "uploaded" && !work.expiresAt ? (
             <button
               type="button"
               disabled={isPending || !isImageAvailable(work.availability)}
@@ -147,6 +149,14 @@ export function WorkShowcaseControls({
             >
               {isPending ? "处理中..." : "投稿首页"}
             </button>
+          ) : null}
+
+          {(work.source === "uploaded" && work.showcaseStatus === "PRIVATE") || (work.source !== "uploaded" && work.expiresAt) ? (
+            <Link href="/works#gallery-upload" className="text-sm text-[var(--accent)]">想放到广场？下载后去上传</Link>
+          ) : null}
+
+          {work.source === "uploaded" && work.expiresAt ? (
+            <p className="w-full text-xs text-[var(--ink-soft)]">{new Date(work.expiresAt).toLocaleString("zh-CN")} 前没审完会自动清掉，需要重新上传。</p>
           ) : null}
 
           {work.showcaseStatus === "PENDING" ? (
@@ -175,7 +185,7 @@ export function WorkShowcaseControls({
         {error && !showSubmitModal ? <p role="alert" className="text-sm text-rose-600">{error}</p> : null}
       </div>
 
-      {showSubmitModal && isImageAvailable(work.availability) ? createPortal(
+      {showSubmitModal && isImageAvailable(work.availability) && work.source !== "uploaded" && !work.expiresAt ? createPortal(
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
           onClick={() => setShowSubmitModal(false)}

@@ -58,6 +58,7 @@ type ImageBeginObjectInput struct {
 	MimeType      string `json:"mimeType"`
 	SHA256        string `json:"sha256"`
 	Purpose       string `json:"purpose"`
+	Temporary     bool   `json:"temporary,omitempty"`
 	OriginID      string `json:"originId,omitempty"`
 	AssetID       string `json:"assetId,omitempty"`
 }
@@ -264,7 +265,7 @@ func (repository *ImageRepository) GetUsage(ctx context.Context) (ImageUsage, er
 
 func validImageAsset(asset ImageAssetRecord) bool {
 	validState := asset.State == "PENDING" || asset.State == "AVAILABLE" || asset.State == "QUARANTINED" || asset.State == "DELETING" || asset.State == "DELETED"
-	validPurpose := asset.Purpose == "GENERATED" || asset.Purpose == "REFERENCE" || asset.Purpose == "CANVAS_IMPORT"
+	validPurpose := asset.Purpose == "GENERATED" || asset.Purpose == "REFERENCE" || asset.Purpose == "CANVAS_IMPORT" || asset.Purpose == "GALLERY_UPLOAD"
 	return validState && validPurpose && imageUUIDPattern.MatchString(asset.ID) && imagePublicTokenPattern.MatchString(asset.PublicToken) && asset.OwnerID != "" && asset.ByteLength > 0 && imagePublicTokenPattern.MatchString(asset.SHA256)
 }
 func validImageObject(object ImageObjectRecord) bool {

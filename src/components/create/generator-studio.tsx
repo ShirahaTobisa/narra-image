@@ -45,7 +45,7 @@ import type { CanvasNodeTarget } from "./parts/canvas-stage";
 import { SessionSidebar } from "./parts/session-sidebar";
 import { StudioModeSwitch } from "./parts/studio-mode-switch";
 import { isGenerationItem } from "./generation-item";
-import { getSizeSelectValue, toReusableGenerationConfig } from "./utils";
+import { canReuseGenerationSources, getSizeSelectValue, toReusableGenerationConfig } from "./utils";
 import type {
   ChannelInfo,
   CustomProviderDraft,
@@ -920,6 +920,7 @@ function StudioWorkspace({
   }
 
   function handleReuseConfig(generation: GenerationItem) {
+    const sourcesReusable = canReuseGenerationSources(generation);
     draftRef.current.revision += 1;
     const config = toReusableGenerationConfig(
       generation,
@@ -955,7 +956,7 @@ function StudioWorkspace({
     }
     clearReferenceImages();
     setReferenceImages(() =>
-      config.sourceImageUrls.map((url, index) => ({
+      (sourcesReusable ? config.sourceImageUrls : []).map((url, index) => ({
         file: null,
         id: `${Date.now()}_reuse_${index}_${Math.random().toString(36).slice(2, 8)}`,
         previewUrl: url,
@@ -963,7 +964,7 @@ function StudioWorkspace({
       })),
     );
     setShowSettings(false);
-    setError(null);
+    setError(sourcesReusable ? null : "提示词和参数已复用，参考图已过期或不可用，请重新上传");
     setFocusRequest((current) => current + 1);
   }
 
@@ -1056,7 +1057,7 @@ function StudioWorkspace({
       return;
     }
     const { channelId, sourceImageUrls, ...config } = toReusableGenerationConfig(target, channels.map((channel) => channel.id));
-    if (config.generationType === "image_to_image" && sourceImageUrls.length === 0) {
+    if (!canReuseGenerationSources(target) || (config.generationType === "image_to_image" && sourceImageUrls.length === 0)) {
       setError("原任务的参考图已不可用，请重新添加参考图后生成");
       return;
     }

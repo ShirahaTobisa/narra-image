@@ -4,6 +4,7 @@ import {
   normalizeGenerationSize,
 } from "@/lib/generation/sizes";
 import { SIZE_DOWNGRADE_TOLERANCE, SIZE_OPTIONS } from "./constants";
+import { isImageExpired } from "@/lib/storage/image-availability";
 import type {
   GenerationImage,
   GenerationItem,
@@ -22,6 +23,11 @@ export function getSizeSelectValue(size: string) {
   return SIZE_OPTIONS.some((option) => option.value === normalized)
     ? normalized
     : "custom";
+}
+
+export function canReuseGenerationSources(generation: GenerationItem, now = Date.now()) {
+  return generation.sourceImagesReusable !== false
+    && !isImageExpired({ expiresAt: generation.sourceImagesExpiresAt }, now);
 }
 
 export function getSizeLabel(size: string) {

@@ -9,7 +9,7 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: true,
-    include: ["src/tests/integration/canvas-contracts/canvas-contracts-db.test.ts", "src/tests/integration/canvas-contracts/image-storage-db.test.ts", "src/tests/integration/canvas-contracts/image-retention-db.test.ts", "src/tests/integration/canvas-contracts/image-history-db.test.ts"],
+    include: ["src/tests/integration/canvas-contracts/canvas-contracts-db.test.ts", "src/tests/integration/canvas-contracts/image-storage-db.test.ts", "src/tests/integration/canvas-contracts/image-retention-db.test.ts", "src/tests/integration/canvas-contracts/image-history-db.test.ts", "src/tests/integration/canvas-contracts/image-expiry-db.test.ts"],
     exclude: [],
     fileParallelism: false,
     maxWorkers: 1,

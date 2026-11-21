@@ -18,6 +18,7 @@ vi.mock("@/lib/db", () => ({
   db: {
     generationImage: { findMany: mocks.findMany, findUnique: mocks.findUnique },
     generatedVideo: { findUnique: mocks.findVideo },
+    galleryWork: { count: async () => 0, findMany: async () => [], groupBy: async () => [] },
   },
 }));
 vi.mock("@/lib/server/current-user", () => ({

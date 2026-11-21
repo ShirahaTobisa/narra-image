@@ -97,6 +97,7 @@ pnpm dev
   Canvas 原图存储；视频使用 S3，Canvas 原图可使用 S3 或下述受管理 LOCAL。
 - 受管理图片：`IMAGE_STORAGE_MANAGED_ENABLED` 默认关闭；明确启用后使用
   `IMAGE_STORAGE_BACKEND` 选择 `s3` 或 `local`，所有图片写入登记并经过全站额度预留。
+  `IMAGE_TEMPORARY_STORAGE_ENABLED` 设为 `true` 时，新生成图片完成后保留一小时，参考图上传后保留一小时；历史保留提示词、参数和计费记录。此模式要求 managed + local 且关闭 Canvas，旧图片不改期限。广场另行上传送审，待审图片保留 24 小时，通过后长期保留并占用存储额度。
   此模式先于数据库存图开关；额度或持久化失败不会改走未经计量的数据库回退。
   本地模式要求同时开启受管理存储，`IMAGE_STORAGE_PATH` 是共享持久化目录，
   `IMAGE_STORAGE_VOLUME_ID` 是该卷唯一的小写 UUID。首次使用先在空目录执行

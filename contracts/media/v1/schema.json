@@ -1,13 +1,13 @@
 {
   "contract": "narra.image.schema",
   "version": 1,
-  "storageRevision": 3,
-  "migration": "20261115180000_image_history",
-  "migrationSha256": "12459548628adecd2f1cde186c0485ebe52d3dd5e44eb5f1b44abafe7ae1eecd",
+  "storageRevision": 4,
+  "migration": "20261121160000_transient_images",
+  "migrationSha256": "f1962fe7623e46f4b5ba15a2a130b8eaa773b01f83e9149c17e05ab04dd3312c",
   "bodyFingerprint": "MD5 of pg_proc.prosrc UTF-8 after CRLF-to-LF conversion only; complete body, signature, defaults and trigger attachment are required",
   "bodyLineEndings": "CRLF_TO_LF_ONLY",
   "expressionComparison": "POSTGRESQL_17_EXACT",
-  "catalogQuery": "WITH image_tables AS (\n  SELECT c.oid, c.relname, c.relkind, c.relpersistence FROM pg_catalog.pg_class AS c\n  JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace\n  WHERE n.nspname = current_schema() AND c.relname IN ('ImageStoragePolicy','ImageQuota','ImageStorageLocation','ImageWriteReservation','ImageAsset','ImageObject','ImageReference','ImageUrlAlias','ImageMaintenanceJob','ImageMaintenanceItem','ImageMaintenanceLease','ImageReplicaVerification','ImageGenerationBinding','GenerationImage','GenerationJob','LoginCoverConfig','CanvasImportAsset','CanvasGcLease','Canvas','CanvasRun','CanvasSavedAssetUse','CanvasJobAssetUse','User','Conversation','ImageHistoryJob','ImageHistoryItem','ImageObjectObservation','ImageHistoryReference','ImageHistoryHold')\n), inventory AS (\n  SELECT 'table'::text AS kind, t.relname::text AS name, jsonb_build_object('kind',t.relkind,'persistence',t.relpersistence) AS definition FROM image_tables AS t\n  UNION ALL\n  SELECT 'column', t.relname || '.' || a.attname,\n    jsonb_build_object('type',format_type(a.atttypid,a.atttypmod),'nullable',NOT a.attnotnull,'default',pg_get_expr(d.adbin,d.adrelid))\n  FROM image_tables AS t JOIN pg_catalog.pg_attribute AS a ON a.attrelid=t.oid\n  LEFT JOIN pg_catalog.pg_attrdef AS d ON d.adrelid=t.oid AND d.adnum=a.attnum\n  WHERE a.attnum>0 AND NOT a.attisdropped AND (\n    (left(t.relname,5)='Image' OR left(t.relname,6)='Canvas')\n    OR (t.relname='GenerationImage' AND a.attname IN ('id','jobId','url','mediaStorage','storageKey','mediaAssetId','showcaseStatus','createdAt'))\n    OR (t.relname='GenerationJob' AND a.attname IN ('id','userId','generationType','count','workerId','status','sourceImageUrls'))\n    OR (t.relname='LoginCoverConfig' AND a.attname IN ('scope','mode','customUrl'))\n  )\n  UNION ALL\n  SELECT 'index', c.relname, jsonb_build_object('table',t.relname,'unique',i.indisunique,'primary',i.indisprimary,'valid',i.indisvalid,'ready',i.indisready,'method',m.amname,\n    'columns',(SELECT jsonb_agg(a.attname ORDER BY k.n) FROM unnest(i.indkey) WITH ORDINALITY AS k(attnum,n) JOIN pg_catalog.pg_attribute AS a ON a.attrelid=t.oid AND a.attnum=k.attnum WHERE k.n<=i.indnkeyatts),\n    'options',to_jsonb(i.indoption::smallint[]),'expressions',pg_get_expr(i.indexprs,i.indrelid),'predicate',pg_get_expr(i.indpred,i.indrelid),'nullsNotDistinct',i.indnullsnotdistinct,'includedColumns',i.indnatts-i.indnkeyatts)\n  FROM image_tables AS t JOIN pg_catalog.pg_index AS i ON i.indrelid=t.oid\n  JOIN pg_catalog.pg_class AS c ON c.oid=i.indexrelid JOIN pg_catalog.pg_am AS m ON m.oid=c.relam\n  WHERE (left(t.relname,5)='Image' OR left(t.relname,6)='Canvas') OR c.relname IN ('GenerationImage_mediaAssetId_key','CanvasImportAsset_mediaAssetId_key')\n  UNION ALL\n  SELECT 'constraint', c.conname, jsonb_build_object('table',t.relname,'type',c.contype,'deferrable',c.condeferrable,'deferred',c.condeferred,'validated',c.convalidated)\n    || CASE WHEN c.contype='c' THEN jsonb_build_object('expression',pg_get_expr(c.conbin,c.conrelid)) ELSE jsonb_build_object('columns',(SELECT jsonb_agg(a.attname ORDER BY k.n) FROM unnest(c.conkey) WITH ORDINALITY AS k(attnum,n) JOIN pg_catalog.pg_attribute AS a ON a.attrelid=t.oid AND a.attnum=k.attnum)) END\n    || CASE WHEN c.contype='f' THEN jsonb_build_object('referenceTable',r.relname,'referenceCurrentSchema',rn.nspname=current_schema(),'referenceColumns',(SELECT jsonb_agg(a.attname ORDER BY k.n) FROM unnest(c.confkey) WITH ORDINALITY AS k(attnum,n) JOIN pg_catalog.pg_attribute AS a ON a.attrelid=c.confrelid AND a.attnum=k.attnum),'deleteAction',c.confdeltype,'updateAction',c.confupdtype,'matchType',c.confmatchtype) ELSE '{}'::jsonb END\n  FROM image_tables AS t JOIN pg_catalog.pg_constraint AS c ON c.conrelid=t.oid\n  LEFT JOIN pg_catalog.pg_class AS r ON r.oid=c.confrelid LEFT JOIN pg_catalog.pg_namespace AS rn ON rn.oid=r.relnamespace WHERE c.contype IN ('p','u','f','c') AND ((left(t.relname,5)='Image' OR left(t.relname,6)='Canvas') OR c.conname IN ('GenerationImage_mediaAssetId_fkey','CanvasImportAsset_mediaAssetId_fkey'))\n  UNION ALL\n  SELECT 'function', p.proname, jsonb_build_object('arguments',COALESCE((SELECT jsonb_agg(format_type(v.type,NULL) ORDER BY v.n) FROM unnest(p.proargtypes::oid[]) WITH ORDINALITY AS v(type,n)),'[]'::jsonb),\n    'argumentNames',COALESCE(to_jsonb(p.proargnames[1:p.pronargs]),'[]'::jsonb),'defaultCount',p.pronargdefaults,'argumentDefaults',pg_get_expr(p.proargdefaults,0),\n    'returnType',format_type(p.prorettype,NULL),'returnsSet',p.proretset,'outputColumns',COALESCE((SELECT jsonb_agg(jsonb_build_object('name',p.proargnames[v.n],'type',format_type(v.type,NULL)) ORDER BY v.n) FROM unnest(p.proallargtypes) WITH ORDINALITY AS v(type,n) WHERE p.proargmodes[v.n] IN ('o','b','t')),'[]'::jsonb),\n    'language',l.lanname,'volatility',p.provolatile,'securityDefiner',p.prosecdef,'strict',p.proisstrict,'config',to_jsonb(p.proconfig),'bodyMd5',md5(replace(p.prosrc,chr(13)||chr(10),chr(10))))\n  FROM pg_catalog.pg_proc AS p JOIN pg_catalog.pg_namespace AS n ON n.oid=p.pronamespace JOIN pg_catalog.pg_language AS l ON l.oid=p.prolang\n  WHERE n.nspname=current_schema() AND (left(p.proname,6)='image_' OR left(p.proname,7)='canvas_')\n  UNION ALL\n  SELECT 'trigger', g.tgname, jsonb_build_object('table',t.relname,'function',p.proname,'functionCurrentSchema',n.nspname=current_schema(),'type',g.tgtype,'enabled',g.tgenabled,'deferrable',g.tgdeferrable,'deferred',g.tginitdeferred,'arguments',g.tgnargs,'argumentBytes',encode(g.tgargs,'hex'),'condition',pg_get_expr(g.tgqual,g.tgrelid),'columns',COALESCE((SELECT jsonb_agg(a.attname ORDER BY k.n) FROM unnest(g.tgattr::smallint[]) WITH ORDINALITY AS k(attnum,n) JOIN pg_catalog.pg_attribute AS a ON a.attrelid=t.oid AND a.attnum=k.attnum),'[]'::jsonb))\n  FROM image_tables AS t JOIN pg_catalog.pg_trigger AS g ON g.tgrelid=t.oid\n  JOIN pg_catalog.pg_proc AS p ON p.oid=g.tgfoid JOIN pg_catalog.pg_namespace AS n ON n.oid=p.pronamespace WHERE NOT g.tgisinternal AND (left(p.proname,6)='image_' OR left(p.proname,7)='canvas_')\n  UNION ALL\n  SELECT 'enum', t.typname, jsonb_build_object('labels',jsonb_agg(e.enumlabel ORDER BY e.enumsortorder))\n  FROM pg_catalog.pg_type AS t JOIN pg_catalog.pg_namespace AS n ON n.oid=t.typnamespace\n  JOIN pg_catalog.pg_enum AS e ON e.enumtypid=t.oid\n  WHERE n.nspname=current_schema() AND t.typname IN ('CanvasImportAssetState','CanvasRunState','CanvasPutOutcome','CanvasDeleteOutcome')\n  GROUP BY t.typname\n)\nSELECT COALESCE(jsonb_agg(jsonb_build_object('kind',kind,'name',name,'definition',definition) ORDER BY kind,name),'[]'::jsonb) AS result FROM inventory",
+  "catalogQuery": "WITH image_tables AS (\n  SELECT c.oid, c.relname, c.relkind, c.relpersistence FROM pg_catalog.pg_class AS c\n  JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace\n  WHERE n.nspname = current_schema() AND c.relname IN ('GalleryWork','WorkLike','ImageStoragePolicy','ImageQuota','ImageStorageLocation','ImageWriteReservation','ImageAsset','ImageObject','ImageReference','ImageUrlAlias','ImageMaintenanceJob','ImageMaintenanceItem','ImageMaintenanceLease','ImageReplicaVerification','ImageGenerationBinding','GenerationImage','GenerationJob','LoginCoverConfig','CanvasImportAsset','CanvasGcLease','Canvas','CanvasRun','CanvasSavedAssetUse','CanvasJobAssetUse','User','Conversation','ImageHistoryJob','ImageHistoryItem','ImageObjectObservation','ImageHistoryReference','ImageHistoryHold')\n), inventory AS (\n  SELECT 'table'::text AS kind, t.relname::text AS name, jsonb_build_object('kind',t.relkind,'persistence',t.relpersistence) AS definition FROM image_tables AS t\n  UNION ALL\n  SELECT 'column', t.relname || '.' || a.attname,\n    jsonb_build_object('type',format_type(a.atttypid,a.atttypmod),'nullable',NOT a.attnotnull,'default',pg_get_expr(d.adbin,d.adrelid))\n  FROM image_tables AS t JOIN pg_catalog.pg_attribute AS a ON a.attrelid=t.oid\n  LEFT JOIN pg_catalog.pg_attrdef AS d ON d.adrelid=t.oid AND d.adnum=a.attnum\n  WHERE a.attnum>0 AND NOT a.attisdropped AND (\n    (left(t.relname,5)='Image' OR left(t.relname,6)='Canvas' OR t.relname IN ('GalleryWork','WorkLike'))\n    OR (t.relname='GenerationImage' AND a.attname IN ('id','jobId','url','mediaStorage','storageKey','mediaAssetId','showcaseStatus','createdAt'))\n    OR (t.relname='GenerationJob' AND a.attname IN ('id','userId','generationType','count','workerId','status','sourceImageUrls'))\n    OR (t.relname='LoginCoverConfig' AND a.attname IN ('scope','mode','customUrl'))\n  )\n  UNION ALL\n  SELECT 'index', c.relname, jsonb_build_object('table',t.relname,'unique',i.indisunique,'primary',i.indisprimary,'valid',i.indisvalid,'ready',i.indisready,'method',m.amname,\n    'columns',(SELECT jsonb_agg(a.attname ORDER BY k.n) FROM unnest(i.indkey) WITH ORDINALITY AS k(attnum,n) JOIN pg_catalog.pg_attribute AS a ON a.attrelid=t.oid AND a.attnum=k.attnum WHERE k.n<=i.indnkeyatts),\n    'options',to_jsonb(i.indoption::smallint[]),'expressions',pg_get_expr(i.indexprs,i.indrelid),'predicate',pg_get_expr(i.indpred,i.indrelid),'nullsNotDistinct',i.indnullsnotdistinct,'includedColumns',i.indnatts-i.indnkeyatts)\n  FROM image_tables AS t JOIN pg_catalog.pg_index AS i ON i.indrelid=t.oid\n  JOIN pg_catalog.pg_class AS c ON c.oid=i.indexrelid JOIN pg_catalog.pg_am AS m ON m.oid=c.relam\n  WHERE (left(t.relname,5)='Image' OR left(t.relname,6)='Canvas' OR t.relname IN ('GalleryWork','WorkLike')) OR c.relname IN ('GenerationImage_mediaAssetId_key','CanvasImportAsset_mediaAssetId_key')\n  UNION ALL\n  SELECT 'constraint', c.conname, jsonb_build_object('table',t.relname,'type',c.contype,'deferrable',c.condeferrable,'deferred',c.condeferred,'validated',c.convalidated)\n    || CASE WHEN c.contype='c' THEN jsonb_build_object('expression',pg_get_expr(c.conbin,c.conrelid)) ELSE jsonb_build_object('columns',(SELECT jsonb_agg(a.attname ORDER BY k.n) FROM unnest(c.conkey) WITH ORDINALITY AS k(attnum,n) JOIN pg_catalog.pg_attribute AS a ON a.attrelid=t.oid AND a.attnum=k.attnum)) END\n    || CASE WHEN c.contype='f' THEN jsonb_build_object('referenceTable',r.relname,'referenceCurrentSchema',rn.nspname=current_schema(),'referenceColumns',(SELECT jsonb_agg(a.attname ORDER BY k.n) FROM unnest(c.confkey) WITH ORDINALITY AS k(attnum,n) JOIN pg_catalog.pg_attribute AS a ON a.attrelid=c.confrelid AND a.attnum=k.attnum),'deleteAction',c.confdeltype,'updateAction',c.confupdtype,'matchType',c.confmatchtype) ELSE '{}'::jsonb END\n  FROM image_tables AS t JOIN pg_catalog.pg_constraint AS c ON c.conrelid=t.oid\n  LEFT JOIN pg_catalog.pg_class AS r ON r.oid=c.confrelid LEFT JOIN pg_catalog.pg_namespace AS rn ON rn.oid=r.relnamespace WHERE c.contype IN ('p','u','f','c') AND ((left(t.relname,5)='Image' OR left(t.relname,6)='Canvas' OR t.relname IN ('GalleryWork','WorkLike')) OR c.conname IN ('GenerationImage_mediaAssetId_fkey','CanvasImportAsset_mediaAssetId_fkey'))\n  UNION ALL\n  SELECT 'function', p.proname, jsonb_build_object('arguments',COALESCE((SELECT jsonb_agg(format_type(v.type,NULL) ORDER BY v.n) FROM unnest(p.proargtypes::oid[]) WITH ORDINALITY AS v(type,n)),'[]'::jsonb),\n    'argumentNames',COALESCE(to_jsonb(p.proargnames[1:p.pronargs]),'[]'::jsonb),'defaultCount',p.pronargdefaults,'argumentDefaults',pg_get_expr(p.proargdefaults,0),\n    'returnType',format_type(p.prorettype,NULL),'returnsSet',p.proretset,'outputColumns',COALESCE((SELECT jsonb_agg(jsonb_build_object('name',p.proargnames[v.n],'type',format_type(v.type,NULL)) ORDER BY v.n) FROM unnest(p.proallargtypes) WITH ORDINALITY AS v(type,n) WHERE p.proargmodes[v.n] IN ('o','b','t')),'[]'::jsonb),\n    'language',l.lanname,'volatility',p.provolatile,'securityDefiner',p.prosecdef,'strict',p.proisstrict,'config',to_jsonb(p.proconfig),'bodyMd5',md5(replace(p.prosrc,chr(13)||chr(10),chr(10))))\n  FROM pg_catalog.pg_proc AS p JOIN pg_catalog.pg_namespace AS n ON n.oid=p.pronamespace JOIN pg_catalog.pg_language AS l ON l.oid=p.prolang\n  WHERE n.nspname=current_schema() AND (left(p.proname,6)='image_' OR left(p.proname,7)='canvas_')\n  UNION ALL\n  SELECT 'trigger', g.tgname, jsonb_build_object('table',t.relname,'function',p.proname,'functionCurrentSchema',n.nspname=current_schema(),'type',g.tgtype,'enabled',g.tgenabled,'deferrable',g.tgdeferrable,'deferred',g.tginitdeferred,'arguments',g.tgnargs,'argumentBytes',encode(g.tgargs,'hex'),'condition',pg_get_expr(g.tgqual,g.tgrelid),'columns',COALESCE((SELECT jsonb_agg(a.attname ORDER BY k.n) FROM unnest(g.tgattr::smallint[]) WITH ORDINALITY AS k(attnum,n) JOIN pg_catalog.pg_attribute AS a ON a.attrelid=t.oid AND a.attnum=k.attnum),'[]'::jsonb))\n  FROM image_tables AS t JOIN pg_catalog.pg_trigger AS g ON g.tgrelid=t.oid\n  JOIN pg_catalog.pg_proc AS p ON p.oid=g.tgfoid JOIN pg_catalog.pg_namespace AS n ON n.oid=p.pronamespace WHERE NOT g.tgisinternal AND (left(p.proname,6)='image_' OR left(p.proname,7)='canvas_')\n  UNION ALL\n  SELECT 'enum', t.typname, jsonb_build_object('labels',jsonb_agg(e.enumlabel ORDER BY e.enumsortorder))\n  FROM pg_catalog.pg_type AS t JOIN pg_catalog.pg_namespace AS n ON n.oid=t.typnamespace\n  JOIN pg_catalog.pg_enum AS e ON e.enumtypid=t.oid\n  WHERE n.nspname=current_schema() AND t.typname IN ('CanvasImportAssetState','CanvasRunState','CanvasPutOutcome','CanvasDeleteOutcome','ShowcaseStatus')\n  GROUP BY t.typname\n)\nSELECT COALESCE(jsonb_agg(jsonb_build_object('kind',kind,'name',name,'definition',definition) ORDER BY kind,name),'[]'::jsonb) AS result FROM inventory",
   "objects": [
     {
       "kind": "column",
@@ -749,6 +749,177 @@
     },
     {
       "kind": "column",
+      "name": "GalleryWork.createdAt",
+      "definition": {
+        "type": "timestamp(3) without time zone",
+        "default": "CURRENT_TIMESTAMP",
+        "nullable": false
+      }
+    },
+    {
+      "kind": "column",
+      "name": "GalleryWork.featuredAt",
+      "definition": {
+        "type": "timestamp(3) without time zone",
+        "default": null,
+        "nullable": true
+      }
+    },
+    {
+      "kind": "column",
+      "name": "GalleryWork.height",
+      "definition": {
+        "type": "integer",
+        "default": null,
+        "nullable": true
+      }
+    },
+    {
+      "kind": "column",
+      "name": "GalleryWork.id",
+      "definition": {
+        "type": "text",
+        "default": null,
+        "nullable": false
+      }
+    },
+    {
+      "kind": "column",
+      "name": "GalleryWork.mediaAssetId",
+      "definition": {
+        "type": "uuid",
+        "default": null,
+        "nullable": false
+      }
+    },
+    {
+      "kind": "column",
+      "name": "GalleryWork.negativePrompt",
+      "definition": {
+        "type": "text",
+        "default": null,
+        "nullable": true
+      }
+    },
+    {
+      "kind": "column",
+      "name": "GalleryWork.payloadHash",
+      "definition": {
+        "type": "character(64)",
+        "default": null,
+        "nullable": false
+      }
+    },
+    {
+      "kind": "column",
+      "name": "GalleryWork.prompt",
+      "definition": {
+        "type": "text",
+        "default": null,
+        "nullable": true
+      }
+    },
+    {
+      "kind": "column",
+      "name": "GalleryWork.publicAuthorName",
+      "definition": {
+        "type": "text",
+        "default": null,
+        "nullable": true
+      }
+    },
+    {
+      "kind": "column",
+      "name": "GalleryWork.requestKey",
+      "definition": {
+        "type": "character varying(64)",
+        "default": null,
+        "nullable": false
+      }
+    },
+    {
+      "kind": "column",
+      "name": "GalleryWork.reviewNote",
+      "definition": {
+        "type": "text",
+        "default": null,
+        "nullable": true
+      }
+    },
+    {
+      "kind": "column",
+      "name": "GalleryWork.reviewedAt",
+      "definition": {
+        "type": "timestamp(3) without time zone",
+        "default": null,
+        "nullable": true
+      }
+    },
+    {
+      "kind": "column",
+      "name": "GalleryWork.reviewedById",
+      "definition": {
+        "type": "text",
+        "default": null,
+        "nullable": true
+      }
+    },
+    {
+      "kind": "column",
+      "name": "GalleryWork.showPromptPublic",
+      "definition": {
+        "type": "boolean",
+        "default": "false",
+        "nullable": false
+      }
+    },
+    {
+      "kind": "column",
+      "name": "GalleryWork.showcaseStatus",
+      "definition": {
+        "type": "\"ShowcaseStatus\"",
+        "default": "'PENDING'::\"ShowcaseStatus\"",
+        "nullable": false
+      }
+    },
+    {
+      "kind": "column",
+      "name": "GalleryWork.submittedAt",
+      "definition": {
+        "type": "timestamp(3) without time zone",
+        "default": null,
+        "nullable": false
+      }
+    },
+    {
+      "kind": "column",
+      "name": "GalleryWork.updatedAt",
+      "definition": {
+        "type": "timestamp(3) without time zone",
+        "default": null,
+        "nullable": false
+      }
+    },
+    {
+      "kind": "column",
+      "name": "GalleryWork.userId",
+      "definition": {
+        "type": "text",
+        "default": null,
+        "nullable": false
+      }
+    },
+    {
+      "kind": "column",
+      "name": "GalleryWork.width",
+      "definition": {
+        "type": "integer",
+        "default": null,
+        "nullable": true
+      }
+    },
+    {
+      "kind": "column",
       "name": "GenerationImage.createdAt",
       "definition": {
         "type": "timestamp(3) without time zone",
@@ -957,6 +1128,15 @@
     {
       "kind": "column",
       "name": "ImageAsset.detachedAt",
+      "definition": {
+        "type": "timestamp(3) with time zone",
+        "default": null,
+        "nullable": true
+      }
+    },
+    {
+      "kind": "column",
+      "name": "ImageAsset.expiresAt",
       "definition": {
         "type": "timestamp(3) with time zone",
         "default": null,
@@ -2908,6 +3088,60 @@
       }
     },
     {
+      "kind": "column",
+      "name": "WorkLike.createdAt",
+      "definition": {
+        "type": "timestamp(3) without time zone",
+        "default": "CURRENT_TIMESTAMP",
+        "nullable": false
+      }
+    },
+    {
+      "kind": "column",
+      "name": "WorkLike.galleryWorkId",
+      "definition": {
+        "type": "text",
+        "default": null,
+        "nullable": true
+      }
+    },
+    {
+      "kind": "column",
+      "name": "WorkLike.id",
+      "definition": {
+        "type": "text",
+        "default": null,
+        "nullable": false
+      }
+    },
+    {
+      "kind": "column",
+      "name": "WorkLike.userId",
+      "definition": {
+        "type": "text",
+        "default": null,
+        "nullable": false
+      }
+    },
+    {
+      "kind": "column",
+      "name": "WorkLike.videoId",
+      "definition": {
+        "type": "text",
+        "default": null,
+        "nullable": true
+      }
+    },
+    {
+      "kind": "column",
+      "name": "WorkLike.workId",
+      "definition": {
+        "type": "text",
+        "default": null,
+        "nullable": true
+      }
+    },
+    {
       "kind": "constraint",
       "name": "CanvasGcLease_pkey",
       "definition": {
@@ -3390,6 +3624,151 @@
     },
     {
       "kind": "constraint",
+      "name": "GalleryWork_height_check",
+      "definition": {
+        "type": "c",
+        "table": "GalleryWork",
+        "deferred": false,
+        "validated": true,
+        "deferrable": false,
+        "expression": "(height > 0)"
+      }
+    },
+    {
+      "kind": "constraint",
+      "name": "GalleryWork_mediaAssetId_fkey",
+      "definition": {
+        "type": "f",
+        "table": "GalleryWork",
+        "columns": [
+          "mediaAssetId"
+        ],
+        "deferred": false,
+        "matchType": "s",
+        "validated": true,
+        "deferrable": false,
+        "deleteAction": "r",
+        "updateAction": "r",
+        "referenceTable": "ImageAsset",
+        "referenceColumns": [
+          "id"
+        ],
+        "referenceCurrentSchema": true
+      }
+    },
+    {
+      "kind": "constraint",
+      "name": "GalleryWork_mediaAssetId_key",
+      "definition": {
+        "type": "u",
+        "table": "GalleryWork",
+        "columns": [
+          "mediaAssetId"
+        ],
+        "deferred": false,
+        "validated": true,
+        "deferrable": false
+      }
+    },
+    {
+      "kind": "constraint",
+      "name": "GalleryWork_payloadHash_check",
+      "definition": {
+        "type": "c",
+        "table": "GalleryWork",
+        "deferred": false,
+        "validated": true,
+        "deferrable": false,
+        "expression": "(\"payloadHash\" ~ '^[0-9a-f]{64}$'::text)"
+      }
+    },
+    {
+      "kind": "constraint",
+      "name": "GalleryWork_pkey",
+      "definition": {
+        "type": "p",
+        "table": "GalleryWork",
+        "columns": [
+          "id"
+        ],
+        "deferred": false,
+        "validated": true,
+        "deferrable": false
+      }
+    },
+    {
+      "kind": "constraint",
+      "name": "GalleryWork_reviewedById_fkey",
+      "definition": {
+        "type": "f",
+        "table": "GalleryWork",
+        "columns": [
+          "reviewedById"
+        ],
+        "deferred": false,
+        "matchType": "s",
+        "validated": true,
+        "deferrable": false,
+        "deleteAction": "n",
+        "updateAction": "c",
+        "referenceTable": "User",
+        "referenceColumns": [
+          "id"
+        ],
+        "referenceCurrentSchema": true
+      }
+    },
+    {
+      "kind": "constraint",
+      "name": "GalleryWork_userId_fkey",
+      "definition": {
+        "type": "f",
+        "table": "GalleryWork",
+        "columns": [
+          "userId"
+        ],
+        "deferred": false,
+        "matchType": "s",
+        "validated": true,
+        "deferrable": false,
+        "deleteAction": "c",
+        "updateAction": "c",
+        "referenceTable": "User",
+        "referenceColumns": [
+          "id"
+        ],
+        "referenceCurrentSchema": true
+      }
+    },
+    {
+      "kind": "constraint",
+      "name": "GalleryWork_userId_requestKey_key",
+      "definition": {
+        "type": "u",
+        "table": "GalleryWork",
+        "columns": [
+          "userId",
+          "requestKey"
+        ],
+        "deferred": false,
+        "validated": true,
+        "deferrable": false
+      }
+    },
+    {
+      "kind": "constraint",
+      "name": "GalleryWork_width_check",
+      "definition": {
+        "type": "c",
+        "table": "GalleryWork",
+        "deferred": false,
+        "validated": true,
+        "deferrable": false,
+        "expression": "(width > 0)"
+      }
+    },
+    {
+      "kind": "constraint",
       "name": "GenerationImage_mediaAssetId_fkey",
       "definition": {
         "type": "f",
@@ -3582,7 +3961,7 @@
         "deferred": false,
         "validated": true,
         "deferrable": false,
-        "expression": "((purpose)::text = ANY ((ARRAY['GENERATED'::character varying, 'REFERENCE'::character varying, 'CANVAS_IMPORT'::character varying])::text[]))"
+        "expression": "((purpose)::text = ANY ((ARRAY['GENERATED'::character varying, 'REFERENCE'::character varying, 'CANVAS_IMPORT'::character varying, 'GALLERY_UPLOAD'::character varying])::text[]))"
       }
     },
     {
@@ -4393,7 +4772,7 @@
         "deferred": false,
         "validated": true,
         "deferrable": false,
-        "expression": "((mode)::text = ANY ((ARRAY['MANUAL_AGE'::character varying, 'MANUAL_ALL'::character varying, 'SCHEDULE'::character varying, 'QUOTA'::character varying, 'SOURCE_RETIREMENT'::character varying])::text[]))"
+        "expression": "((mode)::text = ANY ((ARRAY['MANUAL_AGE'::character varying, 'MANUAL_ALL'::character varying, 'SCHEDULE'::character varying, 'QUOTA'::character varying, 'SOURCE_RETIREMENT'::character varying, 'EXPIRY'::character varying])::text[]))"
       }
     },
     {
@@ -5272,7 +5651,7 @@
         "deferred": false,
         "validated": true,
         "deferrable": false,
-        "expression": "(\"readerProtocolRevision\" = ANY (ARRAY[2, 3]))"
+        "expression": "(\"readerProtocolRevision\" = ANY (ARRAY[2, 3, 4]))"
       }
     },
     {
@@ -5634,6 +6013,120 @@
       }
     },
     {
+      "kind": "constraint",
+      "name": "WorkLike_galleryWorkId_fkey",
+      "definition": {
+        "type": "f",
+        "table": "WorkLike",
+        "columns": [
+          "galleryWorkId"
+        ],
+        "deferred": false,
+        "matchType": "s",
+        "validated": true,
+        "deferrable": false,
+        "deleteAction": "c",
+        "updateAction": "c",
+        "referenceTable": "GalleryWork",
+        "referenceColumns": [
+          "id"
+        ],
+        "referenceCurrentSchema": true
+      }
+    },
+    {
+      "kind": "constraint",
+      "name": "WorkLike_one_target_check",
+      "definition": {
+        "type": "c",
+        "table": "WorkLike",
+        "deferred": false,
+        "validated": true,
+        "deferrable": false,
+        "expression": "(num_nonnulls(\"workId\", \"videoId\", \"galleryWorkId\") <= 1)"
+      }
+    },
+    {
+      "kind": "constraint",
+      "name": "WorkLike_pkey",
+      "definition": {
+        "type": "p",
+        "table": "WorkLike",
+        "columns": [
+          "id"
+        ],
+        "deferred": false,
+        "validated": true,
+        "deferrable": false
+      }
+    },
+    {
+      "kind": "constraint",
+      "name": "WorkLike_userId_fkey",
+      "definition": {
+        "type": "f",
+        "table": "WorkLike",
+        "columns": [
+          "userId"
+        ],
+        "deferred": false,
+        "matchType": "s",
+        "validated": true,
+        "deferrable": false,
+        "deleteAction": "c",
+        "updateAction": "c",
+        "referenceTable": "User",
+        "referenceColumns": [
+          "id"
+        ],
+        "referenceCurrentSchema": true
+      }
+    },
+    {
+      "kind": "constraint",
+      "name": "WorkLike_videoId_fkey",
+      "definition": {
+        "type": "f",
+        "table": "WorkLike",
+        "columns": [
+          "videoId"
+        ],
+        "deferred": false,
+        "matchType": "s",
+        "validated": true,
+        "deferrable": false,
+        "deleteAction": "c",
+        "updateAction": "c",
+        "referenceTable": "GeneratedVideo",
+        "referenceColumns": [
+          "id"
+        ],
+        "referenceCurrentSchema": true
+      }
+    },
+    {
+      "kind": "constraint",
+      "name": "WorkLike_workId_fkey",
+      "definition": {
+        "type": "f",
+        "table": "WorkLike",
+        "columns": [
+          "workId"
+        ],
+        "deferred": false,
+        "matchType": "s",
+        "validated": true,
+        "deferrable": false,
+        "deleteAction": "c",
+        "updateAction": "c",
+        "referenceTable": "GenerationImage",
+        "referenceColumns": [
+          "id"
+        ],
+        "referenceCurrentSchema": true
+      }
+    },
+    {
       "kind": "enum",
       "name": "CanvasDeleteOutcome",
       "definition": {
@@ -5678,6 +6171,18 @@
           "PREPARING",
           "COMMITTED",
           "REJECTED"
+        ]
+      }
+    },
+    {
+      "kind": "enum",
+      "name": "ShowcaseStatus",
+      "definition": {
+        "labels": [
+          "PRIVATE",
+          "PENDING",
+          "FEATURED",
+          "TAKEDOWN_PENDING"
         ]
       }
     },
@@ -6800,7 +7305,7 @@
       "definition": {
         "config": null,
         "strict": false,
-        "bodyMd5": "224e2b0ff651e97f806871198392dfb1",
+        "bodyMd5": "0b5fcfbb0e60a2c83c0bccb1ab38a025",
         "language": "plpgsql",
         "arguments": [
           "jsonb"
@@ -6823,7 +7328,7 @@
       "definition": {
         "config": null,
         "strict": false,
-        "bodyMd5": "db04cd01f3d10623f8b766da39c75d5d",
+        "bodyMd5": "c78c8237f434ef6362d58472c31dae15",
         "language": "plpgsql",
         "arguments": [
           "jsonb"
@@ -7079,7 +7584,7 @@
       "definition": {
         "config": null,
         "strict": false,
-        "bodyMd5": "2ee0f21608e9967fab327a4086202b94",
+        "bodyMd5": "cb8f2c04893812e14081499b796eac2e",
         "language": "plpgsql",
         "arguments": [
           "jsonb"
@@ -7102,7 +7607,7 @@
       "definition": {
         "config": null,
         "strict": false,
-        "bodyMd5": "4689a994f3f70ddb26ef838926156712",
+        "bodyMd5": "1c5ac13779a8a8e034c75abda63d7116",
         "language": "plpgsql",
         "arguments": [
           "uuid"
@@ -7171,7 +7676,7 @@
       "definition": {
         "config": null,
         "strict": false,
-        "bodyMd5": "b991823dee8f8595e6712aa422bdab9e",
+        "bodyMd5": "ca86c82a4624b6f43043e59dc47d9910",
         "language": "plpgsql",
         "arguments": [
           "jsonb"
@@ -7183,6 +7688,25 @@
         "argumentNames": [
           "p"
         ],
+        "outputColumns": [],
+        "securityDefiner": false,
+        "argumentDefaults": null
+      }
+    },
+    {
+      "kind": "function",
+      "name": "image_complete_temporary_outputs",
+      "definition": {
+        "config": null,
+        "strict": false,
+        "bodyMd5": "f6ae05d95b1c5b49f5bd8c4ceb8fa7b1",
+        "language": "plpgsql",
+        "arguments": [],
+        "returnType": "trigger",
+        "returnsSet": false,
+        "volatility": "v",
+        "defaultCount": 0,
+        "argumentNames": [],
         "outputColumns": [],
         "securityDefiner": false,
         "argumentDefaults": null
@@ -7217,7 +7741,7 @@
       "definition": {
         "config": null,
         "strict": false,
-        "bodyMd5": "12a77149db7ff978f5d5516bbf5f2935",
+        "bodyMd5": "636e018feb980a473885eb684fa5b8b2",
         "language": "plpgsql",
         "arguments": [],
         "returnType": "jsonb",
@@ -7294,6 +7818,69 @@
         "argumentNames": [
           "p"
         ],
+        "outputColumns": [],
+        "securityDefiner": false,
+        "argumentDefaults": null
+      }
+    },
+    {
+      "kind": "function",
+      "name": "image_gallery_guard",
+      "definition": {
+        "config": null,
+        "strict": false,
+        "bodyMd5": "651e0aee90d689d8d41f99d36ab796ee",
+        "language": "plpgsql",
+        "arguments": [],
+        "returnType": "trigger",
+        "returnsSet": false,
+        "volatility": "v",
+        "defaultCount": 0,
+        "argumentNames": [],
+        "outputColumns": [],
+        "securityDefiner": false,
+        "argumentDefaults": null
+      }
+    },
+    {
+      "kind": "function",
+      "name": "image_gallery_readable",
+      "definition": {
+        "config": null,
+        "strict": false,
+        "bodyMd5": "ca081f7638fd857026d2aa664c3bea2e",
+        "language": "sql",
+        "arguments": [
+          "uuid",
+          "text"
+        ],
+        "returnType": "boolean",
+        "returnsSet": false,
+        "volatility": "s",
+        "defaultCount": 0,
+        "argumentNames": [
+          "p_asset",
+          "p_viewer"
+        ],
+        "outputColumns": [],
+        "securityDefiner": false,
+        "argumentDefaults": null
+      }
+    },
+    {
+      "kind": "function",
+      "name": "image_gallery_roots",
+      "definition": {
+        "config": null,
+        "strict": false,
+        "bodyMd5": "8c87d695f4a7f24defcbfa95afea51b5",
+        "language": "plpgsql",
+        "arguments": [],
+        "returnType": "trigger",
+        "returnsSet": false,
+        "volatility": "v",
+        "defaultCount": 0,
+        "argumentNames": [],
         "outputColumns": [],
         "securityDefiner": false,
         "argumentDefaults": null
@@ -7525,7 +8112,7 @@
       "definition": {
         "config": null,
         "strict": false,
-        "bodyMd5": "7af1c5eef591d1453e86ab0201826462",
+        "bodyMd5": "0d7804b62c90bc7f152c8940daa4935c",
         "language": "plpgsql",
         "arguments": [],
         "returnType": "trigger",
@@ -7715,7 +8302,7 @@
       "definition": {
         "config": null,
         "strict": false,
-        "bodyMd5": "f44648009dc4002094072f118a7aa32d",
+        "bodyMd5": "f684171d3167b32504b36d64c9e69969",
         "language": "plpgsql",
         "arguments": [],
         "returnType": "trigger",
@@ -7772,7 +8359,7 @@
       "definition": {
         "config": null,
         "strict": false,
-        "bodyMd5": "799aef33d3dc9cd5dbb65b6c589da271",
+        "bodyMd5": "848ae17e5cba3a27f4dc1a20329c5f3d",
         "language": "sql",
         "arguments": [
           "uuid"
@@ -7860,7 +8447,7 @@
       "definition": {
         "config": null,
         "strict": false,
-        "bodyMd5": "cbe170b755f24b9be8a9b4b00710eecb",
+        "bodyMd5": "00a3ba2c57ef3c6c783991714483e766",
         "language": "plpgsql",
         "arguments": [],
         "returnType": "trigger",
@@ -8049,6 +8636,54 @@
     },
     {
       "kind": "function",
+      "name": "image_job_has_input",
+      "definition": {
+        "config": null,
+        "strict": false,
+        "bodyMd5": "e2971729f5e2cbe0cb2c0690e1180efb",
+        "language": "sql",
+        "arguments": [
+          "uuid",
+          "text"
+        ],
+        "returnType": "boolean",
+        "returnsSet": false,
+        "volatility": "s",
+        "defaultCount": 0,
+        "argumentNames": [
+          "p_asset",
+          "p_job"
+        ],
+        "outputColumns": [],
+        "securityDefiner": false,
+        "argumentDefaults": null
+      }
+    },
+    {
+      "kind": "function",
+      "name": "image_job_needs_inputs",
+      "definition": {
+        "config": null,
+        "strict": false,
+        "bodyMd5": "a3f9d110dc5e7fd923e5beebccd3c9bc",
+        "language": "sql",
+        "arguments": [
+          "text"
+        ],
+        "returnType": "boolean",
+        "returnsSet": false,
+        "volatility": "s",
+        "defaultCount": 0,
+        "argumentNames": [
+          "p_job"
+        ],
+        "outputColumns": [],
+        "securityDefiner": false,
+        "argumentDefaults": null
+      }
+    },
+    {
+      "kind": "function",
       "name": "image_lease_seconds",
       "definition": {
         "config": null,
@@ -8099,7 +8734,7 @@
       "definition": {
         "config": null,
         "strict": false,
-        "bodyMd5": "2f6b7a3e2b9420d93929f5e57efe116c",
+        "bodyMd5": "bb3e8f02a7512ad42a381a953f542916",
         "language": "sql",
         "arguments": [],
         "returnType": "jsonb",
@@ -8459,7 +9094,7 @@
       "definition": {
         "config": null,
         "strict": false,
-        "bodyMd5": "b9722e9d8be823e22bf7732583d73aa8",
+        "bodyMd5": "4c6bc199a3c24d870f01eb04b7efd140",
         "language": "plpgsql",
         "arguments": [
           "jsonb"
@@ -8823,7 +9458,7 @@
       "definition": {
         "config": null,
         "strict": false,
-        "bodyMd5": "4ac1495817bef77e05272817774aaecc",
+        "bodyMd5": "30a83d5b5f7cbbb54af09c33ab23a2eb",
         "language": "plpgsql",
         "arguments": [
           "uuid"
@@ -8834,6 +9469,29 @@
         "defaultCount": 0,
         "argumentNames": [
           "p_verification"
+        ],
+        "outputColumns": [],
+        "securityDefiner": false,
+        "argumentDefaults": null
+      }
+    },
+    {
+      "kind": "function",
+      "name": "image_review_gallery_work",
+      "definition": {
+        "config": null,
+        "strict": false,
+        "bodyMd5": "02e9610090555fab0e337453aa06cd51",
+        "language": "plpgsql",
+        "arguments": [
+          "jsonb"
+        ],
+        "returnType": "jsonb",
+        "returnsSet": false,
+        "volatility": "v",
+        "defaultCount": 0,
+        "argumentNames": [
+          "p"
         ],
         "outputColumns": [],
         "securityDefiner": false,
@@ -8869,7 +9527,7 @@
       "definition": {
         "config": null,
         "strict": false,
-        "bodyMd5": "8b339db82418c737f7cebd1cb940e265",
+        "bodyMd5": "9fbe3cb0f6006b645884dd0521bf9b8c",
         "language": "plpgsql",
         "arguments": [
           "uuid"
@@ -8892,7 +9550,7 @@
       "definition": {
         "config": null,
         "strict": false,
-        "bodyMd5": "098cd3c5deb625ef1f990be2a52487db",
+        "bodyMd5": "bdaf98d1f5bae3ccd6793b327800f41b",
         "language": "sql",
         "arguments": [],
         "returnType": "integer",
@@ -9597,6 +10255,126 @@
     },
     {
       "kind": "index",
+      "name": "GalleryWork_mediaAssetId_key",
+      "definition": {
+        "ready": true,
+        "table": "GalleryWork",
+        "valid": true,
+        "method": "btree",
+        "unique": true,
+        "columns": [
+          "mediaAssetId"
+        ],
+        "options": [
+          0
+        ],
+        "primary": false,
+        "predicate": null,
+        "expressions": null,
+        "includedColumns": 0,
+        "nullsNotDistinct": false
+      }
+    },
+    {
+      "kind": "index",
+      "name": "GalleryWork_pkey",
+      "definition": {
+        "ready": true,
+        "table": "GalleryWork",
+        "valid": true,
+        "method": "btree",
+        "unique": true,
+        "columns": [
+          "id"
+        ],
+        "options": [
+          0
+        ],
+        "primary": true,
+        "predicate": null,
+        "expressions": null,
+        "includedColumns": 0,
+        "nullsNotDistinct": false
+      }
+    },
+    {
+      "kind": "index",
+      "name": "GalleryWork_showcaseStatus_featuredAt_id_idx",
+      "definition": {
+        "ready": true,
+        "table": "GalleryWork",
+        "valid": true,
+        "method": "btree",
+        "unique": false,
+        "columns": [
+          "showcaseStatus",
+          "featuredAt",
+          "id"
+        ],
+        "options": [
+          0,
+          3,
+          3
+        ],
+        "primary": false,
+        "predicate": null,
+        "expressions": null,
+        "includedColumns": 0,
+        "nullsNotDistinct": false
+      }
+    },
+    {
+      "kind": "index",
+      "name": "GalleryWork_userId_createdAt_id_idx",
+      "definition": {
+        "ready": true,
+        "table": "GalleryWork",
+        "valid": true,
+        "method": "btree",
+        "unique": false,
+        "columns": [
+          "userId",
+          "createdAt",
+          "id"
+        ],
+        "options": [
+          0,
+          3,
+          3
+        ],
+        "primary": false,
+        "predicate": null,
+        "expressions": null,
+        "includedColumns": 0,
+        "nullsNotDistinct": false
+      }
+    },
+    {
+      "kind": "index",
+      "name": "GalleryWork_userId_requestKey_key",
+      "definition": {
+        "ready": true,
+        "table": "GalleryWork",
+        "valid": true,
+        "method": "btree",
+        "unique": true,
+        "columns": [
+          "userId",
+          "requestKey"
+        ],
+        "options": [
+          0,
+          0
+        ],
+        "primary": false,
+        "predicate": null,
+        "expressions": null,
+        "includedColumns": 0,
+        "nullsNotDistinct": false
+      }
+    },
+    {
+      "kind": "index",
       "name": "GenerationImage_mediaAssetId_key",
       "definition": {
         "ready": true,
@@ -9653,6 +10431,32 @@
         "columns": [
           "state",
           "createdAt",
+          "id"
+        ],
+        "options": [
+          0,
+          0,
+          0
+        ],
+        "primary": false,
+        "predicate": null,
+        "expressions": null,
+        "includedColumns": 0,
+        "nullsNotDistinct": false
+      }
+    },
+    {
+      "kind": "index",
+      "name": "ImageAsset_expiry_idx",
+      "definition": {
+        "ready": true,
+        "table": "ImageAsset",
+        "valid": true,
+        "method": "btree",
+        "unique": false,
+        "columns": [
+          "state",
+          "expiresAt",
           "id"
         ],
         "options": [
@@ -10798,6 +11602,188 @@
       }
     },
     {
+      "kind": "index",
+      "name": "WorkLike_galleryWorkId_idx",
+      "definition": {
+        "ready": true,
+        "table": "WorkLike",
+        "valid": true,
+        "method": "btree",
+        "unique": false,
+        "columns": [
+          "galleryWorkId"
+        ],
+        "options": [
+          0
+        ],
+        "primary": false,
+        "predicate": null,
+        "expressions": null,
+        "includedColumns": 0,
+        "nullsNotDistinct": false
+      }
+    },
+    {
+      "kind": "index",
+      "name": "WorkLike_galleryWorkId_userId_key",
+      "definition": {
+        "ready": true,
+        "table": "WorkLike",
+        "valid": true,
+        "method": "btree",
+        "unique": true,
+        "columns": [
+          "galleryWorkId",
+          "userId"
+        ],
+        "options": [
+          0,
+          0
+        ],
+        "primary": false,
+        "predicate": null,
+        "expressions": null,
+        "includedColumns": 0,
+        "nullsNotDistinct": false
+      }
+    },
+    {
+      "kind": "index",
+      "name": "WorkLike_pkey",
+      "definition": {
+        "ready": true,
+        "table": "WorkLike",
+        "valid": true,
+        "method": "btree",
+        "unique": true,
+        "columns": [
+          "id"
+        ],
+        "options": [
+          0
+        ],
+        "primary": true,
+        "predicate": null,
+        "expressions": null,
+        "includedColumns": 0,
+        "nullsNotDistinct": false
+      }
+    },
+    {
+      "kind": "index",
+      "name": "WorkLike_userId_idx",
+      "definition": {
+        "ready": true,
+        "table": "WorkLike",
+        "valid": true,
+        "method": "btree",
+        "unique": false,
+        "columns": [
+          "userId"
+        ],
+        "options": [
+          0
+        ],
+        "primary": false,
+        "predicate": null,
+        "expressions": null,
+        "includedColumns": 0,
+        "nullsNotDistinct": false
+      }
+    },
+    {
+      "kind": "index",
+      "name": "WorkLike_videoId_idx",
+      "definition": {
+        "ready": true,
+        "table": "WorkLike",
+        "valid": true,
+        "method": "btree",
+        "unique": false,
+        "columns": [
+          "videoId"
+        ],
+        "options": [
+          0
+        ],
+        "primary": false,
+        "predicate": null,
+        "expressions": null,
+        "includedColumns": 0,
+        "nullsNotDistinct": false
+      }
+    },
+    {
+      "kind": "index",
+      "name": "WorkLike_videoId_userId_key",
+      "definition": {
+        "ready": true,
+        "table": "WorkLike",
+        "valid": true,
+        "method": "btree",
+        "unique": true,
+        "columns": [
+          "videoId",
+          "userId"
+        ],
+        "options": [
+          0,
+          0
+        ],
+        "primary": false,
+        "predicate": null,
+        "expressions": null,
+        "includedColumns": 0,
+        "nullsNotDistinct": false
+      }
+    },
+    {
+      "kind": "index",
+      "name": "WorkLike_workId_idx",
+      "definition": {
+        "ready": true,
+        "table": "WorkLike",
+        "valid": true,
+        "method": "btree",
+        "unique": false,
+        "columns": [
+          "workId"
+        ],
+        "options": [
+          0
+        ],
+        "primary": false,
+        "predicate": null,
+        "expressions": null,
+        "includedColumns": 0,
+        "nullsNotDistinct": false
+      }
+    },
+    {
+      "kind": "index",
+      "name": "WorkLike_workId_userId_key",
+      "definition": {
+        "ready": true,
+        "table": "WorkLike",
+        "valid": true,
+        "method": "btree",
+        "unique": true,
+        "columns": [
+          "workId",
+          "userId"
+        ],
+        "options": [
+          0,
+          0
+        ],
+        "primary": false,
+        "predicate": null,
+        "expressions": null,
+        "includedColumns": 0,
+        "nullsNotDistinct": false
+      }
+    },
+    {
       "kind": "table",
       "name": "Canvas",
       "definition": {
@@ -10848,6 +11834,14 @@
     {
       "kind": "table",
       "name": "Conversation",
+      "definition": {
+        "kind": "r",
+        "persistence": "p"
+      }
+    },
+    {
+      "kind": "table",
+      "name": "GalleryWork",
       "definition": {
         "kind": "r",
         "persistence": "p"
@@ -11024,6 +12018,14 @@
     {
       "kind": "table",
       "name": "User",
+      "definition": {
+        "kind": "r",
+        "persistence": "p"
+      }
+    },
+    {
+      "kind": "table",
+      "name": "WorkLike",
       "definition": {
         "kind": "r",
         "persistence": "p"
@@ -11361,6 +12363,59 @@
     },
     {
       "kind": "trigger",
+      "name": "GalleryWork_image_epoch",
+      "definition": {
+        "type": 30,
+        "table": "GalleryWork",
+        "columns": [],
+        "enabled": "O",
+        "deferred": false,
+        "function": "image_reference_epoch_trigger",
+        "arguments": 0,
+        "condition": null,
+        "deferrable": false,
+        "argumentBytes": "",
+        "functionCurrentSchema": true
+      }
+    },
+    {
+      "kind": "trigger",
+      "name": "GalleryWork_image_guard",
+      "definition": {
+        "type": 23,
+        "table": "GalleryWork",
+        "columns": [],
+        "enabled": "O",
+        "deferred": false,
+        "function": "image_gallery_guard",
+        "arguments": 0,
+        "condition": null,
+        "deferrable": false,
+        "argumentBytes": "",
+        "functionCurrentSchema": true
+      }
+    },
+    {
+      "kind": "trigger",
+      "name": "GalleryWork_image_roots",
+      "definition": {
+        "type": 29,
+        "table": "GalleryWork",
+        "columns": [
+          "showcaseStatus"
+        ],
+        "enabled": "O",
+        "deferred": false,
+        "function": "image_gallery_roots",
+        "arguments": 0,
+        "condition": null,
+        "deferrable": false,
+        "argumentBytes": "",
+        "functionCurrentSchema": true
+      }
+    },
+    {
+      "kind": "trigger",
       "name": "GenerationImage_asset_binding",
       "definition": {
         "type": 23,
@@ -11431,6 +12486,25 @@
         "enabled": "O",
         "deferred": false,
         "function": "image_bridge_showcase",
+        "arguments": 0,
+        "condition": null,
+        "deferrable": false,
+        "argumentBytes": "",
+        "functionCurrentSchema": true
+      }
+    },
+    {
+      "kind": "trigger",
+      "name": "GenerationJob_expiry_complete",
+      "definition": {
+        "type": 17,
+        "table": "GenerationJob",
+        "columns": [
+          "status"
+        ],
+        "enabled": "O",
+        "deferred": false,
+        "function": "image_complete_temporary_outputs",
         "arguments": 0,
         "condition": null,
         "deferrable": false,
@@ -12146,6 +13220,10 @@
     {
       "name": "20261115180000_image_history",
       "sha256": "12459548628adecd2f1cde186c0485ebe52d3dd5e44eb5f1b44abafe7ae1eecd"
+    },
+    {
+      "name": "20261121160000_transient_images",
+      "sha256": "f1962fe7623e46f4b5ba15a2a130b8eaa773b01f83e9149c17e05ab04dd3312c"
     }
   ]
 }

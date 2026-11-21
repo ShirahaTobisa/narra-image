@@ -16,6 +16,7 @@ export type ViewerUser = {
 
 export type GenerationImage = {
   availability?: ImageAvailability;
+  expiresAt?: string | null;
   actualHeight?: number | null;
   actualSize?: string | null;
   actualWidth?: number | null;
@@ -58,6 +59,8 @@ export type GenerationItem = {
   size: string;
   sourceImageUrl?: string | null;
   sourceImageUrls?: string[];
+  sourceImagesReusable?: boolean;
+  sourceImagesExpiresAt?: string | null;
   startedAt?: string | null;
   status: "pending" | "succeeded" | "failed";
   updatedAt?: string;

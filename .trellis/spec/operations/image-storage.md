@@ -50,7 +50,7 @@
 | provider handoff 后持久化失败 | 保持 `RESULT_PERSIST_FAILED` 及当前 v0/v1 各自退款/UNKNOWN 语义；不得再次付费调用 provider |
 | 原图仍被永久输入根保留或脱离不足七天 | 不能清理；管理保留天数和容量压力不能缩短 Canvas guard |
 | 回滚前发现新清单/绑定列/v2 GC 函数标记 | 必须核验完整实际 Image/Canvas catalogue；partial/mismatch 失败，不能当成没有图片数据 |
-| 受管理 image schema（当前 revision 3）/ Canvas storage revision 3 已存在 | 即使没有 v1 活动任务或当前图片也拒绝旧 Worker 回滚；完全无新 schema 的旧库才沿用旧安全检查 |
+| 受管理 image schema（当前 revision 4）/ Canvas storage revision 3 已存在 | 即使没有 v1 活动任务或当前图片也拒绝旧 Worker 回滚；完全无新 schema 的旧库才沿用旧安全检查 |
 | migrations 已应用，但 Prisma 默认表达式与实际 catalogue 不同 | `migrate diff --exit-code` 返回 2；应获取实际差异并对齐声明，不能取消零差异门禁 |
 | Windows检出改变shared migration原字节/链checksum | 新schema/迁移门禁失败；固定LF与声明SHA，不能仅依赖规范化函数body单测 |
 
@@ -123,7 +123,7 @@ await db.$transaction((tx) => bindManagedImageOutputs(tx, reservation, ownerId, 
 - `prepareCopy` 原子建立绑定到 asset 的 COPY 预留；复制不能用普通 INPUT 预留绕开源保护。双份文件和剩余预留都进入额度，未定 PUT/未过期写保护不能退休源。
 - `recordReplicaVerification` 只供已实际读回并校验长度/SHA256、精确别名的内部迁移消费者调用；持久证明还绑定 source、target、当前活动副本与 reader revision。浏览器管理 API 不接受此类证明。
 - `requestSourceRetirement` 排入同一执行器的 `SOURCE_RETIREMENT` 模式。其目标必须是同一逻辑图片的已验证 READY 当前副本，全部读取别名已兼容且无旧副本在途保护；它与整张图片 RETENTION 的资格不同，不删除逻辑根。没有确切源删除回执时不能宣称释放源空间。
-- Node/Go 均加载 `contracts/media/v1/maintenance.json`：当前 storage/reader/executor revision 均为 3。Worker readiness 保留 version/schema/provider/locationId，追加这三个 revision 和 `maintenance:"running"`；Canvas scene/run wire 仍为 1、存储/GC revision 为 3。实际 PostgreSQL catalogue 必须匹配追加迁移后的函数/约束/触发器。
+- Node/Go 均加载 `contracts/media/v1/maintenance.json`：当前 storage/reader/executor revision 均为 4。Worker readiness 保留 version/schema/provider/locationId，追加这三个 revision 和 `maintenance:"running"`；Canvas scene/run wire 仍为 1、存储/GC revision 为 3。实际 PostgreSQL catalogue 必须匹配追加迁移后的函数/约束/触发器。
 
 ### 历史可用性与验证
 
@@ -178,3 +178,14 @@ await db.$transaction((tx) => bindManagedImageOutputs(tx, reservation, ownerId, 
 - 实际 LOCAL/模拟 S3 覆盖版本/长度/摘要、staging、迟到 ACK、不能二次 PUT；Linux inotify 覆盖默认命令从初始化到退出的全部现存目录，最终目录相同不足以证明没有临时探针。
 - `image-history-e2e-safety.test.ts` 的策略拒绝/恢复与有界诊断 mock 必须包含真实 CLI 外壳，保留 `progress.items` 中的读者证明与安全错误码；两种实际图片拓扑须用真实命令再次验证。正例是按序列化后的公开结构解析，基线是保留内部 report 的独立类型；反例是消费者和 mock 共同发明顶层 `items`，或用 flat/nested fallback 掩盖错误协议。
 - 反例：为旧文件伪造 COPY reservation/CONFIRMED；正例：记录 SOURCE observation 后由专用 observed 分支入账。反例：将 old R2 字符串继续直接交给浏览器；正例：保留其数据库事实并投影稳定的 managed token URL。
+
+## 10. 临时图片与广场上传（revision 4）
+
+- `IMAGE_TEMPORARY_STORAGE_ENABLED` 默认关闭，要求 managed + LOCAL 且 Canvas 关闭，两端 loader 同步校验。旧资产 `ImageAsset.expiresAt` 为 NULL，不受开关影响；已写入的期限不因关闭开关失效。
+- 开启后新的 GENERATED/REFERENCE 写入带 `temporary:true`，key 以 `temporary/` 开头，文件落在卷内 `temporary/` 子目录。已有卷再执行一次 `--init-image-volume` 补建该目录；缺目录时 Worker 启动失败，不静默创建。
+- 输出的期限在任务转为 SUCCEEDED 时由触发器定为 `completedAt + 1 小时`。`completedAt` 是无时区列，数据库会话时区必须为 UTC。期限只能缩短，不能延长或清空。
+- 到期后 `image_begin_read` 拒绝读取；已接收且尚未结束的任务带 `jobId` 仍可读取自己的输入。临时资产的 `job:` JOB_INPUT 引用只在该任务未结束时构成清理保护。
+- `EXPIRY` 维护模式不受清理策略开关影响，五分钟内最多入队一批，只选 AVAILABLE/QUARANTINED 且已到期的资产；写入租约未过或仍有读保护时顺延到下一批。未到期的临时图不被其他清理模式提前删除。
+- 地址：永久图片 `/media/images/`；临时图片 `/media/temporary-images/`，响应为 `private, max-age=剩余秒数`，不进 Next 优化器；待审或已撤下的上传 `/media/gallery-images/`，只对本人和管理员会话可读。通过审核的上传期限清为 NULL，改走永久地址。
+- `next.config.ts` 的 `images.localPatterns` 是白名单。新增到 `public/` 并经 `next/image` 渲染的图片必须能匹配，否则渲染它的页面直接失败；`temporary-image-optimizer.test.ts` 会检查。
+- `GalleryWork` 是独立的上传记录，没有 job 或 model；资产用途 `GALLERY_UPLOAD`，待审期限 24 小时。审核、撤回、下架只经 `image_review_gallery_work`，以 `submittedAt` 比较版本；转为 PRIVATE 时期限截断到当前毫秒并交给 EXPIRY 回收。临时生成图不能建立 SHOWCASE 引用。

@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto";
 
 const mocks = vi.hoisted(() => ({ register: vi.fn(), reserve: vi.fn(), begin: vi.fn(), finish: vi.fn(), close: vi.fn(), alias: vi.fn(), resolve: vi.fn(), getByToken: vi.fn(), schema: vi.fn(), output: vi.fn(), put: vi.fn(), read: vi.fn(), probe: vi.fn(), cleanup: vi.fn(),
-  env: { IMAGE_STORAGE_MANAGED_ENABLED: true, IMAGE_STORAGE_BACKEND: "local", IMAGE_STORAGE_PATH: "/unused-fixture", IMAGE_STORAGE_VOLUME_ID: "00112233-4455-4677-8899-aabbccddeeff", APP_URL: "https://images.example.test" } }));
+  env: { IMAGE_STORAGE_MANAGED_ENABLED: true, IMAGE_TEMPORARY_STORAGE_ENABLED: false, IMAGE_STORAGE_BACKEND: "local", IMAGE_STORAGE_PATH: "/unused-fixture", IMAGE_STORAGE_VOLUME_ID: "00112233-4455-4677-8899-aabbccddeeff", APP_URL: "https://images.example.test" } }));
 vi.mock("@/lib/env", () => ({ getEnv: () => mocks.env }));
 vi.mock("@/lib/storage/image-repository", () => ({ ImageRepository: class {
   registerLocation = mocks.register; reserveInput = mocks.reserve; beginObject = mocks.begin; finishObject = mocks.finish;
@@ -24,7 +24,7 @@ const reservation = { id: "reservation", token: "fence" };
 const ticket = () => ({ writeGranted: true, asset: { id: "asset", state: "PENDING", publicToken: token }, object: { id: "object", key: "images/one.png", writeToken: "write-fence", state: "WRITING", sha256, mimeType: "image/png", byteLength: String(bytes.length) } });
 
 beforeEach(() => {
-  vi.resetAllMocks(); mocks.env.IMAGE_STORAGE_MANAGED_ENABLED = true;
+  vi.resetAllMocks(); mocks.env.IMAGE_STORAGE_MANAGED_ENABLED = true; mocks.env.IMAGE_TEMPORARY_STORAGE_ENABLED = false;
   mocks.register.mockResolvedValue(location); mocks.reserve.mockResolvedValue(reservation); mocks.begin.mockResolvedValue(ticket());
   mocks.finish.mockResolvedValue({ accepted: true, asset: { state: "AVAILABLE" }, object: { state: "READY" } });
   mocks.close.mockResolvedValue(true);
@@ -33,6 +33,21 @@ beforeEach(() => {
 });
 
 describe("managed physical image write boundary", () => {
+  it("uses a temporary key and URL only for mode-enabled new references", async () => {
+    mocks.env.IMAGE_TEMPORARY_STORAGE_ENABLED = true;
+    mocks.begin.mockResolvedValue({ ...ticket(), asset: { ...ticket().asset, purpose: "REFERENCE", expiresAt: "2030-01-01T00:00:00Z" } });
+    const prepared = await prepareManagedImageWrite({ bytes, ownerId: "owner", purpose: "REFERENCE", key: "images/new.png" });
+    expect(mocks.begin).toHaveBeenCalledWith(expect.objectContaining({ temporary: true, key: "temporary/images/new.png" }));
+    expect(prepared.url).toContain("/media/temporary-images/");
+  });
+  it("keeps gallery objects in the flat backup area with a guarded preview URL", async () => {
+    mocks.env.IMAGE_TEMPORARY_STORAGE_ENABLED = true;
+    mocks.begin.mockResolvedValue({ ...ticket(), asset: { ...ticket().asset, purpose: "GALLERY_UPLOAD", expiresAt: "2030-01-01T00:00:00Z" } });
+    const prepared = await prepareManagedImageWrite({ bytes, ownerId: "owner", purpose: "GALLERY_UPLOAD", originId: "gallery", key: "images/gallery.png" });
+    expect(mocks.begin).toHaveBeenCalledWith(expect.objectContaining({ purpose: "GALLERY_UPLOAD", key: "images/gallery.png" }));
+    expect(mocks.begin.mock.calls[0][0]).not.toHaveProperty("temporary");
+    expect(prepared.url).toContain("/media/gallery-images/");
+  });
   it("registers and reserves exact bytes before IO, then confirms the one write", async () => {
     const prepared = await prepareManagedImageWrite({ bytes, ownerId: "owner", purpose: "REFERENCE", key: "images/one.png", intentKey: "upload:one" });
     expect(mocks.put).not.toHaveBeenCalled();

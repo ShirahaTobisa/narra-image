@@ -1,10 +1,18 @@
-import { getThumbSrcSet, getThumbUrl, normalizeImageUrl } from "@/lib/image-url";
+import { getThumbSrcSet, getThumbUrl, isUncacheableImageUrl, normalizeImageUrl } from "@/lib/image-url";
 
 afterEach(() => {
   vi.unstubAllEnvs();
 });
 
 describe("图片缩略 URL", () => {
+  it.each(["temporary-images", "gallery-images"])("never optimizes revocable %s images", (route) => {
+    for (const prefix of ["", "https://app.invalid"]) {
+      const url = `${prefix}/media/${route}/${"a".repeat(64)}`;
+      expect(getThumbUrl(url, 640)).toBe(url);
+      expect(getThumbSrcSet(url, [256, 640])).toBe("");
+      expect(isUncacheableImageUrl(url.replace("/media/", "/%6dedia/"))).toBe(true);
+    }
+  });
   it("默认绕过当前自建图片域名，避免 Next Image 因保留地址拒绝代理", () => {
     const url = "http://image.204152.xyz/user/result.png";
 

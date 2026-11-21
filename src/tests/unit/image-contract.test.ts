@@ -7,10 +7,15 @@ import media from "../../../contracts/media/v1/contract.json";
 import boundaries from "../../../contracts/media/v1/scenarios/input-boundaries.json";
 import {
   DEFAULT_IMAGE_QUOTA_BYTES, ImageStorageError, MAX_IMAGE_BYTES, imageByteLength, imageDatabaseError, imageIdSchema,
-  imageLocalLocation, imageOutputBudget, imagePublicUrl, imageS3Location, imageUsageSchema, imageWriteObjectSchema,
+  imageAssetSchema, imageLocalLocation, imageOutputBudget, imagePublicUrl, imageS3Location, imageUsageSchema, imageWriteObjectSchema,
 } from "@/lib/storage/image-contract";
 
 describe("shared image storage boundaries", () => {
+  it("requires an explicit nullable deadline and recognizes gallery assets", () => {
+    for (const value of [null, "2026-11-21T01:00:00.000Z"]) expect(imageAssetSchema.shape.expiresAt.safeParse(value).success).toBe(true);
+    for (const value of [undefined, 123, "not-a-date", new Date()]) expect(imageAssetSchema.shape.expiresAt.safeParse(value).success).toBe(false);
+    expect(imageAssetSchema.shape.purpose.safeParse("GALLERY_UPLOAD").success).toBe(true);
+  });
   it("keeps decimal 5GB distinct from 32-bit limits and encodes only exact image byte counts", () => {
     expect(DEFAULT_IMAGE_QUOTA_BYTES).toBe(BigInt("5000000000"));
     expect(DEFAULT_IMAGE_QUOTA_BYTES > BigInt("2147483647")).toBe(true);
