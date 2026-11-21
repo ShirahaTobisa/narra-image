@@ -223,7 +223,7 @@ export function ModerationConfigForm({
               </div>
             </div>
             <p className="text-xs leading-relaxed text-[var(--ink-soft)]">
-              站内色情内容拦截阈值最高为 0.20，未成年人色情文本为 0.02，不随通用阈值放宽。未成年人分类仅支持文本，不能据此判断图片中的年龄。
+              分数达到这个阈值才拒绝，文字和参考图都按它算。涉及未成年人的色情内容单独从严，固定为 0.02，不随阈值变化；这一项只能审文字，判断不了图片里人物的年龄。
             </p>
           </div>
 

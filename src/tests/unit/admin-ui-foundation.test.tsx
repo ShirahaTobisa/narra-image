@@ -47,8 +47,8 @@ describe("后台基础 UI 原语与路由契约", () => {
     expect(screen.getByText(/关闭后站内生图将暂停/)).toBeInTheDocument();
     expect(screen.getByText(/关闭 AI 审核或审核失败时.*拒绝站内生图/)).toBeInTheDocument();
     expect(screen.getByPlaceholderText("omni-moderation-latest")).toBeInTheDocument();
-    expect(screen.getByText(/色情内容拦截阈值最高为 0\.20.*未成年人色情文本为 0\.02/)).toBeInTheDocument();
-    expect(screen.getByText(/不能据此判断图片中的年龄/)).toBeInTheDocument();
+    expect(screen.getByText(/分数达到这个阈值才拒绝.*未成年人的色情内容单独从严，固定为 0\.02/)).toBeInTheDocument();
+    expect(screen.getByText(/判断不了图片里人物的年龄/)).toBeInTheDocument();
     expect(screen.queryByText(/降级放行/)).not.toBeInTheDocument();
   });
 

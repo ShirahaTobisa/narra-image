@@ -115,7 +115,8 @@ pnpm dev
   `MODERATION_BASE_URL`、`MODERATION_API_KEY`、`MODERATION_MODEL`、
   `MODERATION_THRESHOLD`。默认模型为支持图文的 `omni-moderation-latest`。
   站内渠道要求总开关、AI 审核和有效接口同时就绪；关闭、异常或审核结果不完整时暂停本次生成，不扣积分。
-  色情分类的站内拦截阈值最高为 0.2，涉及未成年人色情的文本分类最高为 0.02；配置可以更严，不能放宽这两个上限。
+  任一分类的分数达到 `MODERATION_THRESHOLD` 才拒绝，本机图片预审用同一个阈值，审核模型自带的 flagged 标记不另算；
+  只有涉及未成年人色情的文本分类固定为 0.02，不随阈值变化。
   命中违规描述时拒绝生成并记录触发事件。图片审核不等于确认图片中人物的年龄。
 - 外部生成等待：`EXTERNAL_GENERATION_POLL_INTERVAL_MS`、
   `EXTERNAL_GENERATION_WAIT_TIMEOUT_SECONDS`。

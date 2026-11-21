@@ -44,8 +44,8 @@ function image(value = 1): ImageInput {
 }
 
 // Observe failures immediately so simulated crashes never create unhandled rejections.
-function check(images: ReadonlyArray<ImageInput> = [image()]) {
-  return checkLocalImages(images).catch(() => "unavailable" as const);
+function check(images: ReadonlyArray<ImageInput> = [image()], threshold = 0.7) {
+  return checkLocalImages(images, threshold).catch(() => "unavailable" as const);
 }
 
 beforeEach(() => {
@@ -91,14 +91,17 @@ describe("本机图片审核管理器", () => {
   });
 
   it.each([
-    { category: "Porn", score: 0.2, blocked: true },
-    { category: "Hentai", score: 0.2, blocked: true },
-    { category: "Sexy", score: 0.8, blocked: true },
-    { category: "Porn", score: 0.199, blocked: false },
-    { category: "Hentai", score: 0.199, blocked: false },
-    { category: "Sexy", score: 0.799, blocked: false },
-  ])("按明确阈值拒绝 $category=$score，不只看最高类别", async ({ category, score, blocked }) => {
-    const result = check();
+    { category: "Porn", score: 0.7, threshold: 0.7, blocked: true },
+    { category: "Hentai", score: 0.7, threshold: 0.7, blocked: true },
+    { category: "Sexy", score: 0.8, threshold: 0.7, blocked: true },
+    { category: "Porn", score: 0.699, threshold: 0.7, blocked: false },
+    { category: "Hentai", score: 0.699, threshold: 0.7, blocked: false },
+    { category: "Sexy", score: 0.799, threshold: 0.7, blocked: false },
+    { category: "Hentai", score: 0.2, threshold: 0.2, blocked: true },
+    { category: "Sexy", score: 0.799, threshold: 0.2, blocked: false },
+    { category: "Sexy", score: 0.899, threshold: 0.9, blocked: false },
+  ])("$category=$score 到后台阈值 $threshold 才拒绝，Sexy 的线不低于 0.8", async ({ category, score, threshold, blocked }) => {
+    const result = check([image()], threshold);
     instances[0].ready();
     instances[0].reply({ ...safeScores, [category]: score });
     expect(await result).toEqual(blocked
@@ -128,9 +131,9 @@ describe("本机图片审核管理器", () => {
     for (let index = 0; index < 16; index += 1) {
       expect(worker.sent).toHaveLength(index + 1);
       expect(Array.from(worker.sent[index].data)).toEqual([index]);
-      worker.reply(index === 15 ? { ...safeScores, Hentai: 0.3 } : safeScores);
+      worker.reply(index === 15 ? { ...safeScores, Hentai: 0.9 } : safeScores);
     }
-    expect(await result).toEqual({ blocked: true, category: "sexual", score: 0.3, model: LOCAL_IMAGE_MODEL });
+    expect(await result).toEqual({ blocked: true, category: "sexual", score: 0.9, model: LOCAL_IMAGE_MODEL });
   });
 
   it("复制当前视图的精确字节，既不 detach 原图也不发送周围字节", async () => {
@@ -274,7 +277,7 @@ describe("本机图片审核管理器", () => {
     const firstId = worker.sent[0].id;
     worker.reply();
     worker.emit("message", { id: firstId, scores: safeScores });
-    worker.reply({ ...safeScores, Porn: 0.4 });
-    expect(await result).toEqual({ blocked: true, category: "sexual", score: 0.4, model: LOCAL_IMAGE_MODEL });
+    worker.reply({ ...safeScores, Porn: 0.8 });
+    expect(await result).toEqual({ blocked: true, category: "sexual", score: 0.8, model: LOCAL_IMAGE_MODEL });
   });
 });

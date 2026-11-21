@@ -38,12 +38,12 @@
 - 同一用户最近24小时的 `ContentReview` 明确违规（仅 `sensitive_word` / `ai_moderation`）与内置渠道 FAILED `GenerationJob` 的明确安全拒绝合计达到3次后，后续站内审核入口直接暂停；不再调用审核或新增违规记录。两个查询共用时间边界，按各记录 `createdAt` 计算；任何计数查询故障均返回审核不可用，不透传异常。
 - `ContentReview` 没有渠道字段，不能假称只计内置来源：该用户的头像、公开署名和可选自填渠道审核产生的明确违规也计入。头像与署名使用同一强制审核入口；自填生成仍保持原有开关语义。预审拒绝立即返回、不创建生成任务，每次仅写一条审核记录，因此不会与上游拒绝重复计次。
 - AI 输入包含完整 prompt 与 negativePrompt，后者标明“需要排除的内容”；敏感词仅做 NFKC 和不可见格式字符归一化，不能靠词库替代 AI。
-- 审核 `results` 至少一项；每项 `flagged`、`categories.sexual` 和 `categories["sexual/minors"]` 必须是 boolean；两个对应分数必须存在，所有分数均为有限 0～1 数字。任一分类 true 都拒绝，不能仅依赖总 flagged。
+- 审核 `results` 至少一项；每项 `flagged`、`categories.sexual` 和 `categories["sexual/minors"]` 必须是 boolean；两个对应分数必须存在，所有分数均为有限 0～1 数字。这些布尔值只用来确认响应完整，不参与判定：拒不拒只看分数。
 - 图像必须明确被 `category_applied_input_types.sexual` 的 `image` 覆盖；有文字且返回覆盖字段时，sexual 和 sexual/minors 都必须含 `text`。旧纯文本响应可以省略整个覆盖字段。官方 omni 的 sexual/minors 仅支持文字，不能声称它识别了图片人物年龄，也不能要求该分类返回 image。
-- 站内 sexual 拒绝线为 `min(aiThreshold, 0.2)`；sexual/minors 为 `0.02`，与通用阈值无关。这是保守策略，不是概率保证。无效响应/超时不记录用户违规。
+- 任一分类分数 `>= aiThreshold` 才拒绝，站内和自填渠道相同，不能再加比后台阈值更严的隐藏线；唯一例外是 sexual/minors 固定 `0.02`，与阈值无关。旧的 sexual `min(aiThreshold, 0.2)` 和「分类被标记就拒」在 2026-11-21 开站当晚去掉：阈值 0.7 时被拒的 8 条分数全在 0.7 以下，后台的阈值等于没用。无效响应/超时不记录用户违规。
 - 参考图接受实际 MIME 匹配的静态 PNG/JPEG/WebP/GIF，单图最多20 MiB；拒绝动画/多帧，避免只审首帧。审核与生成使用同一份字节。Canvas 默认8 MiB 边界不能隐式应用到普通/API 图片。
 - 图片通过格式校验后，先逐图本机预审，全部通过才能构造远程审核请求；本地通过不免除远程审核。普通最多16张、外部API最多4张，上传/历史图/Canvas实际字节共用门禁。纯文本不初始化本地模型；自定义渠道仍遵循已有开关语义。
-- 本机固定 `nsfwjs/MobileNetV2Mid@4.4.0` 与 TFJS/WASM 4.22.0：五类 Drawing/Hentai/Neutral/Porn/Sexy 分数必须完整且有限，均在0～1。Porn或Hentai >=0.2、Sexy >=0.8拒绝；这些是业务阈值，不是校准概率或未成年/CSAM识别。`ContentReview.aiModel` 使用实际本地模型标识，不能写成远程模型。
+- 本机固定 `nsfwjs/MobileNetV2Mid@4.4.0` 与 TFJS/WASM 4.22.0：五类 Drawing/Hentai/Neutral/Porn/Sexy 分数必须完整且有限，均在0～1。Porn或Hentai `>= aiThreshold`、Sexy `>= max(aiThreshold, 0.8)` 拒绝（Sexy 不算露骨，线不低于0.8，阈值调严时普通人像才不会被误拒）；这些是业务阈值，不是校准概率或未成年/CSAM识别。`ContentReview.aiModel` 使用实际本地模型标识，不能写成远程模型。
 - `scripts/moderation-image-worker.mjs` 保持原生ESM导入所选模型，不能经Next转换成CJS；模型/WASM随固定依赖进入镜像，不在请求时下载。CJS包装会枚举大模型字符串，实测多分配约800MiB。Node24/Alpine需用目标镜像实跑，不能忽略上游engine声明差异后只靠类型检查发布。
 - 进程级共享一个Node Worker，1活动请求+2等待请求，已接纳请求原图压缩字节共256MiB。8秒整批截止包含排队/冷加载/全部图片；同时检查绝对截止，不能只依赖定时器回调顺序。该预算不包含路由读入但尚未送审的HTTP文件。
 - 每次只复制当前图片到Worker，不转移/修改调用方原Buffer；64MP解码上限，WASM一线程，逐图释放输入Tensor。活动超时/错误终止Worker并清空待审预算，旧线程退出前不得另开，退出后退避1秒；等待超时单独移除。空闲Worker unref。

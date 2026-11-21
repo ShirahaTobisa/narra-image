@@ -348,7 +348,7 @@ describe("外部 API 生成服务", () => {
         outputFormat: "png", prompt: "a blue landscape", quality: "auto", size: "auto", sourceImages,
       },
     })).rejects.toMatchObject({ code: "content_policy_violation", status: 400 });
-    expect(mockCheckLocalImages).toHaveBeenCalledWith(sourceImages);
+    expect(mockCheckLocalImages).toHaveBeenCalledWith(sourceImages, 0.5);
     expect(remoteFetch).not.toHaveBeenCalled();
     expect(mockPersistGeneratedImage).not.toHaveBeenCalled();
     expect(mockTransaction).not.toHaveBeenCalled();

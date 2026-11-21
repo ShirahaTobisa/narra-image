@@ -11,6 +11,8 @@ const REQUEST_TIMEOUT_MS = 8_000;
 const RESTART_DELAY_MS = 1_000;
 const POOL_KEY = Symbol.for("narra.local-image-moderation");
 const CLASSES = ["Drawing", "Hentai", "Neutral", "Porn", "Sexy"] as const;
+/** Sexy 只是性感、不算露骨：拒绝线不低于这个值，后台阈值调严时普通人像才不会被误拒。 */
+const SEXY_MIN_THRESHOLD = 0.8;
 
 type ImageInput = { data: Buffer | Uint8Array; mimeType: string };
 type LocalImageOutcome =
@@ -19,6 +21,7 @@ type LocalImageOutcome =
 type Scores = Record<typeof CLASSES[number], number>;
 type PendingRequest = {
   images: ReadonlyArray<ImageInput>;
+  threshold: number;
   bytes: number;
   deadline: number;
   index: number;
@@ -49,7 +52,7 @@ class LocalImageQueue {
   private nextId = 0;
   private retryAt = 0;
 
-  check(images: ReadonlyArray<ImageInput>): Promise<LocalImageOutcome> {
+  check(images: ReadonlyArray<ImageInput>, threshold: number): Promise<LocalImageOutcome> {
     const bytes = images.reduce((sum, image) => sum + image.data.byteLength, 0);
     if (this.runtime?.stopping || Date.now() < this.retryAt
       || this.queue.length + Number(Boolean(this.active)) >= MAX_REQUESTS
@@ -57,7 +60,7 @@ class LocalImageQueue {
       return Promise.reject(unavailable());
     }
     return new Promise((resolve, reject) => {
-      const request: PendingRequest = { images, bytes, deadline: Date.now() + REQUEST_TIMEOUT_MS, index: 0, resolve, reject };
+      const request: PendingRequest = { images, threshold, bytes, deadline: Date.now() + REQUEST_TIMEOUT_MS, index: 0, resolve, reject };
       request.timer = setTimeout(() => this.expire(request), REQUEST_TIMEOUT_MS);
       this.bytes += bytes;
       this.queue.push(request);
@@ -144,11 +147,13 @@ class LocalImageQueue {
       this.fail(runtime);
       return;
     }
+    // 和远程审核用同一个后台阈值：分数没到就不拒。
     const explicitScore = Math.max(scores.Porn, scores.Hentai);
-    if (explicitScore >= 0.2 || scores.Sexy >= 0.8) {
+    const sexyBlocked = scores.Sexy >= Math.max(request.threshold, SEXY_MIN_THRESHOLD);
+    if (explicitScore >= request.threshold || sexyBlocked) {
       this.finish(request, {
         blocked: true, category: "sexual", model: LOCAL_IMAGE_MODEL,
-        score: Math.max(explicitScore, scores.Sexy >= 0.8 ? scores.Sexy : 0),
+        score: Math.max(explicitScore, sexyBlocked ? scores.Sexy : 0),
       });
       return;
     }
@@ -201,9 +206,12 @@ class LocalImageQueue {
   }
 }
 
-export async function checkLocalImages(images: ReadonlyArray<ImageInput>): Promise<LocalImageOutcome> {
+export async function checkLocalImages(
+  images: ReadonlyArray<ImageInput>,
+  threshold: number,
+): Promise<LocalImageOutcome> {
   if (images.length === 0) return { blocked: false };
   const processQueues = globalThis as unknown as Record<symbol, LocalImageQueue | undefined>;
   const queue = processQueues[POOL_KEY] ??= new LocalImageQueue();
-  return queue.check(images);
+  return queue.check(images, threshold);
 }

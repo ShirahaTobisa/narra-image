@@ -435,7 +435,8 @@ describe("内容审核 checkGenerationInput", () => {
       expect(global.fetch).not.toHaveBeenCalled();
 
       mockCheckLocalImages.mockResolvedValue({ blocked: false });
-      mockModerationResponse([moderationResult({ flagged: true }), moderationResult({ flagged: true })]);
+      const overThreshold = moderationResult({ category_scores: { sexual: 0.9, "sexual/minors": 0, hate: 0 } });
+      mockModerationResponse([overThreshold, overThreshold]);
       expect(await checkGenerationInput({ ...input, images: [pngImage()] })).toEqual({ allowed: false, message: MODERATION_BLOCK_MESSAGE });
       expect(state.reviews).toHaveLength(3);
       expect(state.jobs).toHaveLength(0);
@@ -622,42 +623,32 @@ describe("内容审核 checkGenerationInput", () => {
     expect(await checkGenerationInput({ builtIn: true, prompt: "a cat", userId: "u1" })).toEqual({ allowed: true });
   });
 
-  it.each(["sexual", "sexual/minors", "hate"])("分类 %s 已标记时拒绝，即使总 flagged 为 false 且分数低", async (category) => {
-    mockResolveConfig.mockResolvedValue(aiConfig());
+  it.each(["sexual", "hate"])("审核模型自己标记了 %s、但分数没到后台阈值时放行", async (category) => {
+    mockResolveConfig.mockResolvedValue({ ...aiConfig(), aiThreshold: 0.7 });
     mockModerationResponse([moderationResult({
       categories: { sexual: false, "sexual/minors": false, hate: false, [category]: true },
+      category_scores: { sexual: 0.01, "sexual/minors": 0, hate: 0, [category]: 0.699 },
+      flagged: true,
     })]);
 
-    expect(await checkGenerationInput({ builtIn: true, prompt: "a cat", userId: "u1" })).toEqual({
-      allowed: false, message: MODERATION_BLOCK_MESSAGE,
-    });
-    expect(mockDb.contentReview.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ kind: "ai_moderation", category }),
-    });
+    expect(await checkGenerationInput({ builtIn: true, prompt: "a cat", userId: "u1" })).toEqual({ allowed: true });
+    expect(mockDb.contentReview.create).not.toHaveBeenCalled();
   });
 
   it.each([
-    { builtIn: true, threshold: 0.7, score: 0.2, allowed: false },
-    { builtIn: true, threshold: 0.7, score: 0.199, allowed: true },
-    { builtIn: true, threshold: 0.1, score: 0.1, allowed: false },
-    { builtIn: false, threshold: 0.7, score: 0.2, allowed: true },
-  ])("站内 sexual 采用不高于 0.2 的站点策略，同时保留自填渠道配置：%j", async ({ builtIn, threshold, score, allowed }) => {
+    { threshold: 0.7, score: 0.7, allowed: false },
+    { threshold: 0.7, score: 0.699, allowed: true },
+    { threshold: 0.1, score: 0.1, allowed: false },
+  ])("站内色情和其他分类一样按后台阈值判定：%j", async ({ threshold, score, allowed }) => {
     mockResolveConfig.mockResolvedValue({ ...aiConfig(), aiThreshold: threshold });
     mockModerationResponse([moderationResult({ category_scores: { sexual: score, "sexual/minors": 0 } })]);
 
-    expect((await checkGenerationInput({ builtIn, prompt: "a cat", userId: "u1" })).allowed).toBe(allowed);
+    expect((await checkGenerationInput({ builtIn: true, prompt: "a cat", userId: "u1" })).allowed).toBe(allowed);
     if (!allowed) {
       expect(mockDb.contentReview.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ category: "sexual", aiScore: score }),
       });
     }
-  });
-
-  it("其他分类不套 sexual 的 0.2 阈值", async () => {
-    mockResolveConfig.mockResolvedValue({ ...aiConfig(), aiThreshold: 0.7 });
-    mockModerationResponse([moderationResult({ category_scores: { sexual: 0.01, "sexual/minors": 0, hate: 0.2 } })]);
-
-    expect(await checkGenerationInput({ builtIn: true, prompt: "a cat", userId: "u1" })).toEqual({ allowed: true });
   });
 
   it("图片格式校验失败时不发审核请求，不当成内容违规", async () => {

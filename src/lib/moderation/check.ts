@@ -8,8 +8,6 @@ import { matchSensitiveWords } from "@/lib/moderation/sensitive-words";
 import { moderationResponseSchema } from "@/lib/validators";
 
 const MODERATION_TIMEOUT_MS = 8_000;
-/** 站内 NSFW 的保守拒绝策略，不代表模型分数已经校准为风险概率。 */
-const BUILT_IN_SEXUAL_THRESHOLD = 0.2;
 /** 涉及未成年人的色情：不跟通用阈值走，分数稍高就拒 */
 const MINORS_THRESHOLD = 0.02;
 /** 站内审核和上游安全拒绝合计达到上限，暂停后续站内提交。 */
@@ -104,7 +102,7 @@ export async function checkGenerationInput(
 
     let outcome: AiModerationOutcome;
     try {
-      outcome = await callModerationAi(cfg, text, images, input.builtIn === true);
+      outcome = await callModerationAi(cfg, text, images);
     } catch {
       console.error("[moderation] AI 审核未完成，拒绝本次生成");
       return { allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE };
@@ -182,11 +180,10 @@ async function callModerationAi(
   cfg: Awaited<ReturnType<typeof resolveModerationConfig>>,
   text: string,
   images: ModerationImage[],
-  builtIn: boolean,
 ): Promise<AiModerationOutcome> {
   await assertModerationImages(images);
   if (images.length > 0) {
-    const outcome = await checkLocalImages(images);
+    const outcome = await checkLocalImages(images, cfg.aiThreshold);
     if (outcome.blocked) return outcome;
   }
 
@@ -245,14 +242,8 @@ async function callModerationAi(
     if (minorsScore >= MINORS_THRESHOLD) {
       return { blocked: true, category: "sexual/minors", score: minorsScore };
     }
-    const flaggedCategory = Object.entries(result.categories).find(([, flagged]) => flagged)?.[0];
-    if (flaggedCategory) {
-      return { blocked: true, category: flaggedCategory, score: result.category_scores[flaggedCategory] ?? topScore };
-    }
-    if (builtIn && result.category_scores.sexual >= Math.min(cfg.aiThreshold, BUILT_IN_SEXUAL_THRESHOLD)) {
-      return { blocked: true, category: "sexual", score: result.category_scores.sexual };
-    }
-    if (result.flagged || topScore >= cfg.aiThreshold) {
+    // 其余分类只看分数：没到后台设的阈值就放行，审核模型自己的 flagged 标记不另算。
+    if (topScore >= cfg.aiThreshold) {
       return { blocked: true, category: topCategory, score: topScore };
     }
   }
