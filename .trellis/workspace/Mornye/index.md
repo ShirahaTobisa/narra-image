@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 5
+- **Total Sessions**: 6
 - **Last Active**: 2026-11-21
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~113 | Active |
+| `journal-1.md` | ~137 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 6 | 2026-11-21 | 开站安全复核与部署 | `57b5cf5`, `c9ab556`, `6d80fa6`, `ac29727` | `fix/site-stability` |
 | 5 | 2026-11-21 | 修复多图扣费与每分钟五张限额并上线 | `1c50f24`, `4801a8a` | `fix/site-stability` |
 | 4 | 2026-11-20 | Preserve img2img with independent local image prescreen | `ff5dfec` | `fix/site-stability` |
 | 3 | 2026-11-20 | 审核补漏与安全发布 | `b318b6e` | `fix/site-stability` |

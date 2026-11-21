@@ -111,3 +111,27 @@ Kept reference-image generation; added fixed local NSFWJS/WASM prescreen before 
 ### Status
 
 [OK] **Completed**
+
+
+## Session 6: 开站安全复核与部署
+
+**Date**: 2026-11-21
+**Task**: 开站安全复核与部署
+**Branch**: `fix/site-stability`
+
+### Summary
+
+完成17项报告核对，修复公开作者隐私、封禁任务与公开资格、入队占位、头像审核、模型输入；按用户确认上线Discord-only及滚动24小时合计3次违规暂停。目标镜像、完整及部分基线数据库验证通过，ac29727已部署Sakura并推送draw-aliya。用户新增1小时临时图与上传广场要求转入后续存储任务，研究已保留。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `57b5cf5` | (see git log) |
+| `c9ab556` | (see git log) |
+| `6d80fa6` | (see git log) |
+| `ac29727` | (see git log) |
+
+### Status
+
+[OK] **Completed**
