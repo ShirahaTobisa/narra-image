@@ -6,6 +6,7 @@ import { ModerationNavTabs } from "@/components/admin/moderation/moderation-nav-
 import { SettingsSubNav } from "@/components/admin/settings-sub-nav";
 import { AdminPageHeader } from "@/components/admin/ui/admin-page-header";
 import { db } from "@/lib/db";
+import { PROVIDER_REFUSAL_WHERE } from "@/lib/moderation/check";
 import { getModerationConfigMeta } from "@/lib/moderation/config";
 import { getSensitiveWordsSnapshot } from "@/lib/moderation/sensitive-words";
 import { requireAdminRecord } from "@/lib/server/current-user";
@@ -22,7 +23,10 @@ export default async function AdminModerationSettingsPage() {
   const [config, words, totalReviewsCount] = await Promise.all([
     getModerationConfigMeta(),
     getSensitiveWordsSnapshot(),
-    db.contentReview.count().catch(() => 0),
+    // 和风控页的总数一个算法：本站拒绝加上游拒绝。
+    Promise.all([db.contentReview.count(), db.generationJob.count({ where: PROVIDER_REFUSAL_WHERE })])
+      .then(([site, provider]) => site + provider)
+      .catch(() => 0),
   ]);
 
   return (
