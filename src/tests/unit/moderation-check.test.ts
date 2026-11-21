@@ -333,18 +333,27 @@ describe("内容审核 checkGenerationInput", () => {
     ]);
   });
 
-  it("涉及未成年人的分数超过 0.02 就拒，即使没标记、也低于通用阈值", async () => {
+  it("审核模型判定涉及未成年人色情就拒，即使分数低于通用阈值", async () => {
     mockResolveConfig.mockResolvedValue(aiConfig());
-    mockModerationResponse([
-      moderationResult({ category_scores: { sexual: 0.2, "sexual/minors": 0.03 } }),
-    ]);
+    mockModerationResponse([moderationResult({
+      categories: { sexual: false, "sexual/minors": true, hate: false },
+      category_scores: { sexual: 0.3, "sexual/minors": 0.2 },
+    })]);
 
     const result = await checkGenerationInput({ prompt: "borderline", userId: "u1" });
 
     expect(result.allowed).toBe(false);
     expect(mockDb.contentReview.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ aiScore: 0.03, category: "sexual/minors" }),
+      data: expect.objectContaining({ aiScore: 0.2, category: "sexual/minors" }),
     });
+  });
+
+  it("未成年人分类只是有点分数、模型没判定时放行", async () => {
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    mockModerationResponse([moderationResult({ category_scores: { sexual: 0.3, "sexual/minors": 0.1 } })]);
+
+    expect(await checkGenerationInput({ builtIn: true, prompt: "adult character", userId: "u1" })).toEqual({ allowed: true });
+    expect(mockDb.contentReview.create).not.toHaveBeenCalled();
   });
 
   it("站内渠道 24 小时内被上游拦截达到 3 次时暂停，不再送审", async () => {

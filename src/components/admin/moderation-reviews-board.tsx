@@ -316,6 +316,7 @@ export function ModerationReviewsBoard({
                       <span className="font-mono text-xs text-[var(--ink-soft)]">
                         违规分 {review.aiScore.toFixed(2)}
                         {review.category ? ` · ${review.category}` : ""}
+                        {review.aiModel?.startsWith("nsfwjs/") ? " · 拒的是参考图" : ""}
                       </span>
                     ) : null}
                     {review.user.banned ? (

@@ -40,7 +40,7 @@
 - AI 输入包含完整 prompt 与 negativePrompt，后者标明“需要排除的内容”；敏感词仅做 NFKC 和不可见格式字符归一化，不能靠词库替代 AI。
 - 审核 `results` 至少一项；每项 `flagged`、`categories.sexual` 和 `categories["sexual/minors"]` 必须是 boolean；两个对应分数必须存在，所有分数均为有限 0～1 数字。这些布尔值只用来确认响应完整，不参与判定：拒不拒只看分数。
 - 图像必须明确被 `category_applied_input_types.sexual` 的 `image` 覆盖；有文字且返回覆盖字段时，sexual 和 sexual/minors 都必须含 `text`。旧纯文本响应可以省略整个覆盖字段。官方 omni 的 sexual/minors 仅支持文字，不能声称它识别了图片人物年龄，也不能要求该分类返回 image。
-- 任一分类分数 `>= aiThreshold` 才拒绝，站内和自填渠道相同，不能再加比后台阈值更严的隐藏线；唯一例外是 sexual/minors 固定 `0.02`，与阈值无关。旧的 sexual `min(aiThreshold, 0.2)` 和「分类被标记就拒」在 2026-11-21 开站当晚去掉：阈值 0.7 时被拒的 8 条分数全在 0.7 以下，后台的阈值等于没用。无效响应/超时不记录用户违规。
+- 任一分类分数 `>= aiThreshold` 才拒绝，站内和自填渠道相同，不能再加比后台阈值更严的隐藏线；唯一例外是 sexual/minors：`categories["sexual/minors"]` 为 true 就拒，与阈值无关（不再用固定分数线：原来的 `0.02` 在开站当晚把成年角色的描述也拒了；用审核接口实测，当晚被拒的 5 条重新打分为 0.02～0.11 且模型均未标记，模型自己标记的一条是 0.20）。旧的 sexual `min(aiThreshold, 0.2)` 和「分类被标记就拒」在 2026-11-21 开站当晚去掉：阈值 0.7 时被拒的 8 条分数全在 0.7 以下，后台的阈值等于没用。无效响应/超时不记录用户违规。
 - 参考图接受实际 MIME 匹配的静态 PNG/JPEG/WebP/GIF，单图最多20 MiB；拒绝动画/多帧，避免只审首帧。审核与生成使用同一份字节。Canvas 默认8 MiB 边界不能隐式应用到普通/API 图片。
 - 图片通过格式校验后，先逐图本机预审，全部通过才能构造远程审核请求；本地通过不免除远程审核。普通最多16张、外部API最多4张，上传/历史图/Canvas实际字节共用门禁。纯文本不初始化本地模型；自定义渠道仍遵循已有开关语义。
 - 本机固定 `nsfwjs/MobileNetV2Mid@4.4.0` 与 TFJS/WASM 4.22.0：五类 Drawing/Hentai/Neutral/Porn/Sexy 分数必须完整且有限，均在0～1。Porn或Hentai `>= aiThreshold`、Sexy `>= max(aiThreshold, 0.8)` 拒绝（Sexy 不算露骨，线不低于0.8，阈值调严时普通人像才不会被误拒）；这些是业务阈值，不是校准概率或未成年/CSAM识别。`ContentReview.aiModel` 使用实际本地模型标识，不能写成远程模型。

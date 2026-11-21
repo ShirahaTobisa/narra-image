@@ -8,8 +8,6 @@ import { matchSensitiveWords } from "@/lib/moderation/sensitive-words";
 import { moderationResponseSchema } from "@/lib/validators";
 
 const MODERATION_TIMEOUT_MS = 8_000;
-/** 涉及未成年人的色情：不跟通用阈值走，分数稍高就拒 */
-const MINORS_THRESHOLD = 0.02;
 /** 站内审核和上游安全拒绝合计达到上限，暂停后续站内提交。 */
 const MODERATION_BLOCK_LIMIT = 3;
 const MODERATION_BLOCK_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -237,12 +235,13 @@ async function callModerationAi(
       (top, entry) => (entry[1] > top[1] ? entry : top),
       [null, 0],
     );
-    const minorsScore = result.category_scores["sexual/minors"];
 
-    if (minorsScore >= MINORS_THRESHOLD) {
-      return { blocked: true, category: "sexual/minors", score: minorsScore };
+    // 涉及未成年人的色情不跟阈值走：审核模型自己判定属于这一类就拒。
+    // 固定分数线试过 0.02，开站当晚连成年角色的描述也拒；模型自己的判定线实测在 0.1～0.2 之间。
+    if (result.categories["sexual/minors"]) {
+      return { blocked: true, category: "sexual/minors", score: result.category_scores["sexual/minors"] };
     }
-    // 其余分类只看分数：没到后台设的阈值就放行，审核模型自己的 flagged 标记不另算。
+    // 其余分类只看分数：没到后台设的阈值就放行，审核模型自己的标记不另算。
     if (topScore >= cfg.aiThreshold) {
       return { blocked: true, category: topCategory, score: topScore };
     }

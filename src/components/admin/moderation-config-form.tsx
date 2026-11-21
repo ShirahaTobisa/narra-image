@@ -223,7 +223,7 @@ export function ModerationConfigForm({
               </div>
             </div>
             <p className="text-xs leading-relaxed text-[var(--ink-soft)]">
-              分数达到这个阈值才拒绝，文字和参考图都按它算。涉及未成年人的色情内容单独从严，固定为 0.02，不随阈值变化；这一项只能审文字，判断不了图片里人物的年龄。
+              分数达到这个阈值才拒绝，文字和参考图都按它算。涉及未成年人的色情内容例外：审核模型判定属于这一类就拒绝，不看阈值；这一项只能审文字，判断不了图片里人物的年龄。
             </p>
           </div>
 

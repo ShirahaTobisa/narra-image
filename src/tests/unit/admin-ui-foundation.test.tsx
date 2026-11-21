@@ -13,6 +13,7 @@ vi.mock("next/navigation", () => ({
 
 import { AdminFrame } from "@/components/admin/admin-frame";
 import { ModerationConfigForm } from "@/components/admin/moderation-config-form";
+import { ModerationReviewsBoard } from "@/components/admin/moderation-reviews-board";
 import {
   ADMIN_NAV_GROUPS,
   isAdminNavItemActive,
@@ -47,9 +48,24 @@ describe("后台基础 UI 原语与路由契约", () => {
     expect(screen.getByText(/关闭后站内生图将暂停/)).toBeInTheDocument();
     expect(screen.getByText(/关闭 AI 审核或审核失败时.*拒绝站内生图/)).toBeInTheDocument();
     expect(screen.getByPlaceholderText("omni-moderation-latest")).toBeInTheDocument();
-    expect(screen.getByText(/分数达到这个阈值才拒绝.*未成年人的色情内容单独从严，固定为 0\.02/)).toBeInTheDocument();
+    expect(screen.getByText(/分数达到这个阈值才拒绝.*未成年人的色情内容例外：审核模型判定属于这一类就拒绝/)).toBeInTheDocument();
     expect(screen.getByText(/判断不了图片里人物的年龄/)).toBeInTheDocument();
     expect(screen.queryByText(/降级放行/)).not.toBeInTheDocument();
+  });
+
+  it("本机审图拒的记录写明拒的是参考图，远程审核的不写", () => {
+    const review = {
+      aiScore: 0.23, category: "sexual", createdAt: "2026-11-21T12:08:02.000Z", hitWords: [], kind: "ai_moderation",
+      negativePrompt: null, prompt: "生成提示词",
+      user: { banned: false, email: "a@example.com", id: "u1", nickname: null, uid: 49 },
+    };
+    render(<AdminToastProvider><ModerationReviewsBoard adminId="admin" kind="" offenders={[]} reviews={[
+      { ...review, id: "local", aiModel: "nsfwjs/MobileNetV2Mid@4.4.0" },
+      { ...review, id: "remote", aiModel: "omni-moderation-latest" },
+    ]} /></AdminToastProvider>);
+
+    expect(screen.getAllByText(/违规分 0\.23 · sexual/)).toHaveLength(2);
+    expect(screen.getAllByText(/拒的是参考图/)).toHaveLength(1);
   });
 
   it("准确解析全部关键后台路由的多级面包屑（修复 /admin/moderation 与设置子页）", () => {
