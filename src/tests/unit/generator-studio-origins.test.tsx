@@ -497,17 +497,16 @@ describe("studio captured chat command ownership", () => {
     expect(generates()).toEqual([]);
   });
 
-  it("aborts a download on owner change without a late anchor click or fallback window", async () => {
+  it("hands a site image to the browser at the click, so nothing can finish late after an owner change", async () => {
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
     const open = vi.spyOn(window, "open").mockImplementation(() => null);
     const image = generation("image", "conversation_a", { images: [{ id: "image", url: "https://example.test/owned.png", actualWidth: 1, actualHeight: 1, actualSize: "1x1" }] });
     const { rerender } = render(<GeneratorStudio {...baseProps} initialGenerationPage={page([image])} />);
     fireEvent.click(screen.getByTitle("下载保存"));
-    const download = requests[0];
+    expect((click.mock.contexts[0] as HTMLAnchorElement).getAttribute("href")).toBe(`/api/proxy-image?url=${encodeURIComponent("https://example.test/owned.png")}`);
+    expect(requests).toEqual([]);
     rerender(<GeneratorStudio {...baseProps} ownerId="owner_b" />);
-    await reply(download, { error: "Late failure" }, 503);
-    expect(download.options?.signal?.aborted).toBe(true);
-    expect(click).not.toHaveBeenCalled();
+    expect(click).toHaveBeenCalledTimes(1);
     expect(open).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByAltText("生成结果")).toBeNull());
   });

@@ -420,24 +420,22 @@ describe("创作台反馈改进", () => {
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
       downloaded = { href: this.href, filename: this.download };
     });
-    const objectUrlSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:download");
-    const fetchMock = vi.fn(async () => ({
-      blob: async () => new Blob(["fake-image"], { type: "image/png" }),
-      headers: new Headers({ "content-type": "image/png" }),
-      ok: true,
-    }));
+    const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
     try {
       renderConversationGeneration();
       await user.click(screen.getByTitle("下载保存"));
 
-      await waitFor(() => expect(downloaded).toEqual({ href: "blob:download", filename: "image.png" }));
-      expect(fetchMock).toHaveBeenCalledWith(`/api/proxy-image?url=${encodeURIComponent("https://example.com/image.png")}`, { signal: expect.any(AbortSignal) });
+      // 下载整个交给浏览器：页面自己不读图片，所以慢网下也不会点了没反应。
+      expect(downloaded).toEqual({
+        href: new URL(`/api/proxy-image?url=${encodeURIComponent("https://example.com/image.png")}`, window.location.href).href,
+        filename: "narra-image.png",
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
       expect(document.querySelector("a[download]")).toBeNull();
     } finally {
       clickSpy.mockRestore();
-      objectUrlSpy.mockRestore();
     }
   });
 

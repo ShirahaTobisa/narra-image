@@ -27,6 +27,7 @@ import {
 import type { ConversationGenerationsPage } from "@/lib/conversations/contracts";
 import { canvasCanonicalIdSchema, canvasGenerationParametersSchema } from "@/lib/validators";
 import { Alert } from "@/components/ui/alert";
+import { saveLink } from "@/components/works/download-image";
 
 import { useCanvasDocuments } from "./hooks/use-canvas-documents";
 import { useCanvasEditor } from "./hooks/use-canvas-editor";
@@ -555,12 +556,17 @@ function StudioWorkspace({
   }
 
   async function handleDownload(url: string) {
+    if (!url.startsWith("blob:")) {
+      // 本站图片交给浏览器自己下载：点了马上能看到进度，页面刷新或切到后台也不会断。
+      // 以前是页面先把整张原图读完再保存，慢网下几十秒没反应，用户连点再刷新，下载就全被取消了。
+      saveLink(`/api/proxy-image?url=${encodeURIComponent(url)}`, "narra-image.png");
+      return;
+    }
     const request = beginRequest();
     if (!request) return;
     let blobUrl: string | null = null;
     try {
-      const proxyUrl = url.startsWith("blob:") ? url : `/api/proxy-image?url=${encodeURIComponent(url)}`;
-      const response = await fetch(proxyUrl, { signal: request.controller.signal });
+      const response = await fetch(url, { signal: request.controller.signal });
       if (!request.isCurrent()) return;
       if (!response.ok || !response.headers.get("content-type")?.startsWith("image/")) {
         throw new Error("图片下载失败");
@@ -568,14 +574,7 @@ function StudioWorkspace({
       const blob = await response.blob();
       if (!request.isCurrent()) return;
       blobUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      const pathname = new URL(url, window.location.href).pathname;
-      const nameFromUrl = pathname.split("/").filter(Boolean).pop();
-      a.href = blobUrl;
-      a.download = nameFromUrl && nameFromUrl.includes(".") ? nameFromUrl : "narra-image.png";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      saveLink(blobUrl, "narra-image.png");
     } catch {
       if (request.isCurrent()) window.open(url, "_blank", "noopener,noreferrer");
     } finally {

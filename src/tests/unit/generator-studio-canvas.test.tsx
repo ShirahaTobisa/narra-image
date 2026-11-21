@@ -619,7 +619,8 @@ describe("mounted studio canvas integration", () => {
     expect(screen.queryByRole("button", { name: "加入编辑" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "保存高清原图" }));
     await waitFor(() => expect(click).toHaveBeenCalled());
-    expect(requests.some((request) => request.path === `/api/proxy-image?url=${encodeURIComponent("https://images.invalid/canvas-job-1/1.png")}` && request.init.signal instanceof AbortSignal)).toBe(true);
+    expect((click.mock.contexts[0] as HTMLAnchorElement).getAttribute("href")).toBe(`/api/proxy-image?url=${encodeURIComponent("https://images.invalid/canvas-job-1/1.png")}`);
+    expect(requests.some((request) => request.path.startsWith("/api/proxy-image"))).toBe(false);
   });
 
   it.each(["close", "switch", "account"] as const)("isolates an in-flight modal download from a removed reference across %s", async (operation) => {
