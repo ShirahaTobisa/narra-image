@@ -1,5 +1,7 @@
 import "server-only";
 
+import type { Prisma } from "@prisma/client";
+
 import { db } from "@/lib/db";
 import { resolveModerationConfig } from "@/lib/moderation/config";
 import { assertModerationImages } from "@/lib/moderation/images";
@@ -9,8 +11,20 @@ import { moderationResponseSchema } from "@/lib/validators";
 
 const MODERATION_TIMEOUT_MS = 8_000;
 /** 站内审核和上游安全拒绝合计达到上限，暂停后续站内提交。 */
-const MODERATION_BLOCK_LIMIT = 3;
+export const MODERATION_BLOCK_LIMIT = 3;
 const MODERATION_BLOCK_WINDOW_MS = 24 * 60 * 60 * 1000;
+/** 本站自己拒绝时记下的两类记录。 */
+const SITE_BLOCK_KINDS = ["sensitive_word", "ai_moderation"];
+/** 上游拒绝：过了本站审核、被出图渠道以内容审核为由拒掉的任务。 */
+export const PROVIDER_REFUSAL_WHERE = {
+  OR: [
+    { errorMessage: { contains: "moderation_blocked", mode: "insensitive" } },
+    { errorMessage: { contains: "content_policy_violation", mode: "insensitive" } },
+    { errorMessage: { contains: "safety system", mode: "insensitive" } },
+  ],
+  providerMode: "BUILT_IN",
+  status: "FAILED",
+} satisfies Prisma.GenerationJobWhereInput;
 
 export const MODERATION_BLOCK_MESSAGE = "提交内容包含违规描述，已拒绝生成";
 export const MODERATION_UNAVAILABLE_MESSAGE = "内容审核暂时无法完成，本次未生成，请稍后再试";
@@ -154,24 +168,40 @@ export async function assertExternalGenerationAllowed(
 async function countRecentModerationBlocks(userId: string) {
   const createdAt = { gte: new Date(Date.now() - MODERATION_BLOCK_WINDOW_MS) };
   const [siteBlocks, providerBlocks] = await Promise.all([
-    db.contentReview.count({
-      where: { createdAt, kind: { in: ["sensitive_word", "ai_moderation"] }, userId },
-    }),
-    db.generationJob.count({
-      where: {
-        createdAt,
-        OR: [
-          { errorMessage: { contains: "moderation_blocked", mode: "insensitive" } },
-          { errorMessage: { contains: "content_policy_violation", mode: "insensitive" } },
-          { errorMessage: { contains: "safety system", mode: "insensitive" } },
-        ],
-        providerMode: "BUILT_IN",
-        status: "FAILED",
-        userId,
-      },
-    }),
+    db.contentReview.count({ where: { createdAt, kind: { in: SITE_BLOCK_KINDS }, userId } }),
+    db.generationJob.count({ where: { ...PROVIDER_REFUSAL_WHERE, createdAt, userId } }),
   ]);
   return siteBlocks + providerBlocks;
+}
+
+/**
+ * 后台违规榜：本站拒绝和上游拒绝按人合计。最近 24 小时满 MODERATION_BLOCK_LIMIT 次的正被暂停提交（算法同上），
+ * 排最前，管理员要先看的是他们；其余按累计次数排。
+ */
+export async function listModerationOffenders(limit: number) {
+  const createdAt = { gte: new Date(Date.now() - MODERATION_BLOCK_WINDOW_MS) };
+  const [site, provider, recentSite, recentProvider] = await Promise.all([
+    db.contentReview.groupBy({ _count: { _all: true }, _max: { createdAt: true }, by: ["userId"] }),
+    db.generationJob.groupBy({ _count: { _all: true }, _max: { createdAt: true }, by: ["userId"], where: PROVIDER_REFUSAL_WHERE }),
+    db.contentReview.groupBy({ _count: { _all: true }, by: ["userId"], where: { createdAt, kind: { in: SITE_BLOCK_KINDS } } }),
+    db.generationJob.groupBy({ _count: { _all: true }, by: ["userId"], where: { ...PROVIDER_REFUSAL_WHERE, createdAt } }),
+  ]);
+  const offenders = new Map<string, { count: number; lastAt: Date | null; recentCount: number; userId: string }>();
+  const entry = (userId: string) => {
+    if (!offenders.has(userId)) offenders.set(userId, { count: 0, lastAt: null, recentCount: 0, userId });
+    return offenders.get(userId)!;
+  };
+  for (const group of [...site, ...provider]) {
+    const offender = entry(group.userId);
+    offender.count += group._count._all;
+    const lastAt = group._max.createdAt;
+    if (lastAt && (!offender.lastAt || lastAt > offender.lastAt)) offender.lastAt = lastAt;
+  }
+  for (const group of [...recentSite, ...recentProvider]) entry(group.userId).recentCount += group._count._all;
+  return [...offenders.values()]
+    .map((offender) => ({ ...offender, paused: offender.recentCount >= MODERATION_BLOCK_LIMIT }))
+    .sort((a, b) => Number(b.paused) - Number(a.paused) || b.count - a.count)
+    .slice(0, limit);
 }
 
 async function callModerationAi(

@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { canvasPng } from "./helpers/canvas-api-fixtures";
 
 const { mockDb, mockResolveConfig, mockMatchWords, mockCheckLocalImages } = vi.hoisted(() => {
-  const contentReview = { count: vi.fn(), create: vi.fn() };
-  const generationJob = { count: vi.fn() };
+  const contentReview = { count: vi.fn(), create: vi.fn(), groupBy: vi.fn() };
+  const generationJob = { count: vi.fn(), groupBy: vi.fn() };
   const resolveConfig = vi.fn();
   const matchWords = vi.fn();
   return {
@@ -29,6 +29,7 @@ vi.mock("@/lib/moderation/sensitive-words", () => ({
 
 import {
   checkGenerationInput,
+  listModerationOffenders,
   MODERATION_BLOCK_MESSAGE,
   MODERATION_UNAVAILABLE_MESSAGE,
   PROVIDER_COOLDOWN_MESSAGE,
@@ -399,6 +400,27 @@ describe("内容审核 checkGenerationInput", () => {
     ).resolves.toEqual({ allowed: true });
     expect(mockDb.generationJob.count).toHaveBeenCalledTimes(1);
     expect(mockDb.contentReview.count).toHaveBeenCalledTimes(1);
+  });
+
+  it("后台违规榜把本站拒绝和上游拒绝按人合计，暂停中的排最前", async () => {
+    const day = (date: number) => new Date(Date.UTC(2026, 10, date));
+    const group = (userId: string, count: number, last: Date | null = null) => ({ _count: { _all: count }, _max: { createdAt: last }, userId });
+    // 每张表先查全部时间，再查最近 24 小时。
+    mockDb.contentReview.groupBy
+      .mockResolvedValueOnce([group("earlier", 9, day(10)), group("mixed", 1, day(20))])
+      .mockResolvedValueOnce([group("mixed", 1)]);
+    mockDb.generationJob.groupBy
+      .mockResolvedValueOnce([group("mixed", 2, day(21)), group("upstream-only", 3, day(21))])
+      .mockResolvedValueOnce([group("mixed", 2), group("upstream-only", 3)]);
+
+    expect(await listModerationOffenders(3)).toEqual([
+      { count: 3, lastAt: day(21), paused: true, recentCount: 3, userId: "mixed" },
+      { count: 3, lastAt: day(21), paused: true, recentCount: 3, userId: "upstream-only" },
+      { count: 9, lastAt: day(10), paused: false, recentCount: 0, userId: "earlier" },
+    ]);
+    expect(mockDb.generationJob.groupBy).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ createdAt: { gte: expect.any(Date) }, providerMode: "BUILT_IN", status: "FAILED" }),
+    }));
   });
 
   describe("站内与上游共用用户违规计数", () => {

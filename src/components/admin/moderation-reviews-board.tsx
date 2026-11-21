@@ -37,6 +37,9 @@ type Offender = {
   email: string;
   lastTriggerAt: string | null;
   nickname: string | null;
+  /** 最近 24 小时被拒满上限，正被自动暂停提交 */
+  paused: boolean;
+  recentCount: number;
   uid: number;
   userId: string;
 };
@@ -53,11 +56,18 @@ const KIND_TABS: AdminTabOption[] = [
   { label: "全部触发", value: "" },
   { label: "敏感词命中", value: "sensitive_word" },
   { label: "AI 审核拦截", value: "ai_moderation" },
+  { label: "上游渠道拒绝", value: "provider" },
 ];
 
 const KIND_LABELS: Record<string, string> = {
   ai_moderation: "AI 审核",
+  provider: "上游拒绝",
   sensitive_word: "敏感词",
+};
+
+const KIND_STYLES: Record<string, string> = {
+  provider: "bg-violet-100 text-violet-800",
+  sensitive_word: "bg-amber-100 text-amber-800",
 };
 
 function formatTime(value: string) {
@@ -107,6 +117,12 @@ export function ModerationReviewsBoard({
     pushQuery(kind, "");
   }
 
+  /** 下面的明细只留这个人被拦的全部记录，封不封看了提示词再定。 */
+  function showRecords(uid: number) {
+    setSearchValue(`#${uid}`);
+    pushQuery("", `#${uid}`);
+  }
+
   async function handleBan(banned: boolean) {
     if (!banTarget) return;
     setBanError(null);
@@ -152,6 +168,11 @@ export function ModerationReviewsBoard({
             <span className="rounded-full bg-[#efe8dc] px-2.5 py-0.5 text-xs font-medium text-[var(--ink-soft)]">
               {offenders.length} 人
             </span>
+            {offenders.some((offender) => offender.paused) ? (
+              <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
+                其中 {offenders.filter((offender) => offender.paused).length} 人暂停中
+              </span>
+            ) : null}
           </div>
         </div>
 
@@ -162,7 +183,7 @@ export function ModerationReviewsBoard({
         ) : (
           <div className="studio-card overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] text-left text-sm">
+              <table className="w-full min-w-[760px] text-left text-sm">
                 <thead className="border-b border-[var(--line)] text-xs text-[var(--ink-soft)]">
                   <tr>
                     <th className="px-4 py-3 font-medium">触发账号</th>
@@ -186,18 +207,25 @@ export function ModerationReviewsBoard({
                           </div>
                         ) : null}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 whitespace-nowrap">
                         <span className="font-mono text-sm font-semibold tabular-nums text-[#b54722]">
                           {offender.count} 次
                         </span>
+                        {offender.recentCount > 0 ? (
+                          <div className="text-xs text-[var(--ink-soft)]">近 24 小时 {offender.recentCount} 次</div>
+                        ) : null}
                       </td>
                       <td className="px-4 py-3 font-mono text-xs text-[var(--ink-soft)]">
                         {offender.lastTriggerAt ? formatTime(offender.lastTriggerAt) : "—"}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 whitespace-nowrap">
                         {offender.banned ? (
                           <span className="rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-medium text-rose-700">
                             已封禁
+                          </span>
+                        ) : offender.paused ? (
+                          <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
+                            暂停中
                           </span>
                         ) : (
                           <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
@@ -205,7 +233,16 @@ export function ModerationReviewsBoard({
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="space-x-2 px-4 py-3 text-right whitespace-nowrap">
+                        <button
+                          type="button"
+                          disabled={isPending}
+                          onClick={() => showRecords(offender.uid)}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--ink)] transition hover:bg-[#faf6ee] disabled:opacity-45"
+                        >
+                          <Search className="size-3.5" aria-hidden />
+                          看记录
+                        </button>
                         <button
                           type="button"
                           disabled={offender.userId === adminId}
@@ -300,13 +337,14 @@ export function ModerationReviewsBoard({
                     <span
                       className={cn(
                         "rounded-full px-2.5 py-0.5 text-xs font-semibold",
-                        review.kind === "sensitive_word"
-                          ? "bg-amber-100 text-amber-800"
-                          : "bg-sky-100 text-sky-800",
+                        KIND_STYLES[review.kind] ?? "bg-sky-100 text-sky-800",
                       )}
                     >
                       {KIND_LABELS[review.kind] ?? review.kind}
                     </span>
+                    {review.kind === "provider" ? (
+                      <span className="text-xs text-[var(--ink-soft)]">过了本站审核，被出图渠道拒绝</span>
+                    ) : null}
                     {review.kind === "sensitive_word" && review.hitWords.length > 0 ? (
                       <span className="rounded-md bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-700">
                         命中词：{review.hitWords.join("、")}

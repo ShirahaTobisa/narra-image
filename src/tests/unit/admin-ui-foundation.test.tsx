@@ -68,6 +68,33 @@ describe("后台基础 UI 原语与路由契约", () => {
     expect(screen.getAllByText(/拒的是参考图/)).toHaveLength(1);
   });
 
+  it("违规榜标出暂停中的人并能点开他的记录，上游拒绝单列一类", async () => {
+    const user = userEvent.setup();
+    const offender = {
+      banned: false, count: 4, email: "paused@example.com", lastTriggerAt: "2026-11-21T17:07:05.000Z",
+      nickname: null, paused: true, recentCount: 4, uid: 112, userId: "u112",
+    };
+    render(<AdminToastProvider><ModerationReviewsBoard adminId="admin" kind="" offenders={[
+      offender,
+      { ...offender, count: 9, email: "earlier@example.com", paused: false, recentCount: 0, uid: 7, userId: "u7" },
+    ]} reviews={[{
+      aiModel: null, aiScore: null, category: null, createdAt: "2026-11-21T17:07:05.000Z", hitWords: [], id: "job1",
+      kind: "provider", negativePrompt: null, prompt: "上游拒掉的提示词",
+      user: { banned: false, email: "paused@example.com", id: "u112", nickname: null, uid: 112 },
+    }]} /></AdminToastProvider>);
+
+    expect(screen.getByText("其中 1 人暂停中")).toBeInTheDocument();
+    expect(screen.getAllByText("暂停中")).toHaveLength(1);
+    expect(screen.getByText("近 24 小时 4 次")).toBeInTheDocument();
+    expect(screen.getByText("上游渠道拒绝")).toBeInTheDocument();
+    expect(screen.getByText("上游拒绝")).toBeInTheDocument();
+    expect(screen.getByText("过了本站审核，被出图渠道拒绝")).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole("button", { name: "看记录" })[0]);
+    expect(mockPush).toHaveBeenCalledWith("/admin/moderation?q=%23112");
+    expect(screen.getByPlaceholderText(/搜索 #编号/)).toHaveValue("#112");
+  });
+
   it("准确解析全部关键后台路由的多级面包屑（修复 /admin/moderation 与设置子页）", () => {
     expect(resolveAdminBreadcrumb("/admin").title).toBe("控制台概览");
     expect(resolveAdminBreadcrumb("/admin/moderation")).toMatchObject({

@@ -7,12 +7,19 @@ import { ModerationReviewsBoard } from "@/components/admin/moderation-reviews-bo
 import { ModerationNavTabs } from "@/components/admin/moderation/moderation-nav-tabs";
 import { AdminPageHeader } from "@/components/admin/ui/admin-page-header";
 import { db } from "@/lib/db";
+import { listModerationOffenders, MODERATION_BLOCK_LIMIT, PROVIDER_REFUSAL_WHERE } from "@/lib/moderation/check";
 import { requireAdminRecord } from "@/lib/server/current-user";
 import { exactUserWhere } from "@/lib/server/user-lookup";
 
 export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 20;
+const KINDS = ["sensitive_word", "ai_moderation", "provider"];
+const userSelect = { bannedAt: true, email: true, id: true, nickname: true, uid: true } as const;
+
+function boardUser(user: { bannedAt: Date | null; email: string; id: string; nickname: string | null; uid: number }) {
+  return { banned: user.bannedAt !== null, email: user.email, id: user.id, nickname: user.nickname, uid: user.uid };
+}
 
 export default async function AdminModerationPage({
   searchParams,
@@ -28,93 +35,83 @@ export default async function AdminModerationPage({
 
   const params = await searchParams;
   const page = Math.max(1, Number(params.page) || 1);
-  const kind =
-    typeof params.kind === "string" &&
-    (params.kind === "sensitive_word" || params.kind === "ai_moderation")
-      ? params.kind
-      : "";
+  const kind = typeof params.kind === "string" && KINDS.includes(params.kind) ? params.kind : "";
   const search = typeof params.q === "string" ? params.q.trim() : "";
 
   const exactUser = search ? await exactUserWhere(search) : null;
+  const contains = { contains: search, mode: "insensitive" as const };
+  const textOrUser = [
+    { prompt: contains },
+    { negativePrompt: contains },
+    { user: { is: { OR: [{ email: contains }, { nickname: contains }] } } },
+  ];
   const where: Prisma.ContentReviewWhereInput = {
     ...(kind ? { kind } : {}),
     ...(exactUser ? { user: { is: exactUser } } : {}),
-    ...(search && !exactUser
-      ? {
-          OR: [
-            { prompt: { contains: search, mode: "insensitive" } },
-            { negativePrompt: { contains: search, mode: "insensitive" } },
-            { hitWords: { has: search } },
-            {
-              user: {
-                is: {
-                  OR: [
-                    { email: { contains: search, mode: "insensitive" } },
-                    { nickname: { contains: search, mode: "insensitive" } },
-                  ],
-                },
-              },
-            },
-          ],
-        }
-      : {}),
+    ...(search && !exactUser ? { OR: [...textOrUser, { hitWords: { has: search } }] } : {}),
   };
+  // 上游拒绝的任务：筛选条件本身带一组 OR，搜索词要放进 AND 才不会把它顶掉。
+  const jobWhere: Prisma.GenerationJobWhereInput = {
+    ...PROVIDER_REFUSAL_WHERE,
+    ...(exactUser ? { user: { is: exactUser } } : {}),
+    ...(search && !exactUser ? { AND: [{ OR: textOrUser }] } : {}),
+  };
+  // 本站拒绝和上游拒绝按时间合成一个列表翻页：两边各取到本页为止的条数，合并后再截出这一页。
+  const fromSite = kind !== "provider";
+  const fromProvider = !kind || kind === "provider";
+  const take = page * PAGE_SIZE;
 
-  const [reviewRows, totalCount, grouped] = await Promise.all([
-    db.contentReview.findMany({
-      orderBy: { createdAt: "desc" },
-      select: {
-        aiModel: true,
-        aiScore: true,
-        category: true,
-        createdAt: true,
-        hitWords: true,
-        id: true,
-        kind: true,
-        negativePrompt: true,
-        prompt: true,
-        user: {
-          select: { bannedAt: true, email: true, id: true, nickname: true, uid: true },
-        },
-      },
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-      where,
-    }),
-    db.contentReview.count({ where }),
-    db.contentReview.groupBy({
-      _count: { _all: true },
-      _max: { createdAt: true },
-      by: ["userId"],
-      orderBy: { _count: { userId: "desc" } },
-      take: 50,
-    }),
+  const [reviewRows, reviewCount, jobRows, jobCount, ranked] = await Promise.all([
+    fromSite
+      ? db.contentReview.findMany({
+          orderBy: { createdAt: "desc" },
+          select: {
+            aiModel: true,
+            aiScore: true,
+            category: true,
+            createdAt: true,
+            hitWords: true,
+            id: true,
+            kind: true,
+            negativePrompt: true,
+            prompt: true,
+            user: { select: userSelect },
+          },
+          take,
+          where,
+        })
+      : [],
+    fromSite ? db.contentReview.count({ where }) : 0,
+    fromProvider
+      ? db.generationJob.findMany({
+          orderBy: { createdAt: "desc" },
+          select: { createdAt: true, id: true, negativePrompt: true, prompt: true, user: { select: userSelect } },
+          take,
+          where: jobWhere,
+        })
+      : [],
+    fromProvider ? db.generationJob.count({ where: jobWhere }) : 0,
+    listModerationOffenders(50),
   ]);
 
+  const totalCount = reviewCount + jobCount;
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
-  const userIds = grouped.map((group) => group.userId);
-  const users = userIds.length
-    ? await db.user.findMany({
-        select: { bannedAt: true, email: true, id: true, nickname: true, uid: true },
-        where: { id: { in: userIds } },
-      })
+  const reviews = [
+    ...reviewRows,
+    ...jobRows.map((job) => ({ ...job, aiModel: null, aiScore: null, category: null, hitWords: [], kind: "provider" })),
+  ]
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+    .map((record) => ({ ...record, createdAt: record.createdAt.toISOString(), user: boardUser(record.user) }));
+
+  const users = ranked.length
+    ? await db.user.findMany({ select: userSelect, where: { id: { in: ranked.map((entry) => entry.userId) } } })
     : [];
   const usersById = new Map(users.map((user) => [user.id, user]));
-
-  const offenders = grouped
-    .filter((group) => usersById.has(group.userId))
-    .map((group) => {
-      const user = usersById.get(group.userId)!;
-      return {
-        banned: user.bannedAt !== null,
-        count: group._count._all,
-        email: user.email,
-        lastTriggerAt: group._max.createdAt?.toISOString() ?? null,
-        nickname: user.nickname,
-        uid: user.uid,
-        userId: group.userId,
-      };
-    });
+  const offenders = ranked.flatMap(({ lastAt, ...entry }) => {
+    const user = usersById.get(entry.userId);
+    return user ? [{ ...boardUser(user), ...entry, lastTriggerAt: lastAt?.toISOString() ?? null }] : [];
+  });
 
   const extraParams: Record<string, string> = {};
   if (kind) extraParams.kind = kind;
@@ -127,7 +124,7 @@ export default async function AdminModerationPage({
           eyebrow="Moderation"
           icon={ShieldAlert}
           title="内容风控与拦截中心"
-          description="集中查看敏感词与 AI 审核拒绝的生成请求（拦截不扣积分），支持对高频违规账号一键封禁，或切换配置拦截阈值。"
+          description={`集中查看被拦下的生成请求：本站敏感词和 AI 审核拒绝的（不扣积分），以及过了本站审核、被上游渠道拒绝的。24 小时内合计满 ${MODERATION_BLOCK_LIMIT} 次的账号会自动暂停提交，可以在这里看过提示词后手动封禁。`}
           badges={
             <span className="rounded-full border border-[var(--line)] bg-white px-3 py-1 font-mono text-xs font-medium text-[var(--ink-soft)]">
               当前结果 {totalCount.toLocaleString("zh-CN")} 条
@@ -145,24 +142,7 @@ export default async function AdminModerationPage({
           initialSearch={search}
           kind={kind}
           offenders={offenders}
-          reviews={reviewRows.map((review) => ({
-            aiModel: review.aiModel,
-            aiScore: review.aiScore,
-            category: review.category,
-            createdAt: review.createdAt.toISOString(),
-            hitWords: review.hitWords,
-            id: review.id,
-            kind: review.kind,
-            negativePrompt: review.negativePrompt,
-            prompt: review.prompt,
-            user: {
-              banned: review.user.bannedAt !== null,
-              email: review.user.email,
-              id: review.user.id,
-              nickname: review.user.nickname,
-              uid: review.user.uid,
-            },
-          }))}
+          reviews={reviews}
         />
 
         <AdminPagination
