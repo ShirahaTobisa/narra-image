@@ -181,8 +181,13 @@ async function callModerationAi(
 ): Promise<AiModerationOutcome> {
   await assertModerationImages(images);
   if (images.length > 0) {
-    const outcome = await checkLocalImages(images, cfg.aiThreshold);
-    if (outcome.blocked) return outcome;
+    const local = await checkLocalImages(images, cfg.aiThreshold);
+    if (local.blocked) return local;
+    // 文字跟图一起审时分数会被拉低（实测同一段话单独 0.11、带图 0.02），所以先单独审一遍文字。
+    if (text) {
+      const textAlone = await callModerationAi(cfg, text, []);
+      if (textAlone.blocked) return textAlone;
+    }
   }
 
   const url = new URL(`${cfg.aiBaseUrl?.trim().replace(/\/+$/, "")}/moderations`);

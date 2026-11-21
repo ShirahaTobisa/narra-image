@@ -68,8 +68,8 @@ function mockModerationResponse(results: unknown[]) {
   global.fetch = vi.fn().mockResolvedValue({ json: async () => ({ results }), ok: true });
 }
 
-function sentModerationBody() {
-  const [, init] = vi.mocked(global.fetch).mock.calls[0] as [string, RequestInit];
+function sentModerationBody(call = 0) {
+  const [, init] = vi.mocked(global.fetch).mock.calls[call] as [string, RequestInit];
   return JSON.parse(String(init.body)) as { input: unknown; model?: string };
 }
 
@@ -216,7 +216,7 @@ describe("内容审核 checkGenerationInput", () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it("参考图和提示词一起送审", async () => {
+  it("带参考图时提示词先单独送审，再和图一起送审", async () => {
     mockResolveConfig.mockResolvedValue(aiConfig());
     mockModerationResponse([moderationResult()]);
 
@@ -228,7 +228,8 @@ describe("内容审核 checkGenerationInput", () => {
     });
 
     expect(result.allowed).toBe(true);
-    expect(sentModerationBody()).toEqual({
+    expect(sentModerationBody()).toEqual({ input: "make it blue", model: "omni-moderation-latest" });
+    expect(sentModerationBody(1)).toEqual({
       input: [
         { text: "make it blue", type: "text" },
         { image_url: { url: `data:image/png;base64,${pngBase64}` }, type: "image_url" },
@@ -292,7 +293,7 @@ describe("内容审核 checkGenerationInput", () => {
 
     expect(await pending).toEqual({ allowed: true });
     expect(images.map((image) => image.data)).toEqual(originalBytes);
-    expect(sentModerationBody().input).toEqual([
+    expect(sentModerationBody(1).input).toEqual([
       { type: "text", text: "a blue landscape" },
       ...originalBytes.map((bytes) => ({ type: "image_url", image_url: { url: `data:image/png;base64,${bytes.toString("base64")}` } })),
     ]);
@@ -346,6 +347,20 @@ describe("内容审核 checkGenerationInput", () => {
     expect(mockDb.contentReview.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ aiScore: 0.2, category: "sexual/minors" }),
     });
+  });
+
+  it("带了参考图，文字单独审该拒的照样拒（带图一起审分数会变低）", async () => {
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    mockModerationResponse([moderationResult({
+      categories: { sexual: false, "sexual/minors": true, hate: false },
+      category_scores: { sexual: 0.3, "sexual/minors": 0.2 },
+    })]);
+
+    expect(await checkGenerationInput({ builtIn: true, prompt: "text", images: [pngImage()], userId: "u1" })).toEqual({
+      allowed: false, message: MODERATION_BLOCK_MESSAGE,
+    });
+    expect(sentModerationBody().input).toBe("text");
+    expect(global.fetch).toHaveBeenCalledOnce();
   });
 
   it("未成年人分类只是有点分数、模型没判定时放行", async () => {
