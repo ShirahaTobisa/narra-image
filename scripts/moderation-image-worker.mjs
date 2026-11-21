@@ -14,8 +14,10 @@ const wasm = require("@tensorflow/tfjs-backend-wasm");
 sharp.cache(false);
 sharp.concurrency(1);
 wasm.setThreadsCount(1);
+// Next bundles this worker, and a bundled require.resolve() returns a module number instead of
+// a path, so the model never loaded in production. The app always starts from its own root.
 wasm.setWasmPaths(
-  path.dirname(require.resolve("@tensorflow/tfjs-backend-wasm")) + path.sep,
+  path.join(process.cwd(), "node_modules/@tensorflow/tfjs-backend-wasm/dist") + path.sep,
 );
 if (!(await tf.setBackend("wasm"))) throw new Error("Image model unavailable");
 await tf.ready();
