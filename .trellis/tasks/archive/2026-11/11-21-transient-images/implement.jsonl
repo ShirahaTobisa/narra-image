@@ -1,0 +1,5 @@
+{"file":".trellis/spec/operations/image-storage.md","reason":"shared storage, locks, reads and cleanup"}
+{"file":".trellis/spec/operations/generation-inputs.md","reason":"exact reference bytes and admission"}
+{"file":".trellis/spec/operations/release-hardening.md","reason":"paired Worker/application migration and validation"}
+{"file":".trellis/spec/frontend/public-work-data.md","reason":"public privacy and review"}
+{"file":".trellis/tasks/11-21-transient-images/design.md","reason":"approved one-hour delivery and upload gallery scope"}
