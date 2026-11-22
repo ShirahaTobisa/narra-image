@@ -85,12 +85,15 @@ func generateImages(ctx context.Context, storage *Storage, job GenerationJob, pr
 	if err != nil {
 		return nil, err
 	}
-	if len(payload.Data) == 0 {
-		return nil, ResultPersistError{Cause: errors.New("渠道没有返回图片结果")}
-	}
 	maximumOutputs := job.Count
 	if job.GenerationType == "IMAGE_TO_IMAGE" {
 		maximumOutputs = 1
+	}
+	if outputFormat(job) == "gif" {
+		payload.Data = pickAnimatedItems(payload.Data, maximumOutputs)
+	}
+	if len(payload.Data) == 0 {
+		return nil, ResultPersistError{Cause: errors.New("渠道没有返回图片结果")}
 	}
 	if len(payload.Data) > maximumOutputs {
 		return nil, ResultPersistError{Cause: errors.New("渠道返回的图片数量超过本次请求的上限")}
@@ -717,9 +720,29 @@ func mimeTypeFromOutputFormat(job GenerationJob) string {
 		return "image/jpeg"
 	case "webp":
 		return "image/webp"
+	case "gif":
+		return "image/gif"
 	default:
 		return "image/png"
 	}
+}
+
+// 有的渠道出 GIF 时 data 里不止一项，动图那一项标着 animated=true（或只标 output_format=gif）。
+// 只留标着动图的，最多留请求的张数；一项都没标的（官方接口只给 b64_json）原样返回，照常按张数检查。
+// 留下的项和别的结果一样由 normalizeGeneratedImage 下载后存成本站图片，用户拿不到渠道的链接。
+func pickAnimatedItems(items []map[string]any, limit int) []map[string]any {
+	animated := []map[string]any{}
+	for _, item := range items {
+		flag, flagged := item["animated"].(bool)
+		format, _ := item["output_format"].(string)
+		if flag || (!flagged && strings.EqualFold(format, "gif")) {
+			animated = append(animated, item)
+		}
+	}
+	if len(animated) == 0 {
+		return items
+	}
+	return animated[:min(len(animated), limit)]
 }
 
 func imageDataURL(image SourceImage) string {

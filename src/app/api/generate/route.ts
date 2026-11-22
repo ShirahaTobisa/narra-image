@@ -23,6 +23,7 @@ import {
   getGenerationErrorDefinition,
   normalizeProviderModels,
 } from "@/lib/generation/contracts";
+import { gifOutputProblem } from "@/lib/generation/gif-output";
 import { parseGenerateRequest } from "@/lib/generation/parse-generate-request";
 import { calculateGenerationCost, hasEnoughCredits, resolveCreditCost, resolveGenerationCount } from "@/lib/credits";
 import {
@@ -117,6 +118,10 @@ export async function POST(request: Request) {
       return rejectPreparationResponse(jsonError("本站暂不支持视频生成", 403));
     }
     const count = resolveGenerationCount({ generationType: body.generationType, count: body.count });
+    const gifProblem = gifOutputProblem({ count, generationType: body.generationType, model: body.model, outputFormat: body.outputFormat, size: body.size });
+    if (gifProblem) {
+      return rejectPreparationResponse(jsonError(gifProblem, 400));
+    }
     assertGenerationRateLimit(user.id, count);
     await requireTurnstile("generate", body.turnstileToken);
 
