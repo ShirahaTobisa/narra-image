@@ -32,12 +32,6 @@ export const OUTPUT_FORMAT_OPTIONS: Array<{ label: string; value: GenerationOutp
   { label: "WebP", value: "webp" },
 ];
 
-/** 对话模式多一项动图；画布暂不开放，仍用上面那个。 */
-export const CHAT_OUTPUT_FORMAT_OPTIONS: typeof OUTPUT_FORMAT_OPTIONS = [
-  ...OUTPUT_FORMAT_OPTIONS,
-  { label: "GIF 动图", value: "gif" },
-];
-
 export const MODERATION_OPTIONS: Array<{ label: string; value: GenerationModeration }> = [
   { label: "自动", value: "auto" },
   { label: "低限制", value: "low" },
