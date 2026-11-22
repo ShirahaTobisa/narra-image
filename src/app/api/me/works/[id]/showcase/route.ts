@@ -7,7 +7,7 @@ import { getErrorMessage, jsonError, jsonOk, parseJsonBody } from "@/lib/server/
 import { applyUserShowcaseAction } from "@/lib/work-showcase";
 import { workShowcaseUpdateSchema } from "@/lib/validators";
 import { isAutoApproveShowcase } from "@/lib/benefits/config";
-import { checkGenerationInput, MODERATION_BLOCK_MESSAGE } from "@/lib/moderation/check";
+import { checkGenerationInput, MODERATION_BLOCK_MESSAGES } from "@/lib/moderation/check";
 import { GalleryUploadError, reviewGalleryWork } from "@/lib/server/gallery-uploads";
 
 function resolveStatusCode(error: unknown) {
@@ -58,7 +58,7 @@ export async function PATCH(
       if (publicAuthorName) {
         const result = await checkGenerationInput({ builtIn: true, prompt: publicAuthorName, userId: user.id });
         if (!result.allowed) {
-          return jsonError(result.message === MODERATION_BLOCK_MESSAGE
+          return jsonError(MODERATION_BLOCK_MESSAGES.includes(result.message)
             ? "公开署名包含违规内容，请修改昵称或选择匿名投稿"
             : "公开署名暂时无法通过审核，请稍后再试或选择匿名投稿", 400);
         }

@@ -60,7 +60,7 @@ vi.mock("@/lib/db", () => ({
       findUnique: vi.fn(async () => null),
       update: mockTopLevelGenerationJobUpdate,
     },
-    user: { updateMany: mockUserUpdateMany, update: vi.fn() },
+    user: { findUnique: vi.fn(async () => null), updateMany: mockUserUpdateMany, update: vi.fn() },
   },
 }));
 

@@ -26,7 +26,10 @@ export const PROVIDER_REFUSAL_WHERE = {
   status: "FAILED",
 } satisfies Prisma.GenerationJobWhereInput;
 
-export const MODERATION_BLOCK_MESSAGE = "提交内容包含违规描述，已拒绝生成";
+export const SENSITIVE_WORD_BLOCK_MESSAGE = "关键词拦截：提交内容命中了本站敏感词，已拒绝生成";
+export const AI_BLOCK_MESSAGE = "AI 审核拦截：提交内容被本站 AI 审核判定违规，已拒绝生成";
+/** 本站明确拒绝（不是审核出故障）时给用户的两种提示；上游拒绝的那一句在 prisma-mappers.ts。 */
+export const MODERATION_BLOCK_MESSAGES: readonly string[] = [SENSITIVE_WORD_BLOCK_MESSAGE, AI_BLOCK_MESSAGE];
 export const MODERATION_UNAVAILABLE_MESSAGE = "内容审核暂时无法完成，本次未生成，请稍后再试";
 export const PROVIDER_COOLDOWN_MESSAGE =
   "近 24 小时内站内内容审核或模型方安全审核累计拒绝已达 3 次，已暂停提交，请稍后再试";
@@ -94,7 +97,7 @@ export async function checkGenerationInput(
           userId: input.userId,
         },
       });
-      return { allowed: false, message: MODERATION_BLOCK_MESSAGE };
+      return { allowed: false, message: SENSITIVE_WORD_BLOCK_MESSAGE };
     }
   }
 
@@ -134,7 +137,7 @@ export async function checkGenerationInput(
           userId: input.userId,
         },
       });
-      return { allowed: false, message: MODERATION_BLOCK_MESSAGE };
+      return { allowed: false, message: AI_BLOCK_MESSAGE };
     }
   }
 

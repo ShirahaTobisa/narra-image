@@ -28,7 +28,7 @@ vi.mock("@/lib/server/works", () => ({
 vi.mock("@/lib/benefits/config", () => ({ isAutoApproveShowcase: mocks.autoApprove }));
 vi.mock("@/lib/moderation/check", () => ({
   checkGenerationInput: mocks.checkInput,
-  MODERATION_BLOCK_MESSAGE: "提交内容包含违规描述，已拒绝生成",
+  MODERATION_BLOCK_MESSAGES: ["提交内容包含违规描述，已拒绝生成"],
 }));
 
 import { PATCH as submit } from "@/app/api/me/works/[id]/showcase/route";

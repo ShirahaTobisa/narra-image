@@ -32,9 +32,10 @@ import {
   checkGenerationInput,
   listModerationOffenders,
   MANUAL_PAUSE_MESSAGE,
-  MODERATION_BLOCK_MESSAGE,
+  AI_BLOCK_MESSAGE,
   MODERATION_UNAVAILABLE_MESSAGE,
   PROVIDER_COOLDOWN_MESSAGE,
+  SENSITIVE_WORD_BLOCK_MESSAGE,
 } from "@/lib/moderation/check";
 import { LOCAL_IMAGE_MODEL } from "@/lib/moderation/local-images";
 
@@ -258,7 +259,7 @@ describe("内容审核 checkGenerationInput", () => {
 
     expect(await checkGenerationInput({
       builtIn: true, prompt: "a blue landscape", negativePrompt: "avoid blur", images: [pngImage()], userId: "u1",
-    })).toEqual({ allowed: false, message: MODERATION_BLOCK_MESSAGE });
+    })).toEqual({ allowed: false, message: AI_BLOCK_MESSAGE });
     expect(global.fetch).not.toHaveBeenCalled();
     expect(mockDb.contentReview.create).toHaveBeenCalledWith({ data: {
       aiModel: LOCAL_IMAGE_MODEL, aiScore: 0.81, category: "sexual", kind: "ai_moderation",
@@ -307,7 +308,7 @@ describe("内容审核 checkGenerationInput", () => {
     mockModerationResponse([moderationResult({ category_scores: { sexual: 0.9, "sexual/minors": 0 }, flagged: true })]);
 
     expect(await checkGenerationInput({ builtIn: true, prompt: "a blue landscape", images: [pngImage()], userId: "u1" })).toEqual({
-      allowed: false, message: MODERATION_BLOCK_MESSAGE,
+      allowed: false, message: AI_BLOCK_MESSAGE,
     });
     expect(mockCheckLocalImages).toHaveBeenCalledOnce();
     expect(global.fetch).toHaveBeenCalledOnce();
@@ -360,7 +361,7 @@ describe("内容审核 checkGenerationInput", () => {
     })]);
 
     expect(await checkGenerationInput({ builtIn: true, prompt: "text", images: [pngImage()], userId: "u1" })).toEqual({
-      allowed: false, message: MODERATION_BLOCK_MESSAGE,
+      allowed: false, message: AI_BLOCK_MESSAGE,
     });
     expect(sentModerationBody().input).toBe("text");
     expect(global.fetch).toHaveBeenCalledOnce();
@@ -499,21 +500,21 @@ describe("内容审核 checkGenerationInput", () => {
       const state = history();
       const input = { builtIn: true, prompt: "fixture prompt", userId: "u1" };
       mockMatchWords.mockReturnValue([{ category: "fixture", word: "fixture" }]);
-      expect(await checkGenerationInput(input)).toEqual({ allowed: false, message: MODERATION_BLOCK_MESSAGE });
+      expect(await checkGenerationInput(input)).toEqual({ allowed: false, message: SENSITIVE_WORD_BLOCK_MESSAGE });
       expect(state.reviews).toHaveLength(1);
       expect(mockCheckLocalImages).not.toHaveBeenCalled();
       expect(global.fetch).not.toHaveBeenCalled();
 
       mockMatchWords.mockReturnValue([]);
       mockCheckLocalImages.mockResolvedValue({ blocked: true, category: "sexual", score: 0.8, model: LOCAL_IMAGE_MODEL });
-      expect(await checkGenerationInput({ ...input, images: [pngImage()] })).toEqual({ allowed: false, message: MODERATION_BLOCK_MESSAGE });
+      expect(await checkGenerationInput({ ...input, images: [pngImage()] })).toEqual({ allowed: false, message: AI_BLOCK_MESSAGE });
       expect(state.reviews).toHaveLength(2);
       expect(global.fetch).not.toHaveBeenCalled();
 
       mockCheckLocalImages.mockResolvedValue({ blocked: false });
       const overThreshold = moderationResult({ category_scores: { sexual: 0.9, "sexual/minors": 0, hate: 0 } });
       mockModerationResponse([overThreshold, overThreshold]);
-      expect(await checkGenerationInput({ ...input, images: [pngImage()] })).toEqual({ allowed: false, message: MODERATION_BLOCK_MESSAGE });
+      expect(await checkGenerationInput({ ...input, images: [pngImage()] })).toEqual({ allowed: false, message: AI_BLOCK_MESSAGE });
       expect(state.reviews).toHaveLength(3);
       expect(state.jobs).toHaveLength(0);
       expect(global.fetch).toHaveBeenCalledOnce();

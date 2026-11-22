@@ -395,7 +395,7 @@ export function serializeFeaturedVideo(video: FeaturedVideoRecord): SerializedFe
 function userFacingErrorMessage(job: Pick<GenerationJob, "errorMessage" | "providerMode">) {
   if (!job.errorMessage || job.providerMode !== ProviderMode.BUILT_IN) return job.errorMessage;
   return /moderation_blocked|safety system/i.test(job.errorMessage)
-    ? "提示词或参考图被 OpenAI 安全系统拒绝"
+    ? "OpenAI 拦截：提示词或参考图被上游 OpenAI 的安全系统拒绝"
     : "生成失败，请稍后再试";
 }
 
