@@ -96,6 +96,19 @@ describe("chat pane DOM lifetime", () => {
     expect(props.composer.onKeyDownEnter).toHaveBeenCalledTimes(1);
   });
 
+  it("leaves Enter to the newline on a touch keyboard, which has no Shift+Enter", () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(pointer: coarse)" }));
+    try {
+      const props = paneProps();
+      render(<ChatPane {...props} />);
+      // 没被拦下，浏览器照常换行；发送只走发送按钮。
+      expect(fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" })).toBe(true);
+      expect(props.composer.onKeyDownEnter).not.toHaveBeenCalled();
+    } finally {
+      vi.stubGlobal("matchMedia", undefined);
+    }
+  });
+
   it("does not drag a reader to the bottom and cleans up the resize fallback", () => {
     vi.stubGlobal("ResizeObserver", undefined);
     const add = vi.spyOn(window, "addEventListener");

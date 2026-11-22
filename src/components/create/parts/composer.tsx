@@ -306,7 +306,9 @@ export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(function 
                   // 中文/日文/韩文输入法合成期间按 Enter 仅用于选词，不应触发发送。
                   // e.nativeEvent.isComposing 在大多数浏览器可用，ref 兜底避免兼容性差异。
                   const composing = isComposing() || e.nativeEvent.isComposing;
-                  if (e.key === "Enter" && !e.shiftKey && !composing) {
+                  // 手机、平板的屏幕键盘按不出 Shift+Enter：回车留给换行，发送只走发送按钮。
+                  const touchKeyboard = window.matchMedia?.("(pointer: coarse)").matches;
+                  if (e.key === "Enter" && !e.shiftKey && !composing && !touchKeyboard) {
                     e.preventDefault();
                     if (canSubmit) onKeyDownEnter();
                   }
