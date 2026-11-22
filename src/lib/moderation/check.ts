@@ -30,6 +30,7 @@ export const MODERATION_BLOCK_MESSAGE = "提交内容包含违规描述，已拒
 export const MODERATION_UNAVAILABLE_MESSAGE = "内容审核暂时无法完成，本次未生成，请稍后再试";
 export const PROVIDER_COOLDOWN_MESSAGE =
   "近 24 小时内站内内容审核或模型方安全审核累计拒绝已达 3 次，已暂停提交，请稍后再试";
+export const MANUAL_PAUSE_MESSAGE = "管理员已暂停该账号的站内提交，如有疑问请联系管理员";
 
 export type ModerationImage = {
   data: Buffer | Uint8Array;
@@ -63,8 +64,9 @@ export async function checkGenerationInput(
 ): Promise<ModerationCheckResult> {
   let cfg: Awaited<ReturnType<typeof resolveModerationConfig>>;
   try {
-    if (input.builtIn && (await countRecentModerationBlocks(input.userId)) >= MODERATION_BLOCK_LIMIT) {
-      return { allowed: false, message: PROVIDER_COOLDOWN_MESSAGE };
+    const paused = input.builtIn ? await pauseMessage(input.userId) : null;
+    if (paused) {
+      return { allowed: false, message: paused };
     }
     cfg = await resolveModerationConfig();
   } catch {
@@ -164,31 +166,45 @@ export async function assertExternalGenerationAllowed(
   }
 }
 
-/** 预审拒绝后不建生成任务，两个来源不会重复记录同一次生成；故障不计入。 */
-async function countRecentModerationBlocks(userId: string) {
-  const createdAt = { gte: new Date(Date.now() - MODERATION_BLOCK_WINDOW_MS) };
+/**
+ * 这个人现在被暂停提交就返回给他看的提示，否则返回 null。管理员手动暂停的直接拦；
+ * 其余数最近 24 小时被拒的次数，管理员解除暂停之前的不算。
+ * 预审拒绝后不建生成任务，两个来源不会重复记录同一次生成；故障不计入。
+ */
+async function pauseMessage(userId: string) {
+  const user = await db.user.findUnique({ select: { generationPausedAt: true, moderationClearedAt: true }, where: { id: userId } });
+  if (user?.generationPausedAt) return MANUAL_PAUSE_MESSAGE;
+  const windowStart = new Date(Date.now() - MODERATION_BLOCK_WINDOW_MS);
+  const cleared = user?.moderationClearedAt;
+  const createdAt = { gte: cleared && cleared > windowStart ? cleared : windowStart };
   const [siteBlocks, providerBlocks] = await Promise.all([
     db.contentReview.count({ where: { createdAt, kind: { in: SITE_BLOCK_KINDS }, userId } }),
     db.generationJob.count({ where: { ...PROVIDER_REFUSAL_WHERE, createdAt, userId } }),
   ]);
-  return siteBlocks + providerBlocks;
+  return siteBlocks + providerBlocks >= MODERATION_BLOCK_LIMIT ? PROVIDER_COOLDOWN_MESSAGE : null;
 }
 
 /**
- * 后台违规榜：本站拒绝和上游拒绝按人合计。最近 24 小时满 MODERATION_BLOCK_LIMIT 次的正被暂停提交（算法同上），
- * 排最前，管理员要先看的是他们；其余按累计次数排。
+ * 后台违规榜：本站拒绝和上游拒绝按人合计，暂停判断同上。暂停中的（手动暂停，或最近 24 小时满
+ * MODERATION_BLOCK_LIMIT 次）排最前，管理员要先看的是他们；其余按累计次数排。
+ * 手动暂停的人即使一条拦截记录都没有也要列出来，不然没地方解除。
  */
 export async function listModerationOffenders(limit: number) {
-  const createdAt = { gte: new Date(Date.now() - MODERATION_BLOCK_WINDOW_MS) };
-  const [site, provider, recentSite, recentProvider] = await Promise.all([
+  const windowStart = new Date(Date.now() - MODERATION_BLOCK_WINDOW_MS);
+  const createdAt = { gte: windowStart };
+  const [site, provider, recentSite, recentProvider, overrides] = await Promise.all([
     db.contentReview.groupBy({ _count: { _all: true }, _max: { createdAt: true }, by: ["userId"] }),
     db.generationJob.groupBy({ _count: { _all: true }, _max: { createdAt: true }, by: ["userId"], where: PROVIDER_REFUSAL_WHERE }),
-    db.contentReview.groupBy({ _count: { _all: true }, by: ["userId"], where: { createdAt, kind: { in: SITE_BLOCK_KINDS } } }),
-    db.generationJob.groupBy({ _count: { _all: true }, by: ["userId"], where: { ...PROVIDER_REFUSAL_WHERE, createdAt } }),
+    db.contentReview.findMany({ select: { createdAt: true, userId: true }, where: { createdAt, kind: { in: SITE_BLOCK_KINDS } } }),
+    db.generationJob.findMany({ select: { createdAt: true, userId: true }, where: { ...PROVIDER_REFUSAL_WHERE, createdAt } }),
+    db.user.findMany({
+      select: { generationPausedAt: true, id: true, moderationClearedAt: true },
+      where: { OR: [{ generationPausedAt: { not: null } }, { moderationClearedAt: { gte: windowStart } }] },
+    }),
   ]);
-  const offenders = new Map<string, { count: number; lastAt: Date | null; recentCount: number; userId: string }>();
+  const offenders = new Map<string, { count: number; lastAt: Date | null; manual: boolean; recentCount: number; userId: string }>();
   const entry = (userId: string) => {
-    if (!offenders.has(userId)) offenders.set(userId, { count: 0, lastAt: null, recentCount: 0, userId });
+    if (!offenders.has(userId)) offenders.set(userId, { count: 0, lastAt: null, manual: false, recentCount: 0, userId });
     return offenders.get(userId)!;
   };
   for (const group of [...site, ...provider]) {
@@ -197,9 +213,16 @@ export async function listModerationOffenders(limit: number) {
     const lastAt = group._max.createdAt;
     if (lastAt && (!offender.lastAt || lastAt > offender.lastAt)) offender.lastAt = lastAt;
   }
-  for (const group of [...recentSite, ...recentProvider]) entry(group.userId).recentCount += group._count._all;
+  const clearedAt = new Map(overrides.map((user) => [user.id, user.moderationClearedAt]));
+  for (const block of [...recentSite, ...recentProvider]) {
+    const cleared = clearedAt.get(block.userId);
+    if (!cleared || block.createdAt >= cleared) entry(block.userId).recentCount += 1;
+  }
+  for (const user of overrides) {
+    if (user.generationPausedAt) entry(user.id).manual = true;
+  }
   return [...offenders.values()]
-    .map((offender) => ({ ...offender, paused: offender.recentCount >= MODERATION_BLOCK_LIMIT }))
+    .map((offender) => ({ ...offender, paused: offender.manual || offender.recentCount >= MODERATION_BLOCK_LIMIT }))
     .sort((a, b) => Number(b.paused) - Number(a.paused) || b.count - a.count)
     .slice(0, limit);
 }

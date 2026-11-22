@@ -111,6 +111,10 @@ model User {
   oauthProvider        String?
   oauthId              String?
   bannedAt             DateTime?
+  /// 管理员手动暂停站内提交的时间；非空即暂停中，直到管理员解除
+  generationPausedAt   DateTime?
+  /// 管理员解除暂停的时间；这之前被拒的记录不再计入“24 小时满 3 次”
+  moderationClearedAt  DateTime?
   role                 Role                 @default(USER)
   credits              Int                  @default(500)
   createdAt            DateTime             @default(now())

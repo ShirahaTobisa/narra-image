@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Ban, Search, X } from "lucide-react";
+import { AlertTriangle, Ban, Pause, Play, Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
@@ -36,8 +36,10 @@ type Offender = {
   count: number;
   email: string;
   lastTriggerAt: string | null;
+  /** 管理员手动暂停的 */
+  manual: boolean;
   nickname: string | null;
-  /** 最近 24 小时被拒满上限，正被自动暂停提交 */
+  /** 正被暂停提交：手动暂停，或最近 24 小时被拒满上限 */
   paused: boolean;
   recentCount: number;
   uid: number;
@@ -90,6 +92,7 @@ export function ModerationReviewsBoard({
   const [banTarget, setBanTarget] = useState<Offender | null>(null);
   const [banError, setBanError] = useState<string | null>(null);
   const [banning, setBanning] = useState(false);
+  const [pausingId, setPausingId] = useState<string | null>(null);
 
   function pushQuery(nextKind: string, nextSearch: string) {
     const params = new URLSearchParams();
@@ -121,6 +124,31 @@ export function ModerationReviewsBoard({
   function showRecords(uid: number) {
     setSearchValue(`#${uid}`);
     pushQuery("", `#${uid}`);
+  }
+
+  /** 暂停中的解除（之前被拒的不再计数），没暂停的手动暂停；都只管站内提交，不影响登录。 */
+  async function handlePause(offender: Offender) {
+    setPausingId(offender.userId);
+    try {
+      const response = await fetch(`/api/admin/users/${offender.userId}/pause`, {
+        body: JSON.stringify({ paused: !offender.paused }),
+        headers: { "Content-Type": "application/json" },
+        method: "PATCH",
+      });
+      const result = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) {
+        toast.error(offender.paused ? "解除暂停失败" : "暂停失败", result.error || "操作失败");
+        return;
+      }
+      toast.success(offender.paused ? "已解除暂停" : "已暂停提交", offender.email);
+      startTransition(() => {
+        router.refresh();
+      });
+    } catch {
+      toast.error("操作失败", "请稍后重试");
+    } finally {
+      setPausingId(null);
+    }
   }
 
   async function handleBan(banned: boolean) {
@@ -183,7 +211,7 @@ export function ModerationReviewsBoard({
         ) : (
           <div className="studio-card overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-left text-sm">
+              <table className="w-full min-w-[880px] text-left text-sm">
                 <thead className="border-b border-[var(--line)] text-xs text-[var(--ink-soft)]">
                   <tr>
                     <th className="px-4 py-3 font-medium">触发账号</th>
@@ -225,7 +253,7 @@ export function ModerationReviewsBoard({
                           </span>
                         ) : offender.paused ? (
                           <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
-                            暂停中
+                            {offender.manual ? "人工暂停" : "暂停中"}
                           </span>
                         ) : (
                           <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
@@ -242,6 +270,15 @@ export function ModerationReviewsBoard({
                         >
                           <Search className="size-3.5" aria-hidden />
                           看记录
+                        </button>
+                        <button
+                          type="button"
+                          disabled={pausingId === offender.userId}
+                          onClick={() => void handlePause(offender)}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-white px-3 py-1.5 text-xs font-medium text-amber-700 transition hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-45"
+                        >
+                          {offender.paused ? <Play className="size-3.5" aria-hidden /> : <Pause className="size-3.5" aria-hidden />}
+                          {offender.paused ? "解除暂停" : "暂停"}
                         </button>
                         <button
                           type="button"

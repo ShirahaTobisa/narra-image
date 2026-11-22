@@ -2,12 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { canvasPng } from "./helpers/canvas-api-fixtures";
 
 const { mockDb, mockResolveConfig, mockMatchWords, mockCheckLocalImages } = vi.hoisted(() => {
-  const contentReview = { count: vi.fn(), create: vi.fn(), groupBy: vi.fn() };
-  const generationJob = { count: vi.fn(), groupBy: vi.fn() };
+  const contentReview = { count: vi.fn(), create: vi.fn(), findMany: vi.fn(), groupBy: vi.fn() };
+  const generationJob = { count: vi.fn(), findMany: vi.fn(), groupBy: vi.fn() };
+  const user = { findMany: vi.fn(), findUnique: vi.fn() };
   const resolveConfig = vi.fn();
   const matchWords = vi.fn();
   return {
-    mockDb: { contentReview, generationJob },
+    mockDb: { contentReview, generationJob, user },
     mockCheckLocalImages: vi.fn(),
     mockMatchWords: matchWords,
     mockResolveConfig: resolveConfig,
@@ -30,6 +31,7 @@ vi.mock("@/lib/moderation/sensitive-words", () => ({
 import {
   checkGenerationInput,
   listModerationOffenders,
+  MANUAL_PAUSE_MESSAGE,
   MODERATION_BLOCK_MESSAGE,
   MODERATION_UNAVAILABLE_MESSAGE,
   PROVIDER_COOLDOWN_MESSAGE,
@@ -404,23 +406,51 @@ describe("内容审核 checkGenerationInput", () => {
 
   it("后台违规榜把本站拒绝和上游拒绝按人合计，暂停中的排最前", async () => {
     const day = (date: number) => new Date(Date.UTC(2026, 10, date));
-    const group = (userId: string, count: number, last: Date | null = null) => ({ _count: { _all: count }, _max: { createdAt: last }, userId });
-    // 每张表先查全部时间，再查最近 24 小时。
-    mockDb.contentReview.groupBy
-      .mockResolvedValueOnce([group("earlier", 9, day(10)), group("mixed", 1, day(20))])
-      .mockResolvedValueOnce([group("mixed", 1)]);
-    mockDb.generationJob.groupBy
-      .mockResolvedValueOnce([group("mixed", 2, day(21)), group("upstream-only", 3, day(21))])
-      .mockResolvedValueOnce([group("mixed", 2), group("upstream-only", 3)]);
-
-    expect(await listModerationOffenders(3)).toEqual([
-      { count: 3, lastAt: day(21), paused: true, recentCount: 3, userId: "mixed" },
-      { count: 3, lastAt: day(21), paused: true, recentCount: 3, userId: "upstream-only" },
-      { count: 9, lastAt: day(10), paused: false, recentCount: 0, userId: "earlier" },
+    const group = (userId: string, count: number, last: Date) => ({ _count: { _all: count }, _max: { createdAt: last }, userId });
+    const block = (userId: string, date: number) => ({ createdAt: day(date), userId });
+    mockDb.contentReview.groupBy.mockResolvedValue([group("earlier", 9, day(10)), group("mixed", 1, day(20)), group("forgiven", 3, day(20))]);
+    mockDb.generationJob.groupBy.mockResolvedValue([group("mixed", 2, day(21)), group("upstream-only", 3, day(21))]);
+    // 最近 24 小时的记录逐条取，才能按每个人的解除时间取舍。
+    mockDb.contentReview.findMany.mockResolvedValue([block("mixed", 20), block("forgiven", 20), block("forgiven", 20), block("forgiven", 20)]);
+    mockDb.generationJob.findMany.mockResolvedValue([
+      block("mixed", 21), block("mixed", 21), block("upstream-only", 21), block("upstream-only", 21), block("upstream-only", 21),
     ]);
-    expect(mockDb.generationJob.groupBy).toHaveBeenLastCalledWith(expect.objectContaining({
+    // forgiven：三次被拒之后管理员解除了暂停；hand-paused：一条记录都没有，被管理员手动暂停。
+    mockDb.user.findMany.mockResolvedValue([
+      { generationPausedAt: null, id: "forgiven", moderationClearedAt: day(21) },
+      { generationPausedAt: day(21), id: "hand-paused", moderationClearedAt: null },
+    ]);
+
+    expect(await listModerationOffenders(10)).toEqual([
+      { count: 3, lastAt: day(21), manual: false, paused: true, recentCount: 3, userId: "mixed" },
+      { count: 3, lastAt: day(21), manual: false, paused: true, recentCount: 3, userId: "upstream-only" },
+      { count: 0, lastAt: null, manual: true, paused: true, recentCount: 0, userId: "hand-paused" },
+      { count: 9, lastAt: day(10), manual: false, paused: false, recentCount: 0, userId: "earlier" },
+      { count: 3, lastAt: day(20), manual: false, paused: false, recentCount: 0, userId: "forgiven" },
+    ]);
+    expect(mockDb.generationJob.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ createdAt: { gte: expect.any(Date) }, providerMode: "BUILT_IN", status: "FAILED" }),
     }));
+  });
+
+  it("管理员手动暂停的账号直接拦，不查次数也不送审", async () => {
+    mockDb.user.findUnique.mockResolvedValueOnce({ generationPausedAt: new Date(), moderationClearedAt: null });
+
+    expect(await checkGenerationInput({ builtIn: true, prompt: "a cat", userId: "u1" }))
+      .toEqual({ allowed: false, message: MANUAL_PAUSE_MESSAGE });
+    expect(mockDb.generationJob.count).not.toHaveBeenCalled();
+    expect(mockResolveConfig).not.toHaveBeenCalled();
+  });
+
+  it("管理员解除暂停后，之前被拒的不再计数", async () => {
+    const cleared = new Date(Date.now() - 60_000);
+    mockDb.user.findUnique.mockResolvedValueOnce({ generationPausedAt: null, moderationClearedAt: cleared });
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    mockModerationResponse([moderationResult()]);
+
+    await expect(checkGenerationInput({ builtIn: true, prompt: "a cat", userId: "u1" })).resolves.toEqual({ allowed: true });
+    expect(mockDb.generationJob.count).toHaveBeenCalledWith({ where: expect.objectContaining({ createdAt: { gte: cleared }, userId: "u1" }) });
+    expect(mockDb.contentReview.count).toHaveBeenCalledWith({ where: expect.objectContaining({ createdAt: { gte: cleared } }) });
   });
 
   describe("站内与上游共用用户违规计数", () => {

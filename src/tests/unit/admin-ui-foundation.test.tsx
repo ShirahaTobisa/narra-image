@@ -72,7 +72,7 @@ describe("后台基础 UI 原语与路由契约", () => {
     const user = userEvent.setup();
     const offender = {
       banned: false, count: 4, email: "paused@example.com", lastTriggerAt: "2026-11-21T17:07:05.000Z",
-      nickname: null, paused: true, recentCount: 4, uid: 112, userId: "u112",
+      manual: false, nickname: null, paused: true, recentCount: 4, uid: 112, userId: "u112",
     };
     render(<AdminToastProvider><ModerationReviewsBoard adminId="admin" kind="" offenders={[
       offender,
@@ -93,6 +93,16 @@ describe("后台基础 UI 原语与路由契约", () => {
     await user.click(screen.getAllByRole("button", { name: "看记录" })[0]);
     expect(mockPush).toHaveBeenCalledWith("/admin/moderation?q=%23112");
     expect(screen.getByPlaceholderText(/搜索 #编号/)).toHaveValue("#112");
+
+    // 暂停中的给“解除暂停”，没暂停的给“暂停”。
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(screen.getAllByRole("button", { name: "暂停" })).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "解除暂停" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/admin/users/u112/pause", expect.objectContaining({
+      body: JSON.stringify({ paused: false }), method: "PATCH",
+    }));
+    vi.unstubAllGlobals();
   });
 
   it("准确解析全部关键后台路由的多级面包屑（修复 /admin/moderation 与设置子页）", () => {
