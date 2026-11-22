@@ -40,6 +40,8 @@ export const generationSizeSchema = z.string()
 
 export const generationQualitySchema = z.enum(["auto", "low", "medium", "high"]).default("auto");
 export const generationOutputFormatSchema = z.enum(["png", "jpeg", "webp"]).default("png");
+/** 对话模式的网页出图多一种：动图 GIF。画布和对外接口暂不开放，仍用上面那个。 */
+const chatOutputFormatSchema = z.enum(["png", "jpeg", "webp", "gif"]).default("png");
 export const generationModerationSchema = z.enum(["auto", "low"]).default("auto");
 
 export const moderationResponseSchema = z.object({
@@ -94,7 +96,7 @@ export const generateSchema = z.object({
   model: z.string().trim().min(1, "请选择模型"),
   negativePrompt: z.string().trim().max(1000).optional().nullable(),
   outputCompression: generationOutputCompressionSchema,
-  outputFormat: generationOutputFormatSchema,
+  outputFormat: chatOutputFormatSchema,
   prompt: z.string().trim().min(2, "提示词至少 2 个字符").max(GENERATION_PROMPT_MAX_LENGTH),
   providerMode: z.enum(["built_in", "custom"]).default("built_in"),
   quality: generationQualitySchema,
@@ -105,8 +107,9 @@ export const generateSchema = z.object({
   size: generationSizeSchema,
 }).transform((value) => ({
   ...value,
+  // PNG 无损不用压缩；GIF 上游不支持自定义压缩，带了会被拒。
   outputCompression:
-    value.outputFormat === "png"
+    value.outputFormat === "png" || value.outputFormat === "gif"
       ? null
       : value.outputCompression ?? 100,
 }));

@@ -122,7 +122,7 @@ function isGenerationQuality(value: unknown): value is GenerationQuality {
 }
 
 function isGenerationOutputFormat(value: unknown): value is GenerationOutputFormat {
-  return value === "png" || value === "jpeg" || value === "webp";
+  return value === "png" || value === "jpeg" || value === "webp" || value === "gif";
 }
 
 function isGenerationModeration(value: unknown): value is GenerationModeration {

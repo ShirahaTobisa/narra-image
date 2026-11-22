@@ -14,7 +14,7 @@ import type {
   GenerationType,
 } from "@/lib/types";
 
-import { MODERATION_OPTIONS, OUTPUT_FORMAT_OPTIONS, QUALITY_OPTIONS } from "../constants";
+import { CHAT_OUTPUT_FORMAT_OPTIONS, MODERATION_OPTIONS, QUALITY_OPTIONS } from "../constants";
 import type {
   ChannelInfo,
   CustomProviderDraft,
@@ -339,14 +339,20 @@ export function AdvancedSettings({
                     onChange={(event) => onChangeOutputFormat(event.target.value as GenerationOutputFormat)}
                     className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface-strong)]/50 px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
                   >
-                    {OUTPUT_FORMAT_OPTIONS.map((option) => (
+                    {CHAT_OUTPUT_FORMAT_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
                 </label>
               </div>
 
-              {outputFormat !== "png" && (
+              {outputFormat === "gif" && (
+                <p className="text-xs leading-relaxed text-[var(--ink-soft)]">
+                  动图只有 gpt-image-2.6 模型能出，一次 1 张，尺寸限 1024x1024、1536x1024、1024x1536 或自动，出图比普通图慢。
+                </p>
+              )}
+
+              {outputFormat !== "png" && outputFormat !== "gif" && (
                 <label>
                   <span className="mb-1.5 block text-xs font-medium text-[var(--ink-soft)]">压缩质量 {outputCompression}%</span>
                   <input
