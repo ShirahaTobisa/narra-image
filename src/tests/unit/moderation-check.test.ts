@@ -297,10 +297,14 @@ describe("内容审核 checkGenerationInput", () => {
 
     expect(await pending).toEqual({ allowed: true });
     expect(images.map((image) => image.data)).toEqual(originalBytes);
-    expect(sentModerationBody(1).input).toEqual([
-      { type: "text", text: "a blue landscape" },
-      ...originalBytes.map((bytes) => ({ type: "image_url", image_url: { url: `data:image/png;base64,${bytes.toString("base64")}` } })),
-    ]);
+    // 文字单独一次，然后每张图各一次（审核接口一次只收一张图），顺序和原图一致。
+    expect(global.fetch).toHaveBeenCalledTimes(17);
+    originalBytes.forEach((bytes, index) => {
+      expect(sentModerationBody(index + 1).input).toEqual([
+        { type: "text", text: "a blue landscape" },
+        { type: "image_url", image_url: { url: `data:image/png;base64,${bytes.toString("base64")}` } },
+      ]);
+    });
   });
 
   it("本机通过后仍执行远程审核，远程拒绝记录远程模型", async () => {
@@ -373,6 +377,26 @@ describe("内容审核 checkGenerationInput", () => {
 
     expect(await checkGenerationInput({ builtIn: true, prompt: "adult character", userId: "u1" })).toEqual({ allowed: true });
     expect(mockDb.contentReview.create).not.toHaveBeenCalled();
+  });
+
+  it("多张参考图逐张送审（接口一次只收一张图），任何一张该拒就拒", async () => {
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    const answer = (result: unknown) => ({ json: async () => ({ results: [result] }), ok: true });
+    const refused = moderationResult({ category_scores: { sexual: 0.9, "sexual/minors": 0, hate: 0 } });
+    // 依次是：文字单独、第一张图、第二张图。
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce(answer(moderationResult()))
+      .mockResolvedValueOnce(answer(moderationResult()))
+      .mockResolvedValueOnce(answer(refused));
+
+    expect(await checkGenerationInput({ builtIn: true, prompt: "two references", images: [pngImage(), pngImage()], userId: "u1" }))
+      .toEqual({ allowed: false, message: AI_BLOCK_MESSAGE });
+    expect(global.fetch).toHaveBeenCalledTimes(3);
+    expect(sentModerationBody(0).input).toBe("two references");
+    for (const call of [1, 2]) {
+      const parts = sentModerationBody(call).input as Array<{ type: string }>;
+      expect(parts.map((part) => part.type)).toEqual(["text", "image_url"]);
+    }
   });
 
   it("站内渠道 24 小时内被上游拦截达到 3 次时暂停，不再送审", async () => {

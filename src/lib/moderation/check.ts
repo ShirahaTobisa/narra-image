@@ -236,30 +236,40 @@ async function callModerationAi(
   images: ModerationImage[],
 ): Promise<AiModerationOutcome> {
   await assertModerationImages(images);
-  if (images.length > 0) {
-    const local = await checkLocalImages(images, cfg.aiThreshold);
-    if (local.blocked) return local;
-    // 文字跟图一起审时分数会被拉低（实测同一段话单独 0.11、带图 0.02），所以先单独审一遍文字。
-    if (text) {
-      const textAlone = await callModerationAi(cfg, text, []);
-      if (textAlone.blocked) return textAlone;
-    }
+  if (images.length === 0) return requestModeration(cfg, text);
+  const local = await checkLocalImages(images, cfg.aiThreshold);
+  if (local.blocked) return local;
+  // 文字跟图一起审时分数会被拉低（实测同一段话单独 0.11、带图 0.02），所以先单独审一遍文字。
+  if (text) {
+    const textAlone = await requestModeration(cfg, text);
+    if (textAlone.blocked) return textAlone;
   }
+  // 审核接口一次请求最多收 1 张图（两张就报 400，整次提交会被当成审核故障拒掉），
+  // 多张参考图逐张带着文字送，任何一张该拒就拒。
+  const outcomes = await Promise.all(images.map((image) => requestModeration(cfg, text, image)));
+  return outcomes.find((outcome) => outcome.blocked) ?? { blocked: false };
+}
 
+/** 向审核接口发一次请求：纯文字，或文字带一张图。 */
+async function requestModeration(
+  cfg: Awaited<ReturnType<typeof resolveModerationConfig>>,
+  text: string,
+  image?: ModerationImage,
+): Promise<AiModerationOutcome> {
   const url = new URL(`${cfg.aiBaseUrl?.trim().replace(/\/+$/, "")}/moderations`);
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error("审核接口地址无效");
   }
-  const input = images.length === 0
+  const input = !image
     ? text
     : [
         ...(text ? [{ text, type: "text" }] : []),
-        ...images.map((image) => ({
+        {
           image_url: {
             url: `data:${image.mimeType};base64,${Buffer.from(image.data).toString("base64")}`,
           },
           type: "image_url",
-        })),
+        },
       ];
 
   const response = await fetch(url.toString(), {
@@ -286,7 +296,7 @@ async function callModerationAi(
   for (const result of data.results) {
     const appliedTypes = result.category_applied_input_types;
     // 旧纯文本接口可不返回覆盖字段；明确返回时必须覆盖所有文本分类。
-    if ((images.length > 0 && !appliedTypes?.sexual?.includes("image"))
+    if ((image && !appliedTypes?.sexual?.includes("image"))
       || (text && appliedTypes && (!appliedTypes.sexual?.includes("text")
         || !appliedTypes["sexual/minors"]?.includes("text")))) {
       throw new Error("审核结果未覆盖全部输入类型");
