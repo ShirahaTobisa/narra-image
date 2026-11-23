@@ -31,7 +31,8 @@ export async function PATCH(
 
     const updated = await db.user.update({
       where: { id },
-      data: { bannedAt: body.banned ? new Date() : null },
+      // 解封时连同「连续被拒」的计数一起清零，不然下一次提交又会被自动封号
+      data: body.banned ? { bannedAt: new Date() } : { bannedAt: null, moderationClearedAt: new Date() },
       select: { bannedAt: true, id: true },
     });
     revalidateTag("featured-works", { expire: 0 });

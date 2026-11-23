@@ -212,6 +212,11 @@ const envSchema = z.object({
   MODERATION_MODEL: z.string().trim().min(1).default("omni-moderation-latest"),
   MODERATION_SENSITIVE_WORDS_ENABLED: booleanEnv(true),
   MODERATION_THRESHOLD: floatEnv(0.5),
+  // 预审（可选）：问一个能看图的大模型「会不会被出图渠道拒」，三项都填了才跑，出错或超时放行
+  PRECHECK_API_KEY: optionalString(),
+  PRECHECK_BASE_URL: optionalUrl(),
+  PRECHECK_MODEL: optionalString(),
+  PRECHECK_TIMEOUT_MS: integerEnv(15_000, 1_000, 120_000),
   S3_ACCESS_KEY_ID: optionalString(),
   S3_BUCKET: optionalString(),
   S3_ENDPOINT: optionalUrl(),

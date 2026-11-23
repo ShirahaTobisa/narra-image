@@ -58,16 +58,19 @@ const KIND_TABS: AdminTabOption[] = [
   { label: "全部触发", value: "" },
   { label: "敏感词命中", value: "sensitive_word" },
   { label: "AI 审核拦截", value: "ai_moderation" },
+  { label: "预审拦截", value: "precheck" },
   { label: "上游渠道拒绝", value: "provider" },
 ];
 
 const KIND_LABELS: Record<string, string> = {
   ai_moderation: "AI 审核",
+  precheck: "预审",
   provider: "上游拒绝",
   sensitive_word: "敏感词",
 };
 
 const KIND_STYLES: Record<string, string> = {
+  precheck: "bg-orange-100 text-orange-800",
   provider: "bg-violet-100 text-violet-800",
   sensitive_word: "bg-amber-100 text-amber-800",
 };
@@ -381,6 +384,9 @@ export function ModerationReviewsBoard({
                     </span>
                     {review.kind === "provider" ? (
                       <span className="text-xs text-[var(--ink-soft)]">过了本站审核，被出图渠道拒绝</span>
+                    ) : null}
+                    {review.kind === "precheck" ? (
+                      <span className="text-xs text-[var(--ink-soft)]">预审判断会被出图渠道拒绝{review.category ? `：${review.category}` : ""}</span>
                     ) : null}
                     {review.kind === "sensitive_word" && review.hitWords.length > 0 ? (
                       <span className="rounded-md bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-700">

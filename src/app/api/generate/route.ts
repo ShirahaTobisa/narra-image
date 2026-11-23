@@ -148,6 +148,7 @@ export async function POST(request: Request) {
       builtIn: body.providerMode === "built_in",
       images: [...fileSourceImages, ...siteReferenceImages],
       negativePrompt: body.negativePrompt,
+      precheck: true,
       prompt: body.prompt,
       userId: user.id,
     });

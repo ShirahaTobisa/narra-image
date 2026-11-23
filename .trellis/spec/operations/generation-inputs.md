@@ -39,6 +39,8 @@
 - `ContentReview` 没有渠道字段，不能假称只计内置来源：该用户的头像、公开署名和可选自填渠道审核产生的明确违规也计入。头像与署名使用同一强制审核入口；自填生成仍保持原有开关语义。预审拒绝立即返回、不创建生成任务，每次仅写一条审核记录，因此不会与上游拒绝重复计次。
 - 后台「内容风控与拦截中心」与上面的计数同源：拦截明细把 `ContentReview` 和上游明确安全拒绝的任务按时间合成一个列表（类型 `provider`），违规榜两者按人合计，最近24小时满3次的标为暂停中并排在最前。上游拒绝的查询条件只在 `check.ts` 的 `PROVIDER_REFUSAL_WHERE` 定义一处，暂停计数和后台页面共用；页面搜索词必须放进 `AND`，不能覆盖该条件自带的 `OR`。
 - 管理员可在该页手动暂停或解除暂停某个账号的站内提交（`PATCH /api/admin/users/[id]/pause`）：`User.generationPausedAt` 非空即暂停，提示 `MANUAL_PAUSE_MESSAGE`，不查次数也不送审；解除时清空它并写 `User.moderationClearedAt`，这之前的拒绝不再计入24小时计数（自动暂停一并解除），拦截记录本身保留。手动暂停的账号即使没有拦截记录也必须出现在违规榜上，否则无处解除。
+- 生成请求（网页和开发者 API）在前面几道都过了以后跑预审（`precheck.ts`，PRECHECK_* 三项都配了才跑）：问一个能看图的大模型会不会被出图渠道拒，图生图附最多 4 张缩到 1024 的参考图；出错或超时放行。拦下记 `ContentReview` kind=`precheck`（category 存理由），不计入暂停和封号。
+- 从最近一次成功出图、管理员解除暂停或解封之后算起，本站明确拒绝加上游拒绝连续满 5 次自动封号（`CONSECUTIVE_REFUSAL_BAN_LIMIT`）；本站拒的当场封，上游拒的在下一次提交时算到。管理员解封同时写 `moderationClearedAt`，计数清零。
 - AI 输入包含完整 prompt 与 negativePrompt，后者标明“需要排除的内容”；敏感词仅做 NFKC 和不可见格式字符归一化，不能靠词库替代 AI。
 - 审核 `results` 至少一项；每项 `flagged`、`categories.sexual` 和 `categories["sexual/minors"]` 必须是 boolean；两个对应分数必须存在，所有分数均为有限 0～1 数字。这些布尔值只用来确认响应完整，不参与判定：拒不拒只看分数。
 - 图像必须明确被 `category_applied_input_types.sexual` 的 `image` 覆盖；有文字且返回覆盖字段时，sexual 和 sexual/minors 都必须含 `text`。旧纯文本响应可以省略整个覆盖字段。官方 omni 的 sexual/minors 仅支持文字，不能声称它识别了图片人物年龄，也不能要求该分类返回 image。

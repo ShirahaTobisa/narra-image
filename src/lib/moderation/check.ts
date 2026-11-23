@@ -1,11 +1,13 @@
 import "server-only";
 
 import type { Prisma } from "@prisma/client";
+import { revalidateTag } from "next/cache";
 
 import { db } from "@/lib/db";
 import { resolveModerationConfig } from "@/lib/moderation/config";
 import { assertModerationImages } from "@/lib/moderation/images";
 import { checkLocalImages } from "@/lib/moderation/local-images";
+import { precheckGeneration } from "@/lib/moderation/precheck";
 import { matchSensitiveWords } from "@/lib/moderation/sensitive-words";
 import { moderationResponseSchema } from "@/lib/validators";
 
@@ -13,6 +15,8 @@ const MODERATION_TIMEOUT_MS = 8_000;
 /** 站内审核和上游安全拒绝合计达到上限，暂停后续站内提交。 */
 export const MODERATION_BLOCK_LIMIT = 3;
 const MODERATION_BLOCK_WINDOW_MS = 24 * 60 * 60 * 1000;
+/** 连续被拒这么多次（中间没成功出过图）直接封号。 */
+export const CONSECUTIVE_REFUSAL_BAN_LIMIT = 5;
 /** 本站自己拒绝时记下的两类记录。 */
 const SITE_BLOCK_KINDS = ["sensitive_word", "ai_moderation"];
 /** 上游拒绝：过了本站审核、被出图渠道以内容审核为由拒掉的任务。 */
@@ -34,6 +38,8 @@ export const MODERATION_UNAVAILABLE_MESSAGE = "内容审核暂时无法完成，
 export const PROVIDER_COOLDOWN_MESSAGE =
   "近 24 小时内站内内容审核或模型方安全审核累计拒绝已达 3 次，已暂停提交，请稍后再试";
 export const MANUAL_PAUSE_MESSAGE = "管理员已暂停该账号的站内提交，如有疑问请联系管理员";
+export const PRECHECK_BLOCK_MESSAGE = "AI 审核拦截：这条描述很可能会被 OpenAI 拒绝，请调整后再试";
+export const REFUSAL_BAN_MESSAGE = "连续多次提交被拒绝的内容，账号已被封禁";
 
 export type ModerationImage = {
   data: Buffer | Uint8Array;
@@ -48,6 +54,8 @@ type ModerationCheckInput = {
   images?: ModerationImage[];
   /** 站内强制审核：必须完成 AI 审核，且检查用户最近的内容拒绝次数 */
   builtIn?: boolean;
+  /** 生成请求：现有审核都过了以后再跑预审（会不会被出图渠道拒） */
+  precheck?: boolean;
 };
 
 export type ModerationCheckResult =
@@ -87,17 +95,11 @@ export async function checkGenerationInput(
   if (cfg.sensitiveWordsEnabled) {
     const hits = matchSensitiveWords(input.prompt, input.negativePrompt);
     if (hits.length > 0) {
-      await db.contentReview.create({
-        data: {
-          category: hits[0]?.category ?? null,
-          hitWords: Array.from(new Set(hits.map((hit) => hit.word))),
-          kind: "sensitive_word",
-          negativePrompt: input.negativePrompt || null,
-          prompt: input.prompt ?? "",
-          userId: input.userId,
-        },
-      });
-      return { allowed: false, message: SENSITIVE_WORD_BLOCK_MESSAGE };
+      return refuse(input, {
+        category: hits[0]?.category ?? null,
+        hitWords: Array.from(new Set(hits.map((hit) => hit.word))),
+        kind: "sensitive_word",
+      }, SENSITIVE_WORD_BLOCK_MESSAGE);
     }
   }
 
@@ -126,22 +128,58 @@ export async function checkGenerationInput(
     }
 
     if (outcome.blocked) {
-      await db.contentReview.create({
-        data: {
-          aiModel: outcome.model ?? cfg.aiModel,
-          aiScore: outcome.score,
-          category: outcome.category,
-          kind: "ai_moderation",
-          negativePrompt: input.negativePrompt || null,
-          prompt: input.prompt ?? "",
-          userId: input.userId,
-        },
-      });
-      return { allowed: false, message: AI_BLOCK_MESSAGE };
+      return refuse(input, {
+        aiModel: outcome.model ?? cfg.aiModel,
+        aiScore: outcome.score,
+        category: outcome.category,
+        kind: "ai_moderation",
+      }, AI_BLOCK_MESSAGE);
+    }
+  }
+
+  // 3. 预审：生成请求在前面都过了以后，再问一句会不会被出图渠道拒。会误拦，所以不计入暂停和封号。
+  if (input.builtIn && input.precheck) {
+    const verdict = await precheckGeneration(text, images);
+    if (verdict.refuse) {
+      return refuse(input, { aiModel: verdict.model, category: verdict.reason || null, kind: "precheck" }, PRECHECK_BLOCK_MESSAGE);
     }
   }
 
   return { allowed: true };
+}
+
+/** 记下一条拦截记录；本站明确拒绝的，顺带看是不是已经连续被拒到该封号了。 */
+async function refuse(
+  input: ModerationCheckInput,
+  review: Omit<Prisma.ContentReviewUncheckedCreateInput, "negativePrompt" | "prompt" | "userId">,
+  message: string,
+): Promise<ModerationCheckResult> {
+  await db.contentReview.create({
+    data: { ...review, negativePrompt: input.negativePrompt || null, prompt: input.prompt ?? "", userId: input.userId },
+  });
+  const banned = input.builtIn && SITE_BLOCK_KINDS.includes(review.kind) && await banAfterConsecutiveRefusals(input.userId);
+  return { allowed: false, message: banned ? REFUSAL_BAN_MESSAGE : message };
+}
+
+/**
+ * 从最近一次成功出图（和管理员最近一次解除暂停、解封）之后算起，本站明确拒绝加上游拒绝满
+ * CONSECUTIVE_REFUSAL_BAN_LIMIT 次就封号，封了返回 true。上游拒绝是出图进程记的，下一次提交时才会算到。
+ */
+async function banAfterConsecutiveRefusals(userId: string) {
+  const [user, lastSuccess] = await Promise.all([
+    db.user.findUnique({ select: { moderationClearedAt: true }, where: { id: userId } }),
+    db.generationJob.findFirst({ orderBy: { createdAt: "desc" }, select: { createdAt: true }, where: { providerMode: "BUILT_IN", status: "SUCCEEDED", userId } }),
+  ]);
+  const since = [user?.moderationClearedAt, lastSuccess?.createdAt].reduce<Date>(
+    (latest, value) => (value && value > latest ? value : latest), new Date(0));
+  const [site, provider] = await Promise.all([
+    db.contentReview.count({ where: { createdAt: { gte: since }, kind: { in: SITE_BLOCK_KINDS }, userId } }),
+    db.generationJob.count({ where: { ...PROVIDER_REFUSAL_WHERE, createdAt: { gte: since }, userId } }),
+  ]);
+  if (site + provider < CONSECUTIVE_REFUSAL_BAN_LIMIT) return false;
+  await db.user.update({ data: { bannedAt: new Date() }, where: { id: userId } });
+  revalidateTag("featured-works", { expire: 0 });
+  return true;
 }
 
 export class ModerationBlockedError extends Error {
@@ -160,6 +198,7 @@ export async function assertExternalGenerationAllowed(
   const result = await checkGenerationInput({
     builtIn: true,
     images: input.sourceImages,
+    precheck: true,
     negativePrompt: input.negativePrompt,
     prompt: input.prompt,
     userId,
@@ -177,6 +216,7 @@ export async function assertExternalGenerationAllowed(
 async function pauseMessage(userId: string) {
   const user = await db.user.findUnique({ select: { generationPausedAt: true, moderationClearedAt: true }, where: { id: userId } });
   if (user?.generationPausedAt) return MANUAL_PAUSE_MESSAGE;
+  if (await banAfterConsecutiveRefusals(userId)) return REFUSAL_BAN_MESSAGE;
   const windowStart = new Date(Date.now() - MODERATION_BLOCK_WINDOW_MS);
   const cleared = user?.moderationClearedAt;
   const createdAt = { gte: cleared && cleared > windowStart ? cleared : windowStart };

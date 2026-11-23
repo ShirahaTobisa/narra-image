@@ -1,22 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { canvasPng } from "./helpers/canvas-api-fixtures";
 
-const { mockDb, mockResolveConfig, mockMatchWords, mockCheckLocalImages } = vi.hoisted(() => {
+const { mockDb, mockResolveConfig, mockMatchWords, mockCheckLocalImages, mockPrecheck } = vi.hoisted(() => {
   const contentReview = { count: vi.fn(), create: vi.fn(), findMany: vi.fn(), groupBy: vi.fn() };
-  const generationJob = { count: vi.fn(), findMany: vi.fn(), groupBy: vi.fn() };
-  const user = { findMany: vi.fn(), findUnique: vi.fn() };
+  const generationJob = { count: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), groupBy: vi.fn() };
+  const user = { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() };
   const resolveConfig = vi.fn();
   const matchWords = vi.fn();
   return {
     mockDb: { contentReview, generationJob, user },
     mockCheckLocalImages: vi.fn(),
     mockMatchWords: matchWords,
+    mockPrecheck: vi.fn(),
     mockResolveConfig: resolveConfig,
   };
 });
 
 vi.mock("server-only", () => ({}));
+vi.mock("next/cache", () => ({ revalidateTag: vi.fn() }));
 vi.mock("@/lib/db", () => ({ db: mockDb }));
+vi.mock("@/lib/moderation/precheck", () => ({ precheckGeneration: mockPrecheck }));
 vi.mock("@/lib/moderation/config", () => ({
   resolveModerationConfig: mockResolveConfig,
 }));
@@ -30,7 +33,10 @@ vi.mock("@/lib/moderation/sensitive-words", () => ({
 
 import {
   checkGenerationInput,
+  CONSECUTIVE_REFUSAL_BAN_LIMIT,
   listModerationOffenders,
+  PRECHECK_BLOCK_MESSAGE,
+  REFUSAL_BAN_MESSAGE,
   MANUAL_PAUSE_MESSAGE,
   AI_BLOCK_MESSAGE,
   MODERATION_UNAVAILABLE_MESSAGE,
@@ -420,13 +426,14 @@ describe("内容审核 checkGenerationInput", () => {
     await expect(
       checkGenerationInput({ builtIn: true, prompt: "a cat", userId: "u1" }),
     ).resolves.toEqual({ allowed: true });
-    expect(mockDb.generationJob.count).toHaveBeenCalledTimes(1);
+    // 站内渠道查两遍：连续被拒（封号）和 24 小时内被拒（暂停）。
+    expect(mockDb.generationJob.count).toHaveBeenCalledTimes(2);
 
     await expect(
       checkGenerationInput({ builtIn: false, prompt: "a cat", userId: "u1" }),
     ).resolves.toEqual({ allowed: true });
-    expect(mockDb.generationJob.count).toHaveBeenCalledTimes(1);
-    expect(mockDb.contentReview.count).toHaveBeenCalledTimes(1);
+    expect(mockDb.generationJob.count).toHaveBeenCalledTimes(2);
+    expect(mockDb.contentReview.count).toHaveBeenCalledTimes(2);
   });
 
   it("后台违规榜把本站拒绝和上游拒绝按人合计，暂停中的排最前", async () => {
@@ -456,6 +463,50 @@ describe("内容审核 checkGenerationInput", () => {
     expect(mockDb.generationJob.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ createdAt: { gte: expect.any(Date) }, providerMode: "BUILT_IN", status: "FAILED" }),
     }));
+  });
+
+  it("预审判定会被上游拒时拦下并单独记一类，不送预审的请求不问", async () => {
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    mockModerationResponse([moderationResult()]);
+    mockPrecheck.mockResolvedValue({ model: "deepseek-flash", reason: "年龄不明角色擦边", refuse: true });
+
+    expect(await checkGenerationInput({ builtIn: true, precheck: true, prompt: "a school girl", userId: "u1" }))
+      .toEqual({ allowed: false, message: PRECHECK_BLOCK_MESSAGE });
+    expect(mockPrecheck).toHaveBeenCalledWith("a school girl", []);
+    expect(mockDb.contentReview.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      aiModel: "deepseek-flash", category: "年龄不明角色擦边", kind: "precheck", prompt: "a school girl", userId: "u1",
+    }) });
+    // 预审会误拦，不拿它算封号。
+    expect(mockDb.generationJob.findFirst).toHaveBeenCalledTimes(1);
+
+    mockPrecheck.mockClear();
+    await expect(checkGenerationInput({ builtIn: true, prompt: "a gallery title", userId: "u1" })).resolves.toEqual({ allowed: true });
+    expect(mockPrecheck).not.toHaveBeenCalled();
+  });
+
+  it(`从最近一次成功出图之后连续被拒满 ${CONSECUTIVE_REFUSAL_BAN_LIMIT} 次就封号`, async () => {
+    const lastSuccess = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    mockDb.generationJob.findFirst.mockResolvedValue({ createdAt: lastSuccess });
+    mockDb.contentReview.count.mockResolvedValue(2);
+    mockDb.generationJob.count.mockResolvedValue(3);
+
+    expect(await checkGenerationInput({ builtIn: true, prompt: "a cat", userId: "u1" }))
+      .toEqual({ allowed: false, message: REFUSAL_BAN_MESSAGE });
+    expect(mockDb.contentReview.count).toHaveBeenCalledWith({ where: expect.objectContaining({ createdAt: { gte: lastSuccess }, userId: "u1" }) });
+    expect(mockDb.user.update).toHaveBeenCalledWith({ data: { bannedAt: expect.any(Date) }, where: { id: "u1" } });
+    expect(mockResolveConfig).not.toHaveBeenCalled();
+  });
+
+  it("差一次就不封；第五次正好是本站拒的，当场封号", async () => {
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    mockMatchWords.mockReturnValue([{ category: "fixture", word: "fixture" }]);
+    mockDb.generationJob.count.mockResolvedValue(0);
+    mockDb.contentReview.count.mockResolvedValueOnce(0).mockResolvedValueOnce(0).mockResolvedValue(5);
+
+    expect(await checkGenerationInput({ builtIn: true, prompt: "fixture", userId: "u1" }))
+      .toEqual({ allowed: false, message: REFUSAL_BAN_MESSAGE });
+    expect(mockDb.contentReview.create).toHaveBeenCalledOnce();
+    expect(mockDb.user.update).toHaveBeenCalledOnce();
   });
 
   it("管理员手动暂停的账号直接拦，不查次数也不送审", async () => {

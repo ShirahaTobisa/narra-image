@@ -7,14 +7,14 @@ import { ModerationReviewsBoard } from "@/components/admin/moderation-reviews-bo
 import { ModerationNavTabs } from "@/components/admin/moderation/moderation-nav-tabs";
 import { AdminPageHeader } from "@/components/admin/ui/admin-page-header";
 import { db } from "@/lib/db";
-import { listModerationOffenders, MODERATION_BLOCK_LIMIT, PROVIDER_REFUSAL_WHERE } from "@/lib/moderation/check";
+import { CONSECUTIVE_REFUSAL_BAN_LIMIT, listModerationOffenders, MODERATION_BLOCK_LIMIT, PROVIDER_REFUSAL_WHERE } from "@/lib/moderation/check";
 import { requireAdminRecord } from "@/lib/server/current-user";
 import { exactUserWhere } from "@/lib/server/user-lookup";
 
 export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 20;
-const KINDS = ["sensitive_word", "ai_moderation", "provider"];
+const KINDS = ["sensitive_word", "ai_moderation", "precheck", "provider"];
 const userSelect = { bannedAt: true, email: true, id: true, nickname: true, uid: true } as const;
 
 function boardUser(user: { bannedAt: Date | null; email: string; id: string; nickname: string | null; uid: number }) {
@@ -124,7 +124,7 @@ export default async function AdminModerationPage({
           eyebrow="Moderation"
           icon={ShieldAlert}
           title="内容风控与拦截中心"
-          description={`集中查看被拦下的生成请求：本站敏感词和 AI 审核拒绝的（不扣积分），以及过了本站审核、被上游渠道拒绝的。24 小时内合计满 ${MODERATION_BLOCK_LIMIT} 次的账号会自动暂停提交，可以在这里看过提示词后手动封禁。`}
+          description={`集中查看被拦下的生成请求：本站敏感词、AI 审核和预审拒绝的（不扣积分），以及过了本站审核、被上游渠道拒绝的。24 小时内被拒满 ${MODERATION_BLOCK_LIMIT} 次的账号自动暂停提交，连续被拒 ${CONSECUTIVE_REFUSAL_BAN_LIMIT} 次自动封禁，预审拦截不计入这两条。可以在这里看过提示词后手动暂停或封禁。`}
           badges={
             <span className="rounded-full border border-[var(--line)] bg-white px-3 py-1 font-mono text-xs font-medium text-[var(--ink-soft)]">
               当前结果 {totalCount.toLocaleString("zh-CN")} 条

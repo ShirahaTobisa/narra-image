@@ -22,6 +22,10 @@ describe("封禁变更立即失效公开作品缓存", () => {
     expect(response.status).toBe(200);
     expect((await response.json()).data.user.banned).toBe(banned);
     expect(mocks.revalidate).toHaveBeenCalledWith("featured-works", { expire: 0 });
+    // 解封连同「连续被拒」的计数一起清零，否则下一次提交又会被自动封号
+    expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: banned ? { bannedAt: expect.any(Date) } : { bannedAt: null, moderationClearedAt: expect.any(Date) },
+    }));
     expect(mocks.update.mock.invocationCallOrder[0]).toBeLessThan(mocks.revalidate.mock.invocationCallOrder[0]);
   });
 

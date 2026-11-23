@@ -89,6 +89,7 @@ describe("后台基础 UI 原语与路由契约", () => {
     expect(screen.getByText("上游渠道拒绝")).toBeInTheDocument();
     expect(screen.getByText("上游拒绝")).toBeInTheDocument();
     expect(screen.getByText("过了本站审核，被出图渠道拒绝")).toBeInTheDocument();
+    expect(screen.getByText("预审拦截")).toBeInTheDocument();
 
     await user.click(screen.getAllByRole("button", { name: "看记录" })[0]);
     expect(mockPush).toHaveBeenCalledWith("/admin/moderation?q=%23112");
