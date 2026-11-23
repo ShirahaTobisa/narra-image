@@ -41,7 +41,8 @@ func providerPolicyRefusal(value any) bool {
 		for _, key := range []string{"code", "type", "reason"} {
 			field, _ := item[key].(string)
 			switch strings.ToLower(field) {
-			case "content_policy_violation", "moderation_blocked", "content_filter", "safety_violation", "refusal", "response.refusal.done":
+			case "content_policy_violation", "moderation_blocked", "content_filter", "safety_violation", "refusal", "response.refusal.done",
+				"upstream_policy_refusal_text":
 				return true
 			}
 		}

@@ -17,6 +17,7 @@ func TestProviderPolicyHTTPRefusal(t *testing.T) {
 		`{"error":{"code":"content_policy_violation","message":"private prompt text"}}`,
 		`{"error":{"code":"moderation_blocked","message":"private prompt text"}}`,
 		`{"error":{"message":"Your request was rejected by the safety system: private prompt text"}}`,
+		`{"error":{"code":"upstream_policy_refusal_text","message":"We're so sorry, but the image we created may violate our content policies.","type":"invalid_request_error"}}`,
 		`moderation_blocked: private prompt text`,
 	} {
 		t.Run(body, func(t *testing.T) {

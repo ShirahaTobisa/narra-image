@@ -344,7 +344,8 @@ func downloadRemoteImage(ctx context.Context, rawURL string, client *http.Client
 		return parseDataURL(rawURL, 0)
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	// 渠道已经出图并扣了额度；4K 图约 11MB，渠道图床高峰时很慢，30 秒不够。
+	reqCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
 	request, err := http.NewRequestWithContext(reqCtx, http.MethodGet, rawURL, nil)
