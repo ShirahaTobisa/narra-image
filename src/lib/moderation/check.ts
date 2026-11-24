@@ -54,7 +54,7 @@ type ModerationCheckInput = {
   images?: ModerationImage[];
   /** 站内强制审核：必须完成 AI 审核，且检查用户最近的内容拒绝次数 */
   builtIn?: boolean;
-  /** 生成请求：现有审核都过了以后再跑预审（会不会被出图渠道拒） */
+  /** 生成请求：现有审核都过了以后再跑预审（会不会被出图渠道拒）；管理员的生成请求不审 */
   precheck?: boolean;
 };
 
@@ -75,6 +75,10 @@ export async function checkGenerationInput(
 ): Promise<ModerationCheckResult> {
   let cfg: Awaited<ReturnType<typeof resolveModerationConfig>>;
   try {
+    // 管理员自己出图（网页和开发者 API）不过站内审核，也不会被暂停或封号；上游照样会拒。
+    if (input.precheck && (await db.user.findUnique({ select: { role: true }, where: { id: input.userId } }))?.role === "ADMIN") {
+      return { allowed: true };
+    }
     const paused = input.builtIn ? await pauseMessage(input.userId) : null;
     if (paused) {
       return { allowed: false, message: paused };

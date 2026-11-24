@@ -484,6 +484,16 @@ describe("内容审核 checkGenerationInput", () => {
     expect(mockPrecheck).not.toHaveBeenCalled();
   });
 
+  it("管理员出图不过站内审核，也不查暂停和封号", async () => {
+    mockDb.user.findUnique.mockResolvedValueOnce({ role: "ADMIN" });
+    mockMatchWords.mockReturnValue([{ category: "fixture", word: "fixture" }]);
+
+    expect(await checkGenerationInput({ builtIn: true, precheck: true, prompt: "fixture", userId: "admin" })).toEqual({ allowed: true });
+    expect(mockResolveConfig).not.toHaveBeenCalled();
+    expect(mockPrecheck).not.toHaveBeenCalled();
+    expect(mockDb.contentReview.create).not.toHaveBeenCalled();
+  });
+
   it(`从最近一次成功出图之后连续被拒满 ${CONSECUTIVE_REFUSAL_BAN_LIMIT} 次就封号`, async () => {
     const lastSuccess = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
     mockDb.generationJob.findFirst.mockResolvedValue({ createdAt: lastSuccess });
