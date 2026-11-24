@@ -38,7 +38,8 @@ export const generationSizeSchema = z.string()
   .transform((value, ctx) => normalizeGenerationSize(value, ctx))
   .default("auto");
 
-export const generationQualitySchema = z.enum(["auto", "low", "medium", "high"]).default("auto");
+/** xhigh、max 只有 2.5、2.6 的 Sunburst 和 Flare 支持，更早的模型最高到 high。 */
+export const generationQualitySchema = z.enum(["auto", "low", "medium", "high", "xhigh", "max"]).default("auto");
 export const generationOutputFormatSchema = z.enum(["png", "jpeg", "webp"]).default("png");
 /** 对话模式的网页出图多一种：动图 GIF。画布和对外接口暂不开放，仍用上面那个。 */
 const chatOutputFormatSchema = z.enum(["png", "jpeg", "webp", "gif"]).default("png");

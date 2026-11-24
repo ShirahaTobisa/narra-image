@@ -3,6 +3,7 @@ import "server-only";
 import { formatImageGenerationData } from "@/lib/external-api/images";
 import { downloadExternalImage } from "@/lib/external-api/source-images";
 import { GENERATION_PROMPT_MAX_LENGTH } from "@/lib/generation/limits";
+import { generationQualitySchema } from "@/lib/validators";
 import type {
   GenerationModeration,
   GenerationOutputFormat,
@@ -133,9 +134,7 @@ function collectInputParts(input: unknown) {
 }
 
 function normalizeQuality(value: unknown): GenerationQuality {
-  return value === "low" || value === "medium" || value === "high" || value === "auto"
-    ? value
-    : "auto";
+  return generationQualitySchema.catch("auto").parse(value);
 }
 
 function normalizeModeration(value: unknown): GenerationModeration {

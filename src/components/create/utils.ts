@@ -3,7 +3,7 @@ import {
   getGenerationSizeLabel,
   normalizeGenerationSize,
 } from "@/lib/generation/sizes";
-import { SIZE_DOWNGRADE_TOLERANCE, SIZE_OPTIONS } from "./constants";
+import { QUALITY_OPTIONS, SIZE_DOWNGRADE_TOLERANCE, SIZE_OPTIONS } from "./constants";
 import { isImageExpired } from "@/lib/storage/image-availability";
 import type {
   GenerationImage,
@@ -118,7 +118,7 @@ export function getImageRatioLabel(generation: GenerationItem, image: Generation
 }
 
 function isGenerationQuality(value: unknown): value is GenerationQuality {
-  return value === "auto" || value === "low" || value === "medium" || value === "high";
+  return QUALITY_OPTIONS.some((option) => option.value === value);
 }
 
 function isGenerationOutputFormat(value: unknown): value is GenerationOutputFormat {

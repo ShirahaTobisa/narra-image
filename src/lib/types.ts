@@ -6,7 +6,7 @@ export type {
 } from "@/lib/generation/sizes";
 export { legacyGenerationSizeMap } from "@/lib/generation/sizes";
 
-export type GenerationQuality = "auto" | "low" | "medium" | "high";
+export type GenerationQuality = "auto" | "low" | "medium" | "high" | "xhigh" | "max";
 export type GenerationOutputFormat = "png" | "jpeg" | "webp" | "gif";
 export type GenerationModeration = "auto" | "low";
 

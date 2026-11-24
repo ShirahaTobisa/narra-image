@@ -13,7 +13,7 @@
 // src/lib/types.ts
 export type ProviderMode = "built_in" | "custom";
 export type GenerationType = "text_to_image" | "image_to_image" | "text_to_video" | "image_to_video";
-export type GenerationQuality = "auto" | "low" | "medium" | "high";
+export type GenerationQuality = "auto" | "low" | "medium" | "high" | "xhigh" | "max";
 export type GenerationOutputFormat = "png" | "jpeg" | "webp";
 export type GenerationModeration = "auto" | "low";
 export type UserRole = "user" | "admin";

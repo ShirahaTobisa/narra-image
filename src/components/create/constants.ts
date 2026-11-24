@@ -24,6 +24,8 @@ export const QUALITY_OPTIONS: Array<{ label: string; value: GenerationQuality }>
   { label: "低", value: "low" },
   { label: "中", value: "medium" },
   { label: "高", value: "high" },
+  { label: "超高", value: "xhigh" },
+  { label: "最高", value: "max" },
 ];
 
 export const OUTPUT_FORMAT_OPTIONS: Array<{ label: string; value: GenerationOutputFormat }> = [
