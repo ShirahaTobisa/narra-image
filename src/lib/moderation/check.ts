@@ -36,6 +36,14 @@ export const AI_BLOCK_MESSAGE = "AI 审核拦截：提交内容被本站 AI 审�
 /** 本站明确拒绝（不是审核出故障）时给用户的两种提示；上游拒绝的那一句在 prisma-mappers.ts。 */
 export const MODERATION_BLOCK_MESSAGES: readonly string[] = [SENSITIVE_WORD_BLOCK_MESSAGE, AI_BLOCK_MESSAGE];
 export const MODERATION_UNAVAILABLE_MESSAGE = "内容审核暂时无法完成，本次未生成，请稍后再试";
+const IMAGE_INPUT_MESSAGES = new Map([
+  ["image_mime_mismatch", "参考图的文件标记与实际格式不符，请重新导出为 PNG、JPEG 或 WebP 后上传"],
+  ["image_format_unsupported", "参考图格式暂不支持，请使用静态 PNG、JPEG、WebP 或 GIF 图片"],
+  ["image_animated", "参考图不支持动图，请选择静态图片"],
+  ["image_byte_limit", "单张参考图不能超过 20MB，请缩小文件后上传"],
+  ["image_decode_failed", "参考图无法读取，请重新导出后上传"],
+  ["image_container_invalid", "参考图文件不完整或格式异常，请重新导出后上传"],
+]);
 export const PROVIDER_COOLDOWN_MESSAGE =
   "近 24 小时内站内内容审核或模型方安全审核累计拒绝已达 3 次，已暂停提交，请稍后再试";
 export const MANUAL_PAUSE_MESSAGE = "管理员已暂停该账号的站内提交，如有疑问请联系管理员";
@@ -127,8 +135,9 @@ export async function checkGenerationInput(
     let outcome: AiModerationOutcome;
     try {
       outcome = await callModerationAi(cfg, text, images);
-    } catch {
-      return { allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE };
+    } catch (error) {
+      const message = error instanceof ModerationFailure ? IMAGE_INPUT_MESSAGES.get(error.code) : undefined;
+      return { allowed: false, message: message ?? MODERATION_UNAVAILABLE_MESSAGE };
     }
 
     if (outcome.blocked) {

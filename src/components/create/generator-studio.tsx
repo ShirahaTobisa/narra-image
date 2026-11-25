@@ -27,7 +27,7 @@ import {
 import type { ConversationGenerationsPage } from "@/lib/conversations/contracts";
 import { canvasCanonicalIdSchema, canvasGenerationParametersSchema } from "@/lib/validators";
 import { Alert } from "@/components/ui/alert";
-import { saveLink } from "@/components/works/download-image";
+import { imageDownloadFilename, saveLink } from "@/components/works/download-image";
 
 import { useCanvasDocuments } from "./hooks/use-canvas-documents";
 import { useCanvasEditor } from "./hooks/use-canvas-editor";
@@ -574,7 +574,7 @@ function StudioWorkspace({
       const blob = await response.blob();
       if (!request.isCurrent()) return;
       blobUrl = URL.createObjectURL(blob);
-      saveLink(blobUrl, "narra-image.png");
+      saveLink(blobUrl, imageDownloadFilename(url, blob.type, "narra-image"));
     } catch {
       if (request.isCurrent()) window.open(url, "_blank", "noopener,noreferrer");
     } finally {

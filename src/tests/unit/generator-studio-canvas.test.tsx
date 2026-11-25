@@ -630,7 +630,7 @@ describe("mounted studio canvas integration", () => {
     const controller = await openCanvas();
     const target = await graph(controller);
     let referenceId = "";
-    act(() => { referenceId = controller.importReference(target.canvasId, new File(["png"], "download.png", { type: "image/png" }), { x: 0, y: 350 }); });
+    act(() => { referenceId = controller.importReference(target.canvasId, new File(["webp"], "download.webp", { type: "image/webp" }), { x: 0, y: 350 }); });
     const preview = (await screen.findByAltText("画布参考图")).getAttribute("src")!;
     fireEvent.click(screen.getByRole("button", { name: "查看参考原图" }));
     await screen.findByAltText("放大查看");
@@ -647,8 +647,9 @@ describe("mounted studio canvas integration", () => {
       expect(revokeUrls).toHaveBeenCalledWith(preview);
       expect(requests.find((request) => request.path === preview)!.init.signal!.aborted).toBe(true);
     } else expect(revokeUrls).not.toHaveBeenCalledWith(preview);
-    await act(async () => downloadGate!.resolve(new Response(new Blob(["image"], { type: "image/png" }), { headers: { "content-type": "image/png" } })));
+    await act(async () => downloadGate!.resolve(new Response(new Blob(["image"], { type: "image/webp" }), { headers: { "content-type": "image/webp" } })));
     await waitFor(() => expect(click).toHaveBeenCalledTimes(operation === "account" ? 0 : 1));
+    if (operation !== "account") expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe("narra-image.webp");
     await waitFor(() => expect(revokeUrls).toHaveBeenCalledWith(preview));
     expect(sends()).toEqual([]);
   });

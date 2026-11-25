@@ -191,7 +191,7 @@ describe("内容审核 checkGenerationInput", () => {
 
     expect(await checkGenerationInput({
       builtIn: true, images, prompt: "private-prompt", negativePrompt: "private-negative", userId: "private-account",
-    })).toEqual({ allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE });
+    })).toEqual({ allowed: false, message: "参考图的文件标记与实际格式不符，请重新导出为 PNG、JPEG 或 WebP 后上传" });
     const diagnostic = JSON.parse(errorSpy.mock.calls[0][1]);
     expect(diagnostic).toMatchObject({
       stage: "image_validation", code: "image_mime_mismatch", actualFormat: "png", imageCount: 20, imageIndex: 1,
@@ -908,7 +908,7 @@ describe("内容审核 checkGenerationInput", () => {
 
     expect(await checkGenerationInput({
       builtIn: true, prompt: "a cat", images: [{ data: Buffer.from("not a PNG"), mimeType: "image/png" }], userId: "u1",
-    })).toEqual({ allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE });
+    })).toEqual({ allowed: false, message: "参考图无法读取，请重新导出后上传" });
     expect(mockCheckLocalImages).not.toHaveBeenCalled();
     expect(global.fetch).not.toHaveBeenCalled();
     expect(mockDb.contentReview.create).not.toHaveBeenCalled();
