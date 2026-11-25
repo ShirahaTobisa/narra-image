@@ -44,6 +44,7 @@ import {
   SENSITIVE_WORD_BLOCK_MESSAGE,
 } from "@/lib/moderation/check";
 import { LOCAL_IMAGE_MODEL } from "@/lib/moderation/local-images";
+import { ModerationFailure } from "@/lib/moderation/failure";
 
 function baseConfig(overrides: Record<string, unknown> = {}) {
   return {
@@ -176,6 +177,93 @@ describe("内容审核 checkGenerationInput", () => {
     expect(errorSpy).toHaveBeenCalled();
     expect(JSON.stringify(errorSpy.mock.calls)).not.toMatch(/secret-key|private-host|user-content/);
     expect(errorSpy.mock.calls.flat().every((value) => typeof value === "string")).toBe(true);
+    expect(JSON.parse(errorSpy.mock.calls[0][1])).toMatchObject({
+      event: "moderation_failure", stage: "remote_text", errorClass: "Error", code: "Error",
+      imageCount: 0, imageIndex: null, images: [], httpStatus: null,
+    });
+  });
+
+  it("图片格式失败记录对应序号与有限元数据，不记录原图或用户输入", async () => {
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const images = Array.from({ length: 20 }, () => pngImage());
+    images[1].mimeType = "image/png;private-filename.png;https://private-host";
+
+    expect(await checkGenerationInput({
+      builtIn: true, images, prompt: "private-prompt", negativePrompt: "private-negative", userId: "private-account",
+    })).toEqual({ allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE });
+    const diagnostic = JSON.parse(errorSpy.mock.calls[0][1]);
+    expect(diagnostic).toMatchObject({
+      stage: "image_validation", code: "image_mime_mismatch", actualFormat: "png", imageCount: 20, imageIndex: 1,
+      durationMs: expect.any(Number), errorClass: "ModerationFailure", httpStatus: null,
+    });
+    expect(diagnostic.durationMs).toBeGreaterThanOrEqual(0);
+    expect(diagnostic.images).toHaveLength(16);
+    expect(diagnostic.images[1]).toEqual({ mimeType: "other", byteLength: images[1].data.byteLength });
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toMatch(/private-|base64|iVBOR|Bearer/);
+    expect(mockCheckLocalImages).not.toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(mockDb.contentReview.create).not.toHaveBeenCalled();
+  });
+
+  it("本机失败保留固定原因与当前图片序号", async () => {
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    mockCheckLocalImages.mockRejectedValue(new ModerationFailure("local_decode_failed", {
+      imageIndex: 1, message: "private-runtime", actualFormat: "private-format",
+    }));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await checkGenerationInput({ builtIn: true, images: [pngImage(), pngImage()], userId: "private-account" }))
+      .toEqual({ allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE });
+    expect(JSON.parse(errorSpy.mock.calls[0][1])).toMatchObject({
+      stage: "local_image", code: "local_decode_failed", actualFormat: "other", imageIndex: 1, imageCount: 2,
+    });
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain("private-");
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(mockDb.contentReview.create).not.toHaveBeenCalled();
+  });
+
+  it("远程图片失败记录HTTP状态与序号，不读取上游错误正文", async () => {
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    const json = vi.fn().mockResolvedValue({ secret: "private-response" });
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ results: [moderationResult()] }) })
+      .mockResolvedValueOnce({ ok: false, status: 429, json });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    expect(await checkGenerationInput({ builtIn: true, images: [pngImage(), pngImage()], userId: "private-account" }))
+      .toEqual({ allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE });
+    expect(JSON.parse(errorSpy.mock.calls[0][1])).toMatchObject({
+      stage: "remote_image", code: "remote_http_status", httpStatus: 429, imageIndex: 1, imageCount: 2,
+    });
+    expect(json).not.toHaveBeenCalled();
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toMatch(/private-|base64|iVBOR|Bearer/);
+    expect(mockDb.contentReview.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { response: { results: [{ categories: { "private-field": "private-payload" } }] }, code: "remote_response_invalid" },
+    { response: { results: [moderationResult({ category_applied_input_types: { sexual: ["image"], "sexual/minors": ["image"] } })] }, code: "remote_input_coverage" },
+  ])("远程响应异常记录固定原因 $code", async ({ response, code }) => {
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => response });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    expect(await checkGenerationInput({ prompt: "private-prompt", userId: "private-account" }))
+      .toEqual({ allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE });
+    expect(JSON.parse(errorSpy.mock.calls[0][1])).toMatchObject({ stage: "remote_text", code, httpStatus: 200 });
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain("private-");
+    expect(mockDb.contentReview.create).not.toHaveBeenCalled();
+  });
+
+  it.each(["TimeoutError", "AbortError", "private-error-name"])("异常名称只记录固定值：%s", async (name) => {
+    mockResolveConfig.mockResolvedValue(aiConfig());
+    global.fetch = vi.fn().mockRejectedValue(Object.assign(new Error("private-message"), { name, code: "private-code" }));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    await checkGenerationInput({ prompt: "private-prompt", userId: "private-account" });
+    expect(JSON.parse(errorSpy.mock.calls[0][1])).toMatchObject({
+      stage: "remote_text", errorClass: name.startsWith("private-") ? "UnknownError" : name,
+    });
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain("private-");
   });
 
   it("审核接口返回空结果时拒绝，不当成通过", async () => {

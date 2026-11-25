@@ -29,8 +29,10 @@ const model = await load("MobileNetV2Mid", {
 parentPort.postMessage({ type: "ready", model: "nsfwjs/MobileNetV2Mid@4.4.0" });
 parentPort.on("message", async ({ id, data }) => {
   let tensor;
+  let error = "decode_failed";
   try {
     const rgb = await readModerationRgb(data);
+    error = "inference_failed";
     tensor = tf.tensor3d(new Uint8Array(rgb), [224, 224, 3], "int32");
     const predictions = await model.classify(tensor, 5);
     parentPort.postMessage({
@@ -40,7 +42,7 @@ parentPort.on("message", async ({ id, data }) => {
       ),
     });
   } catch {
-    parentPort.postMessage({ id, error: true });
+    parentPort.postMessage({ id, error });
   } finally {
     tensor?.dispose();
   }

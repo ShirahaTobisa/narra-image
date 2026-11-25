@@ -1,0 +1,2 @@
+{"file":".trellis/spec/operations/generation-inputs.md","reason":"shared moderation and fail-closed behavior"}
+{"file":".trellis/spec/operations/release-hardening.md","reason":"safe app-only rollout"}

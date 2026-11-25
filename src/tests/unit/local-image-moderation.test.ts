@@ -48,6 +48,10 @@ function check(images: ReadonlyArray<ImageInput> = [image()], threshold = 0.7) {
   return checkLocalImages(images, threshold).catch(() => "unavailable" as const);
 }
 
+function failure(images: ReadonlyArray<ImageInput> = [image()]) {
+  return checkLocalImages(images, 0.7).catch((error: unknown) => error);
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(0);
@@ -156,7 +160,7 @@ describe("本机图片审核管理器", () => {
 
   it("最多一个活动加两个等待请求，完成后按顺序释放许可", async () => {
     const pending = [check([image(1)]), check([image(2)]), check([image(3)])];
-    expect(await check([image(4)])).toBe("unavailable");
+    expect(await failure([image(4)])).toMatchObject({ code: "local_queue_full" });
     const worker = instances[0];
     worker.ready();
     for (const value of [1, 2, 3]) {
@@ -173,11 +177,11 @@ describe("本机图片审核管理器", () => {
   it("整请求预算含全部图片，256MiB可接纳、超量不创建或复制，失败后释放", async () => {
     const data = new Uint8Array(64 * 1024 * 1024);
     const large = { data, mimeType: "image/png" };
-    expect(await check(Array(5).fill(large))).toBe("unavailable");
+    expect(await failure(Array(5).fill(large))).toMatchObject({ code: "local_byte_limit" });
     expect(workerConstructor).not.toHaveBeenCalled();
 
     const full = check(Array(4).fill(large));
-    expect(await check()).toBe("unavailable");
+    expect(await failure()).toMatchObject({ code: "local_byte_limit" });
     expect(instances[0].sent).toEqual([]);
     instances[0].emit("error", new Error("mock crash"));
     expect(await full).toBe("unavailable");
@@ -257,7 +261,7 @@ describe("本机图片审核管理器", () => {
 
   it("创建和发送的同步异常也释放许可", async () => {
     workerConstructor.mockImplementationOnce(function () { throw new Error("cannot create worker"); });
-    expect(await check()).toBe("unavailable");
+    expect(await failure()).toMatchObject({ code: "local_worker_startup" });
     await vi.advanceTimersByTimeAsync(1_001);
     const sendFailure = check();
     instances[0].postMessage.mockImplementationOnce(() => { throw new Error("clone failed"); });
@@ -268,6 +272,32 @@ describe("本机图片审核管理器", () => {
     instances[1].ready();
     instances[1].reply();
     expect(await next).toEqual({ blocked: false });
+  });
+
+  it.each([
+    { event: "startup", code: "local_worker_startup", imageIndex: undefined },
+    { event: "error", code: "local_worker_error", imageIndex: 1 },
+    { event: "messageerror", code: "local_worker_error", imageIndex: 1 },
+    { event: "decode_failed", code: "local_decode_failed", imageIndex: 1 },
+    { event: "inference_failed", code: "local_inference_failed", imageIndex: 1 },
+    { event: "private-worker-payload", code: "local_worker_error", imageIndex: 1 },
+    { event: "timeout", code: "local_timeout", imageIndex: 1 },
+  ])("$event 仅保留固定诊断和实际图片序号", async ({ event, code, imageIndex }) => {
+    const result = failure([image(), image()]);
+    const worker = instances[0];
+    if (event === "startup") worker.emit("error", new Error("private-startup-details"));
+    else {
+      worker.ready();
+      worker.reply();
+      if (event === "timeout") await vi.advanceTimersByTimeAsync(8_000);
+      else if (event === "error" || event === "messageerror") worker.emit(event, new Error("private-error-details"));
+      else worker.emit("message", { id: worker.sent.at(-1)!.id, error: event });
+    }
+    const error = await result;
+    expect(error).toMatchObject({ code, imageIndex, message: "本机图片审核暂时不可用" });
+    expect(JSON.stringify(error)).not.toContain("private-");
+    expect(worker.terminate).toHaveBeenCalledOnce();
+    expect(await failure()).toMatchObject({ code: "local_worker_restarting" });
   });
 
   it("上一张重复消息不能跳过下一张检查", async () => {

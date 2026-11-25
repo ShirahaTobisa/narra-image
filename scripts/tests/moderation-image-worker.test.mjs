@@ -48,7 +48,7 @@ test("本地图片模型离线协议与实际解码", { timeout: 30_000 }, async
 
   await t.test("损坏图片仅返回稳定错误，后续无害图片仍可处理", async () => {
     const response = await classify(Buffer.from("not an image"));
-    assert.deepEqual(response, { id, error: true });
+    assert.deepEqual(response, { id, error: "decode_failed" });
     checkScores(await classify(white));
   });
 
@@ -100,7 +100,7 @@ test("本地图片模型离线协议与实际解码", { timeout: 30_000 }, async
     }).png().toBuffer();
     await assert.rejects(readModerationRgb(oversized), /pixel limit/i);
     const response = await classify(oversized);
-    assert.deepEqual(response, { id, error: true });
+    assert.deepEqual(response, { id, error: "decode_failed" });
   });
 
   await t.test("站内已确认无害素材与16张串行推理可离线完成", async () => {

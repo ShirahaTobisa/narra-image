@@ -5,6 +5,7 @@ import { revalidateTag } from "next/cache";
 
 import { db } from "@/lib/db";
 import { resolveModerationConfig } from "@/lib/moderation/config";
+import { ModerationFailure } from "@/lib/moderation/failure";
 import { assertModerationImages } from "@/lib/moderation/images";
 import { checkLocalImages } from "@/lib/moderation/local-images";
 import { precheckGeneration } from "@/lib/moderation/precheck";
@@ -127,7 +128,6 @@ export async function checkGenerationInput(
     try {
       outcome = await callModerationAi(cfg, text, images);
     } catch {
-      console.error("[moderation] AI 审核未完成，拒绝本次生成");
       return { allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE };
     }
 
@@ -279,19 +279,58 @@ async function callModerationAi(
   text: string,
   images: ModerationImage[],
 ): Promise<AiModerationOutcome> {
-  await assertModerationImages(images);
-  if (images.length === 0) return requestModeration(cfg, text);
-  const local = await checkLocalImages(images, cfg.aiThreshold);
+  for (const [index, image] of images.entries()) {
+    await moderationStage("image_validation", images, () => assertModerationImages([image]), index);
+  }
+  const checkText = () => moderationStage("remote_text", images, () => requestModeration(cfg, text));
+  if (images.length === 0) return checkText();
+  const local = await moderationStage("local_image", images, () => checkLocalImages(images, cfg.aiThreshold));
   if (local.blocked) return local;
   // 文字跟图一起审时分数会被拉低（实测同一段话单独 0.11、带图 0.02），所以先单独审一遍文字。
   if (text) {
-    const textAlone = await requestModeration(cfg, text);
+    const textAlone = await checkText();
     if (textAlone.blocked) return textAlone;
   }
   // 审核接口一次请求最多收 1 张图（两张就报 400，整次提交会被当成审核故障拒掉），
   // 多张参考图逐张带着文字送，任何一张该拒就拒。
-  const outcomes = await Promise.all(images.map((image) => requestModeration(cfg, text, image)));
+  const outcomes = await Promise.all(images.map((image, index) =>
+    moderationStage("remote_image", images, () => requestModeration(cfg, text, image), index)));
   return outcomes.find((outcome) => outcome.blocked) ?? { blocked: false };
+}
+
+async function moderationStage<T>(
+  stage: "image_validation" | "local_image" | "remote_text" | "remote_image",
+  images: ModerationImage[],
+  run: () => Promise<T>,
+  imageIndex?: number,
+): Promise<T> {
+  const started = Date.now();
+  try {
+    return await run();
+  } catch (error) {
+    const failure = error instanceof ModerationFailure ? error : undefined;
+    // Error names and declared MIME types can contain user input too: only emit known values.
+    const errorClass = failure ? "ModerationFailure"
+      : error instanceof Error && ["Error", "TypeError", "SyntaxError", "RangeError", "AbortError", "TimeoutError"].includes(error.name)
+        ? error.name : "UnknownError";
+    console.error("[moderation] AI 审核未完成，拒绝本次生成", JSON.stringify({
+      event: "moderation_failure",
+      stage,
+      durationMs: Math.max(0, Date.now() - started),
+      imageCount: images.length,
+      imageIndex: failure?.imageIndex ?? imageIndex ?? null,
+      actualFormat: failure?.actualFormat ?? null,
+      images: images.slice(0, 16).map((image) => ({
+        mimeType: ["image/png", "image/jpeg", "image/webp", "image/gif", "image/avif", "image/heif", "image/heic", "image/svg+xml", "image/bmp", "image/tiff"].includes(image.mimeType)
+          ? image.mimeType : "other",
+        byteLength: image.data.byteLength,
+      })),
+      errorClass,
+      code: failure?.code ?? errorClass,
+      httpStatus: failure?.httpStatus ?? null,
+    }));
+    throw error;
+  }
 }
 
 /** 向审核接口发一次请求：纯文字，或文字带一张图。 */
@@ -302,7 +341,7 @@ async function requestModeration(
 ): Promise<AiModerationOutcome> {
   const url = new URL(`${cfg.aiBaseUrl?.trim().replace(/\/+$/, "")}/moderations`);
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("审核接口地址无效");
+    throw new ModerationFailure("remote_url_invalid");
   }
   const input = !image
     ? text
@@ -330,12 +369,15 @@ async function requestModeration(
   });
 
   if (!response.ok) {
-    throw new Error(
-      `moderation request failed: ${response.status}`,
-    );
+    throw new ModerationFailure("remote_http_status", { httpStatus: response.status });
   }
 
-  const data = moderationResponseSchema.parse(await response.json());
+  const body = await response.json().catch(() => {
+    throw new ModerationFailure("remote_response_read_failed", { httpStatus: response.status });
+  });
+  const parsed = moderationResponseSchema.safeParse(body);
+  if (!parsed.success) throw new ModerationFailure("remote_response_invalid", { httpStatus: response.status });
+  const data = parsed.data;
 
   for (const result of data.results) {
     const appliedTypes = result.category_applied_input_types;
@@ -343,7 +385,7 @@ async function requestModeration(
     if ((image && !appliedTypes?.sexual?.includes("image"))
       || (text && appliedTypes && (!appliedTypes.sexual?.includes("text")
         || !appliedTypes["sexual/minors"]?.includes("text")))) {
-      throw new Error("审核结果未覆盖全部输入类型");
+      throw new ModerationFailure("remote_input_coverage", { httpStatus: response.status });
     }
     const scores = Object.entries(result.category_scores);
     const [topCategory, topScore] = scores.reduce<readonly [string | null, number]>(

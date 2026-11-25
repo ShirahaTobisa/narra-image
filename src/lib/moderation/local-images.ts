@@ -3,6 +3,8 @@ import "server-only";
 import path from "node:path";
 import { Worker } from "node:worker_threads";
 
+import { ModerationFailure } from "@/lib/moderation/failure";
+
 export const LOCAL_IMAGE_MODEL = "nsfwjs/MobileNetV2Mid@4.4.0";
 
 const MAX_REQUESTS = 3; // 一个活动请求，最多两个等待请求。
@@ -32,8 +34,8 @@ type PendingRequest = {
 };
 type Runtime = { worker: Worker; ready: boolean; stopping: boolean };
 
-function unavailable() {
-  return new Error("本机图片审核暂时不可用");
+function unavailable(code: string, imageIndex?: number) {
+  return new ModerationFailure(code, { imageIndex, message: "本机图片审核暂时不可用" });
 }
 
 function readScores(value: unknown): Scores | null {
@@ -54,10 +56,14 @@ class LocalImageQueue {
 
   check(images: ReadonlyArray<ImageInput>, threshold: number): Promise<LocalImageOutcome> {
     const bytes = images.reduce((sum, image) => sum + image.data.byteLength, 0);
-    if (this.runtime?.stopping || Date.now() < this.retryAt
-      || this.queue.length + Number(Boolean(this.active)) >= MAX_REQUESTS
-      || !Number.isSafeInteger(bytes) || bytes + this.bytes > MAX_IMAGE_BYTES) {
-      return Promise.reject(unavailable());
+    if (this.runtime?.stopping || Date.now() < this.retryAt) {
+      return Promise.reject(unavailable("local_worker_restarting"));
+    }
+    if (this.queue.length + Number(Boolean(this.active)) >= MAX_REQUESTS) {
+      return Promise.reject(unavailable("local_queue_full"));
+    }
+    if (!Number.isSafeInteger(bytes) || bytes + this.bytes > MAX_IMAGE_BYTES) {
+      return Promise.reject(unavailable("local_byte_limit"));
     }
     return new Promise((resolve, reject) => {
       const request: PendingRequest = { images, threshold, bytes, deadline: Date.now() + REQUEST_TIMEOUT_MS, index: 0, resolve, reject };
@@ -85,7 +91,7 @@ class LocalImageQueue {
         worker.on("messageerror", () => this.fail(runtime));
         worker.once("exit", () => {
           if (this.runtime !== runtime) return;
-          this.rejectPending();
+          this.rejectPending(runtime.ready ? "local_worker_exit" : "local_worker_startup");
           this.runtime = undefined;
           this.retryAt = Date.now() + RESTART_DELAY_MS;
           worker.removeAllListeners();
@@ -93,7 +99,7 @@ class LocalImageQueue {
         });
       } catch {
         this.retryAt = Date.now() + RESTART_DELAY_MS;
-        this.rejectPending();
+        this.rejectPending("local_worker_startup");
         return;
       }
     }
@@ -105,7 +111,7 @@ class LocalImageQueue {
     const request = this.active;
     if (!runtime.ready || runtime.stopping || !request || request.messageId !== undefined) return;
     if (Date.now() >= request.deadline) {
-      this.fail(runtime);
+      this.fail(runtime, "local_timeout");
       return;
     }
     try {
@@ -139,12 +145,15 @@ class LocalImageQueue {
     const request = this.active;
     if (!request || message.id !== request.messageId) return;
     if (Date.now() >= request.deadline) {
-      this.fail(runtime);
+      this.fail(runtime, "local_timeout");
       return;
     }
     const scores = readScores(message.scores);
     if (message.error || !scores) {
-      this.fail(runtime);
+      const code = message.error === "decode_failed" ? "local_decode_failed"
+        : message.error === "inference_failed" ? "local_inference_failed"
+          : message.error ? "local_worker_error" : "local_scores_invalid";
+      this.fail(runtime, code);
       return;
     }
     // 和远程审核用同一个后台阈值：分数没到就不拒。
@@ -173,33 +182,33 @@ class LocalImageQueue {
 
   private expire(request: PendingRequest) {
     if (this.active === request && this.runtime) {
-      this.fail(this.runtime);
+      this.fail(this.runtime, "local_timeout");
       return;
     }
     const index = this.queue.indexOf(request);
     if (index >= 0) {
       this.queue.splice(index, 1);
       this.bytes -= request.bytes;
-      request.reject(unavailable());
+      request.reject(unavailable("local_timeout"));
     }
   }
 
-  private rejectPending() {
+  private rejectPending(code: string) {
     const pending = this.active ? [this.active, ...this.queue] : this.queue;
     this.active = undefined;
     this.queue = [];
     this.bytes = 0;
     for (const request of pending) {
       clearTimeout(request.timer);
-      request.reject(unavailable());
+      request.reject(unavailable(code, request.messageId === undefined ? undefined : request.index));
     }
   }
 
-  private fail(runtime: Runtime) {
+  private fail(runtime: Runtime, code = runtime.ready ? "local_worker_error" : "local_worker_startup") {
     if (this.runtime !== runtime || runtime.stopping) return;
     runtime.stopping = true;
     this.retryAt = Date.now() + RESTART_DELAY_MS;
-    this.rejectPending();
+    this.rejectPending(code);
     // 保留旧实例直到 exit；terminate 失败时也不另开线程叠加负载。
     try { void runtime.worker.terminate().catch(() => undefined); }
     catch { /* 不确定已退出时继续拒绝新图片请求。 */ }

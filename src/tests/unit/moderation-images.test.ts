@@ -37,7 +37,8 @@ describe("moderation reference image validation", () => {
   });
 
   it("rejects an oversized image before decoding", async () => {
-    await expect(assertModerationImages([{ data: Buffer.alloc(20 * 1024 * 1024 + 1), mimeType: "image/png" }])).rejects.toThrow(/20/);
+    await expect(assertModerationImages([{ data: Buffer.alloc(20 * 1024 * 1024 + 1), mimeType: "image/png" }]))
+      .rejects.toMatchObject({ code: "image_byte_limit", message: expect.stringMatching(/20/) });
   });
 
   it("accepts a valid PNG over 8 MiB for moderation while preserving the Canvas upload limit", async () => {
@@ -63,7 +64,22 @@ describe("moderation reference image validation", () => {
       raw: { width: 1, height: 2, channels: 3, pageHeight: 1 },
     }).toFormat(format, { delay: [100, 100], loop: 0 }).toBuffer();
     expect((await sharp(data).metadata()).pages).toBe(2);
-    await expect(assertModerationImages([{ data, mimeType: `image/${format}` }])).rejects.toThrow(/静态/);
+    await expect(assertModerationImages([{ data, mimeType: `image/${format}` }]))
+      .rejects.toMatchObject({ code: "image_animated", message: expect.stringMatching(/静态/) });
+  });
+
+  it("distinguishes unsupported formats, MIME mismatch, decode and container failures", async () => {
+    const avif = await sharp(canvasPng()).avif().toBuffer();
+    const invalidContainer = Buffer.from(canvasPng());
+    invalidContainer[29] ^= 1; // Metadata remains readable, but IHDR CRC is invalid.
+    for (const [data, mimeType, code, actualFormat] of [
+      [avif, "image/avif", "image_format_unsupported", "heif"],
+      [canvasPng(), "image/jpeg", "image_mime_mismatch", "png"],
+      [Buffer.from("private-image-payload"), "image/png", "image_decode_failed", undefined],
+      [invalidContainer, "image/png", "image_container_invalid", undefined],
+    ] as const) {
+      await expect(assertModerationImages([{ data, mimeType }])).rejects.toMatchObject({ code, actualFormat });
+    }
   });
 
   it("rejects APNG even when the decoder reports only PNG metadata", async () => {
