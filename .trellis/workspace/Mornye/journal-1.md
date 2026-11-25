@@ -177,3 +177,24 @@ Kept reference-image generation; added fixed local NSFWJS/WASM prescreen before 
 ### Status
 
 [OK] **Completed**
+
+
+## Session 9: 图片下载使用可读时间
+
+**Date**: 2026-11-25
+**Task**: 图片下载使用可读时间
+**Branch**: `fix/site-stability`
+
+### Summary
+
+按用户要求统一图片下载名为本地时间 mm-dd-hh-mm，24小时制、补齐两位；复用时间函数，代理只接收受限时间格式以保持下载者时区一致，保留真实格式后缀。40项相关测试、lint、类型检查和生产构建通过，已推送并部署 sakura，线上健康与首页、登录页检查通过。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `48fd6e91f697bd2756a02be1a0a059b6aee77377` | (see git log) |
+
+### Status
+
+[OK] **Completed**
