@@ -135,3 +135,24 @@ Kept reference-image generation; added fixed local NSFWJS/WASM prescreen before 
 ### Status
 
 [OK] **Completed**
+
+
+## Session 7: 下载图片改为时间戳命名
+
+**Date**: 2026-11-25
+**Task**: 下载图片改为时间戳命名
+**Branch**: `fix/site-stability`
+
+### Summary
+
+统一作品页、创作台和后台图片下载为毫秒时间戳文件名；保留真实格式后缀，删除旧前缀参数，代理下载避开旧文件名缓存。38项相关测试、lint、类型检查及生产构建通过；已推送 draw-aliya 并部署 sakura，健康检查与首页、登录页正常。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fcbd17a910c1ae1bd2808924c55fedb53232da3b` | (see git log) |
+
+### Status
+
+[OK] **Completed**
