@@ -1,3 +1,4 @@
+import { imageDownloadTimestamp } from "@/lib/image-download";
 import { getCurrentUserRecord } from "@/lib/server/current-user";
 import { getErrorMessage } from "@/lib/server/http";
 import { readSiteImage, SiteImageError } from "@/lib/storage/site-image";
@@ -60,9 +61,11 @@ export async function GET(request: Request) {
       return new Response("Unsupported image content", { status: 415 });
     }
 
+    const requestedName = searchParams.get("download") ?? "";
+    const filename = requestedName.length === 11 && /^\d{2}(?:-\d{2}){3}$/.test(requestedName) ? requestedName : imageDownloadTimestamp();
     const headers: Record<string, string> = {
       "Content-Type": image.mediaType,
-      "Content-Disposition": `attachment; filename="${Math.floor(Date.now() / 1000)}.${image.extension}"`,
+      "Content-Disposition": `attachment; filename="${filename}.${image.extension}"`,
       "Content-Security-Policy": "default-src 'none'; sandbox",
       "X-Content-Type-Options": "nosniff",
       "Cache-Control": "private, max-age=86400, immutable",

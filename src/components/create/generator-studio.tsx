@@ -28,6 +28,7 @@ import type { ConversationGenerationsPage } from "@/lib/conversations/contracts"
 import { canvasCanonicalIdSchema, canvasGenerationParametersSchema } from "@/lib/validators";
 import { Alert } from "@/components/ui/alert";
 import { imageDownloadFilename, saveLink } from "@/components/works/download-image";
+import { imageDownloadTimestamp } from "@/lib/image-download";
 
 import { useCanvasDocuments } from "./hooks/use-canvas-documents";
 import { useCanvasEditor } from "./hooks/use-canvas-editor";
@@ -559,7 +560,7 @@ function StudioWorkspace({
     if (!url.startsWith("blob:")) {
       // 本站图片交给浏览器自己下载：点了马上能看到进度，页面刷新或切到后台也不会断。
       // 以前是页面先把整张原图读完再保存，慢网下几十秒没反应，用户连点再刷新，下载就全被取消了。
-      saveLink(`/api/proxy-image?url=${encodeURIComponent(url)}&download=${Math.floor(Date.now() / 1000)}`, "");
+      saveLink(`/api/proxy-image?url=${encodeURIComponent(url)}&download=${imageDownloadTimestamp()}`, "");
       return;
     }
     const request = beginRequest();

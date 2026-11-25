@@ -623,7 +623,7 @@ describe("mounted studio canvas integration", () => {
     const downloadUrl = new URL(link.href);
     expect(downloadUrl.pathname).toBe("/api/proxy-image");
     expect(downloadUrl.searchParams.get("url")).toBe("https://images.invalid/canvas-job-1/1.png");
-    expect(downloadUrl.searchParams.get("download")).toMatch(/^\d{10}$/);
+    expect(downloadUrl.searchParams.get("download")).toMatch(/^\d{2}(?:-\d{2}){3}$/);
     expect(link.download).toBe("");
     expect(requests.some((request) => request.path.startsWith("/api/proxy-image"))).toBe(false);
   });
@@ -654,7 +654,7 @@ describe("mounted studio canvas integration", () => {
     } else expect(revokeUrls).not.toHaveBeenCalledWith(preview);
     await act(async () => downloadGate!.resolve(new Response(new Blob(["image"], { type: "image/webp" }), { headers: { "content-type": "image/webp" } })));
     await waitFor(() => expect(click).toHaveBeenCalledTimes(operation === "account" ? 0 : 1));
-    if (operation !== "account") expect((click.mock.contexts[0] as HTMLAnchorElement).download).toMatch(/^\d{10}\.webp$/);
+    if (operation !== "account") expect((click.mock.contexts[0] as HTMLAnchorElement).download).toMatch(/^\d{2}(?:-\d{2}){3}\.webp$/);
     await waitFor(() => expect(revokeUrls).toHaveBeenCalledWith(preview));
     expect(sends()).toEqual([]);
   });

@@ -7,7 +7,7 @@ const revokeObjectURL = vi.fn();
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.spyOn(Date, "now").mockReturnValue(1795593600123);
+  vi.spyOn(Date, "now").mockReturnValue(new Date(2026, 0, 2, 3, 4, 5).getTime());
   Object.defineProperty(URL, "createObjectURL", { configurable: true, value: createObjectURL });
   Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: revokeObjectURL });
 });
@@ -19,15 +19,15 @@ afterEach(() => {
 
 describe("image download filenames", () => {
   it.each([
-    ["/api/images/signed-token", "image/webp", "1795593600.webp"],
-    ["/api/images/signed-token", "image/jpeg", "1795593600.jpg"],
-    ["/api/images/signed-token", "image/gif", "1795593600.gif"],
-    ["/api/images/signed-token", "image/png", "1795593600.png"],
-    ["https://images.invalid/sunset.png?token=test", "image/webp", "1795593600.webp"],
-    ["https://images.invalid/sunset.webp", "image/jpeg", "1795593600.jpg"],
-    ["https://images.invalid/sunset.png", "image/png", "1795593600.png"],
-    ["https://images.invalid/sunset.png", "", "1795593600.png"],
-    ["/api/images/signed-token", "application/octet-stream", "1795593600.png"],
+    ["/api/images/signed-token", "image/webp", "01-02-03-04.webp"],
+    ["/api/images/signed-token", "image/jpeg", "01-02-03-04.jpg"],
+    ["/api/images/signed-token", "image/gif", "01-02-03-04.gif"],
+    ["/api/images/signed-token", "image/png", "01-02-03-04.png"],
+    ["https://images.invalid/sunset.png?token=test", "image/webp", "01-02-03-04.webp"],
+    ["https://images.invalid/sunset.webp", "image/jpeg", "01-02-03-04.jpg"],
+    ["https://images.invalid/sunset.png", "image/png", "01-02-03-04.png"],
+    ["https://images.invalid/sunset.png", "", "01-02-03-04.png"],
+    ["/api/images/signed-token", "application/octet-stream", "01-02-03-04.png"],
   ])("downloads %s as %s with filename %s", async (url, mimeType, filename) => {
     const blob = new Blob(["original image bytes"], { type: mimeType });
     const fetch = vi.fn().mockResolvedValue({ ok: true, blob: async () => blob });

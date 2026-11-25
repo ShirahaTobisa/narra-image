@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { mockGetCurrentUserRecord, mockReadManagedImage, mockResolveManagedImageUrl, mockFindImage, mockFindJob, mockFetchPublic } = vi.hoisted(() => ({
   mockGetCurrentUserRecord: vi.fn(),
@@ -20,10 +20,12 @@ vi.mock("@/lib/server/safe-remote-url", () => ({ fetchPublicHttpUrl: mockFetchPu
 
 import { GET } from "@/app/api/proxy-image/route";
 
-function proxyRequest() {
-  return new Request(
+function proxyRequest(download?: string) {
+  const url = new URL(
     "http://localhost/api/proxy-image?url=https%3A%2F%2Fcdn.example.com%2Fimage",
   );
+  if (download !== undefined) url.searchParams.set("download", download);
+  return new Request(url);
 }
 
 function managedImage(bytes: Uint8Array, mimeType = "image/png") {
@@ -34,11 +36,14 @@ function managedImage(bytes: Uint8Array, mimeType = "image/png") {
 describe("图片代理接口", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(Date, "now").mockReturnValue(new Date(2026, 0, 2, 3, 4, 5).getTime());
     mockGetCurrentUserRecord.mockResolvedValue({ id: "user_1" });
     mockResolveManagedImageUrl.mockResolvedValue(null);
     mockFindImage.mockResolvedValue(null);
     mockFindJob.mockResolvedValue(null);
   });
+
+  afterEach(() => vi.restoreAllMocks());
 
   it("只代理本站图片，外站地址一律拒绝", async () => {
     const response = await GET(proxyRequest());
@@ -56,14 +61,18 @@ describe("图片代理接口", () => {
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
   });
 
-  it("只按文件签名返回图片并附加下载与防嗅探响应头", async () => {
+  it.each([
+    [undefined, "01-02-03-04"],
+    ["11-25-22-50", "11-25-22-50"],
+    ['bad"\r\nX-Injected: true', "01-02-03-04"],
+  ])("按文件签名下载图片，文件名参数 %s 只接受受限时间格式", async (download, filename) => {
     managedImage(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), "text/html");
 
-    const response = await GET(proxyRequest());
+    const response = await GET(proxyRequest(download));
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("image/png");
-    expect(response.headers.get("content-disposition")).toMatch(/^attachment; filename="\d{10}\.png"$/);
+    expect(response.headers.get("content-disposition")).toBe(`attachment; filename="${filename}.png"`);
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
   });
 
