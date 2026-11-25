@@ -156,3 +156,24 @@ Kept reference-image generation; added fixed local NSFWJS/WASM prescreen before 
 ### Status
 
 [OK] **Completed**
+
+
+## Session 8: 下载时间戳调整为秒
+
+**Date**: 2026-11-25
+**Task**: 下载时间戳调整为秒
+**Branch**: `fix/site-stability`
+
+### Summary
+
+按用户要求将下载名和代理下载参数从毫秒改为秒级时间戳，例如1795593600.webp。38项相关测试、lint、类型检查和生产构建通过。已推送 draw-aliya 并部署 sakura，线上健康及首页、登录页检查通过。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `410ce980f4c5818aa0d375a36fa34113b110786e` | (see git log) |
+
+### Status
+
+[OK] **Completed**

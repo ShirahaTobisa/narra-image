@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 7
+- **Total Sessions**: 8
 - **Last Active**: 2026-11-25
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~158 | Active |
+| `journal-1.md` | ~179 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 8 | 2026-11-25 | 下载时间戳调整为秒 | `410ce980f4c5818aa0d375a36fa34113b110786e` | `fix/site-stability` |
 | 7 | 2026-11-25 | 下载图片改为时间戳命名 | `fcbd17a910c1ae1bd2808924c55fedb53232da3b` | `fix/site-stability` |
 | 6 | 2026-11-21 | 开站安全复核与部署 | `57b5cf5`, `c9ab556`, `6d80fa6`, `ac29727` | `fix/site-stability` |
 | 5 | 2026-11-21 | 修复多图扣费与每分钟五张限额并上线 | `1c50f24`, `4801a8a` | `fix/site-stability` |
