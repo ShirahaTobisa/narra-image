@@ -8,15 +8,14 @@ export function saveLink(href: string, filename: string) {
   document.body.removeChild(link);
 }
 
-export function imageDownloadFilename(url: string, mimeType: string, filenamePrefix = "narra-work") {
+export function imageDownloadFilename(url: string, mimeType: string) {
   const pathname = new URL(url, window.location.href).pathname;
-  const nameFromUrl = pathname.split("/").filter(Boolean).pop();
-  const filename = nameFromUrl && nameFromUrl.includes(".") ? nameFromUrl : `${filenamePrefix}.png`;
-  const format = /^image\/(png|jpeg|webp|gif)$/.exec(mimeType)?.[1];
-  return format ? filename.replace(/\.[^.]*$/, `.${format === "jpeg" ? "jpg" : format}`) : filename;
+  const format = /^image\/(png|jpeg|webp|gif)$/.exec(mimeType)?.[1]
+    ?? /\.(png|jpe?g|webp|gif)$/i.exec(pathname)?.[1].toLowerCase() ?? "png";
+  return `${Date.now()}.${format === "jpeg" ? "jpg" : format}`;
 }
 
-export async function downloadImage(url: string, filenamePrefix = "narra-work") {
+export async function downloadImage(url: string) {
   try {
     const response = await fetch(url);
     if (!response.ok) {
@@ -25,7 +24,7 @@ export async function downloadImage(url: string, filenamePrefix = "narra-work") 
     const blob = await response.blob();
     const blobUrl = URL.createObjectURL(blob);
 
-    saveLink(blobUrl, imageDownloadFilename(url, blob.type, filenamePrefix));
+    saveLink(blobUrl, imageDownloadFilename(url, blob.type));
     URL.revokeObjectURL(blobUrl);
   } catch {
     window.open(url, "_blank", "noopener,noreferrer");

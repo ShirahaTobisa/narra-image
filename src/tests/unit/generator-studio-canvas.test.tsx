@@ -619,7 +619,12 @@ describe("mounted studio canvas integration", () => {
     expect(screen.queryByRole("button", { name: "加入编辑" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "保存高清原图" }));
     await waitFor(() => expect(click).toHaveBeenCalled());
-    expect((click.mock.contexts[0] as HTMLAnchorElement).getAttribute("href")).toBe(`/api/proxy-image?url=${encodeURIComponent("https://images.invalid/canvas-job-1/1.png")}`);
+    const link = click.mock.contexts[0] as HTMLAnchorElement;
+    const downloadUrl = new URL(link.href);
+    expect(downloadUrl.pathname).toBe("/api/proxy-image");
+    expect(downloadUrl.searchParams.get("url")).toBe("https://images.invalid/canvas-job-1/1.png");
+    expect(downloadUrl.searchParams.get("download")).toMatch(/^\d{13}$/);
+    expect(link.download).toBe("");
     expect(requests.some((request) => request.path.startsWith("/api/proxy-image"))).toBe(false);
   });
 
@@ -649,7 +654,7 @@ describe("mounted studio canvas integration", () => {
     } else expect(revokeUrls).not.toHaveBeenCalledWith(preview);
     await act(async () => downloadGate!.resolve(new Response(new Blob(["image"], { type: "image/webp" }), { headers: { "content-type": "image/webp" } })));
     await waitFor(() => expect(click).toHaveBeenCalledTimes(operation === "account" ? 0 : 1));
-    if (operation !== "account") expect((click.mock.contexts[0] as HTMLAnchorElement).download).toBe("narra-image.webp");
+    if (operation !== "account") expect((click.mock.contexts[0] as HTMLAnchorElement).download).toMatch(/^\d{13}\.webp$/);
     await waitFor(() => expect(revokeUrls).toHaveBeenCalledWith(preview));
     expect(sends()).toEqual([]);
   });

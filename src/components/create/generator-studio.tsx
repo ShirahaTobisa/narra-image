@@ -559,7 +559,7 @@ function StudioWorkspace({
     if (!url.startsWith("blob:")) {
       // 本站图片交给浏览器自己下载：点了马上能看到进度，页面刷新或切到后台也不会断。
       // 以前是页面先把整张原图读完再保存，慢网下几十秒没反应，用户连点再刷新，下载就全被取消了。
-      saveLink(`/api/proxy-image?url=${encodeURIComponent(url)}`, "narra-image.png");
+      saveLink(`/api/proxy-image?url=${encodeURIComponent(url)}&download=${Date.now()}`, "");
       return;
     }
     const request = beginRequest();
@@ -574,7 +574,7 @@ function StudioWorkspace({
       const blob = await response.blob();
       if (!request.isCurrent()) return;
       blobUrl = URL.createObjectURL(blob);
-      saveLink(blobUrl, imageDownloadFilename(url, blob.type, "narra-image"));
+      saveLink(blobUrl, imageDownloadFilename(url, blob.type));
     } catch {
       if (request.isCurrent()) window.open(url, "_blank", "noopener,noreferrer");
     } finally {

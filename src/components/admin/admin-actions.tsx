@@ -766,7 +766,7 @@ export function GenerationAdminList({
                           disabled={!image}
                           onClick={() =>
                             image
-                              ? void downloadImage(image.url, "narra-generation")
+                              ? void downloadImage(image.url)
                               : undefined
                           }
                           className="inline-flex size-8 items-center justify-center rounded-lg border border-[var(--line)] bg-white text-[var(--ink-soft)] transition hover:border-[#c85a32] hover:text-[#c85a32] disabled:cursor-not-allowed disabled:opacity-35"
@@ -1816,7 +1816,7 @@ export function GenerationAdminCard({
             {image ? (
               <button
                 type="button"
-                onClick={() => void downloadImage(image.url, "narra-generation")}
+                onClick={() => void downloadImage(image.url)}
                 aria-label="下载图片"
                 title="下载图片"
                 className="inline-flex size-7 items-center justify-center rounded-lg border border-[var(--line)] bg-white text-[var(--ink-soft)] transition hover:text-[#c85a32]"

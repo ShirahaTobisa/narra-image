@@ -62,7 +62,7 @@ export async function GET(request: Request) {
 
     const headers: Record<string, string> = {
       "Content-Type": image.mediaType,
-      "Content-Disposition": `attachment; filename="narra-image.${image.extension}"`,
+      "Content-Disposition": `attachment; filename="${Date.now()}.${image.extension}"`,
       "Content-Security-Policy": "default-src 'none'; sandbox",
       "X-Content-Type-Options": "nosniff",
       "Cache-Control": "private, max-age=86400, immutable",

@@ -63,7 +63,7 @@ describe("图片代理接口", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("image/png");
-    expect(response.headers.get("content-disposition")).toContain("attachment");
+    expect(response.headers.get("content-disposition")).toMatch(/^attachment; filename="\d{13}\.png"$/);
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
   });
 
