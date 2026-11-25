@@ -559,7 +559,7 @@ function StudioWorkspace({
     if (!url.startsWith("blob:")) {
       // 本站图片交给浏览器自己下载：点了马上能看到进度，页面刷新或切到后台也不会断。
       // 以前是页面先把整张原图读完再保存，慢网下几十秒没反应，用户连点再刷新，下载就全被取消了。
-      saveLink(`/api/proxy-image?url=${encodeURIComponent(url)}&download=${Date.now()}`, "");
+      saveLink(`/api/proxy-image?url=${encodeURIComponent(url)}&download=${Math.floor(Date.now() / 1000)}`, "");
       return;
     }
     const request = beginRequest();

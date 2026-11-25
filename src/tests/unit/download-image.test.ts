@@ -19,15 +19,15 @@ afterEach(() => {
 
 describe("image download filenames", () => {
   it.each([
-    ["/api/images/signed-token", "image/webp", "1795593600123.webp"],
-    ["/api/images/signed-token", "image/jpeg", "1795593600123.jpg"],
-    ["/api/images/signed-token", "image/gif", "1795593600123.gif"],
-    ["/api/images/signed-token", "image/png", "1795593600123.png"],
-    ["https://images.invalid/sunset.png?token=test", "image/webp", "1795593600123.webp"],
-    ["https://images.invalid/sunset.webp", "image/jpeg", "1795593600123.jpg"],
-    ["https://images.invalid/sunset.png", "image/png", "1795593600123.png"],
-    ["https://images.invalid/sunset.png", "", "1795593600123.png"],
-    ["/api/images/signed-token", "application/octet-stream", "1795593600123.png"],
+    ["/api/images/signed-token", "image/webp", "1795593600.webp"],
+    ["/api/images/signed-token", "image/jpeg", "1795593600.jpg"],
+    ["/api/images/signed-token", "image/gif", "1795593600.gif"],
+    ["/api/images/signed-token", "image/png", "1795593600.png"],
+    ["https://images.invalid/sunset.png?token=test", "image/webp", "1795593600.webp"],
+    ["https://images.invalid/sunset.webp", "image/jpeg", "1795593600.jpg"],
+    ["https://images.invalid/sunset.png", "image/png", "1795593600.png"],
+    ["https://images.invalid/sunset.png", "", "1795593600.png"],
+    ["/api/images/signed-token", "application/octet-stream", "1795593600.png"],
   ])("downloads %s as %s with filename %s", async (url, mimeType, filename) => {
     const blob = new Blob(["original image bytes"], { type: mimeType });
     const fetch = vi.fn().mockResolvedValue({ ok: true, blob: async () => blob });

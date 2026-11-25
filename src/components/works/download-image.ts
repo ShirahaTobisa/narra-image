@@ -12,7 +12,7 @@ export function imageDownloadFilename(url: string, mimeType: string) {
   const pathname = new URL(url, window.location.href).pathname;
   const format = /^image\/(png|jpeg|webp|gif)$/.exec(mimeType)?.[1]
     ?? /\.(png|jpe?g|webp|gif)$/i.exec(pathname)?.[1].toLowerCase() ?? "png";
-  return `${Date.now()}.${format === "jpeg" ? "jpg" : format}`;
+  return `${Math.floor(Date.now() / 1000)}.${format === "jpeg" ? "jpg" : format}`;
 }
 
 export async function downloadImage(url: string) {
