@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 9
-- **Last Active**: 2026-11-25
+- **Total Sessions**: 10
+- **Last Active**: 2026-11-27
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~200 | Active |
+| `journal-1.md` | ~221 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 10 | 2026-11-27 | 全站账号 IP 记录与同 IP 查询上线 | `7d27a18597f9d606b00692ccf5cf6537e44d28f3` | `fix/site-stability` |
 | 9 | 2026-11-25 | 图片下载使用可读时间 | `48fd6e91f697bd2756a02be1a0a059b6aee77377` | `fix/site-stability` |
 | 8 | 2026-11-25 | 下载时间戳调整为秒 | `410ce980f4c5818aa0d375a36fa34113b110786e` | `fix/site-stability` |
 | 7 | 2026-11-25 | 下载图片改为时间戳命名 | `fcbd17a910c1ae1bd2808924c55fedb53232da3b` | `fix/site-stability` |

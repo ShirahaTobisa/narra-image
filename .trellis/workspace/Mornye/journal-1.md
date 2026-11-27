@@ -198,3 +198,24 @@ Kept reference-image generation; added fixed local NSFWJS/WASM prescreen before 
 ### Status
 
 [OK] **Completed**
+
+
+## Session 10: 全站账号 IP 记录与同 IP 查询上线
+
+**Date**: 2026-11-27
+**Task**: 全站账号 IP 记录与同 IP 查询上线
+**Branch**: `fix/site-stability`
+
+### Summary
+
+全站登录、会话与 API Key 访问记录可信 IP；管理员可查共享 IP、全部 IP、账号身份与时间。51 项测试及真实 PostgreSQL 检查通过，已部署并确认真实访问写入。历史未保存的 IP 无法补查。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7d27a18597f9d606b00692ccf5cf6537e44d28f3` | (see git log) |
+
+### Status
+
+[OK] **Completed**
