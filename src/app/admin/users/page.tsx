@@ -1,5 +1,6 @@
 import { Role, type Prisma } from "@prisma/client";
 import { Users } from "lucide-react";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { AdminPagination } from "@/components/admin/admin-pagination";
@@ -134,6 +135,7 @@ export default async function AdminUsersPage({
           eyebrow="Users"
           icon={Users}
           title="用户池与资产管理"
+          actions={<Link href="/admin/users/ips" className="text-sm font-medium text-[#b54722] hover:underline">全站 IP 记录</Link>}
           description="检索与管理全站用户权限、积分余额及账号状态，点击任意用户可打开 360° 全景档案抽屉。"
           badges={
             <>

@@ -10,4 +10,9 @@
 - 普通用户不能解绑唯一Discord登录；管理员仍须满足原密码恢复条件。设置UI的绑定/解绑可用性须与服务端相同；其他旧OAuth来源不能遮住Discord改绑入口。
 - 群资格只在新登录/绑定时复核，没有后台退群同步。站内封禁仍在每请求授权检查，不能将保留旧会话描述为已实现即时退群撤权。
 
+- 全站登录成功、有效会话访问及 API Key 验证成功后通过 `auth/ip-tracking.ts` 记录 `UserIpAddress`，包含旧账号的后续访问。只保存账号/IP/首次和最近时间；不采集 Cookie、密钥或完整请求，不自动封禁。
+- IP 仅来自受控代理覆盖的 `X-Narra-Client-IP`：本站 Caddy 使用 `header_up X-Narra-Client-IP {remote_host}`，Next 端口只对本机开放。不能回退到用户自报的 X-Forwarded-For/X-Real-IP；前置代理改变时须重新确认来源链。
+- IPv4、IPv6 和 IPv4-mapped IPv6 统一规范化；数据库使用 INET 与账号/IP 联合主键。Next after 延后写入，五分钟合并，节流缓存最多一万项，失败可重试；时间更新采用 LEAST/GREATEST 防止并发倒退。
+- `/admin/users/ips` 由管理员鉴权保护，按 IP 展示全站关联账号，可切换全部/同 IP 多账号、搜索和分页。查询不向普通用户或公开页面暴露 IP；历史记录从功能启用后开始。
+
 回归入口：`public-auth-policy.test.ts`、`public-login-page.test.tsx`、`discord-oauth.test.ts`、`profile-form-auth-policy.test.tsx`；保留原AuthForm验证码/网络错误测试及OAuth账户冲突、已有绑定不重复赠送测试。

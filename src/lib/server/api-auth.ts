@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { ApiAuthError } from "@/lib/api-errors";
 import { hashApiKey } from "@/lib/api-keys";
 import { fromPrismaRole } from "@/lib/prisma-mappers";
+import { recordUserIp } from "@/lib/auth/ip-tracking";
 
 function readBearerToken(request: Request) {
   const auth = request.headers.get("authorization") ?? "";
@@ -58,6 +59,8 @@ export async function requireApiUser(request: Request) {
   if (!apiKey || apiKey.revokedAt || apiKey.user.bannedAt) {
     throw new ApiAuthError("API Key 无效或已停用");
   }
+
+  recordUserIp(apiKey.user.id, request.headers);
 
   const now = Date.now();
   if (shouldWriteLastUsed(apiKey.id, now)) {

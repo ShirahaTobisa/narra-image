@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 import { SESSION_COOKIE_NAME } from "@/lib/constants";
 import { getEnv } from "@/lib/env";
 import { createSessionToken, verifySessionToken } from "@/lib/auth/session-token";
+import { recordCurrentUserIp } from "@/lib/auth/ip-tracking";
 import type { UserRole } from "@/lib/types";
 
 type SessionUser = {
@@ -56,6 +57,8 @@ export async function attachSessionCookie(
     ...getBaseCookieOptions(),
     maxAge: 60 * 60 * 24 * 14,
   });
+
+  await recordCurrentUserIp(user.userId);
 
   return response;
 }

@@ -137,6 +137,7 @@ model User {
   conversations        Conversation[]
   apiKeys              ApiKey[]
   contentReviews       ContentReview[]
+  ipAddresses          UserIpAddress[]
   canvases             Canvas[]
   canvasImports        CanvasImportAsset[]
   canvasRuns           CanvasRun[]
@@ -165,6 +166,17 @@ model ContentReview {
   @@index([createdAt])
   @@index([kind, createdAt])
   @@index([userId, createdAt])
+}
+
+model UserIpAddress {
+  userId      String
+  ipAddress   String   @db.Inet
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, ipAddress])
+  @@index([ipAddress, lastSeenAt])
 }
 
 model ModerationConfig {

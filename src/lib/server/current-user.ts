@@ -5,6 +5,7 @@ import { Role } from "@prisma/client";
 
 import { db } from "@/lib/db";
 import { readSession } from "@/lib/auth/session";
+import { recordCurrentUserIp } from "@/lib/auth/ip-tracking";
 
 export const getCurrentUserRecord = cache(async () => {
   const session = await readSession();
@@ -26,6 +27,8 @@ export const getCurrentUserRecord = cache(async () => {
       uid: true,
     },
   });
+
+  if (user) await recordCurrentUserIp(user.id);
 
   // 封禁用户按未登录处理：等效登出，无需等待 token 过期
   if (!user || user.bannedAt) {
