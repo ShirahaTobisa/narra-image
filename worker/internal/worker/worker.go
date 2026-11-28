@@ -652,7 +652,12 @@ func (w *Worker) processJob(parent context.Context, job GenerationJob) {
 		"generation_type", job.GenerationType,
 	)
 
-	ctx, cancel := context.WithTimeout(parent, w.cfg.JobTimeout)
+	jobTimeout := w.cfg.JobTimeout
+	if strings.TrimSpace(job.Model) == h3Model {
+		// H3 queues can exceed the normal image deadline; its client allows 90 minutes.
+		jobTimeout = max(jobTimeout, 90*time.Minute)
+	}
+	ctx, cancel := context.WithTimeout(parent, jobTimeout)
 	defer cancel()
 	if w.cfg.ImageStorageManagedEnabled && isImageGeneration(job) {
 		defer func() {

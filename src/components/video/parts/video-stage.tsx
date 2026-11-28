@@ -30,7 +30,7 @@ export function VideoStage({ generation, onDownload, onRetry }: VideoStageProps)
     <div className="flex flex-1 flex-col items-center justify-center gap-5 overflow-y-auto p-6 md:p-10">
       <div className="flex w-full max-w-3xl flex-col items-center">
         {generation.status === "pending" && (
-          <VideoGeneratingProgress startedAt={generation.startedAt ?? generation.createdAt} />
+          <VideoGeneratingProgress />
         )}
 
         {generation.status === "failed" && (
