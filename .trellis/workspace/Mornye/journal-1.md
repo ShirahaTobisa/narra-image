@@ -219,3 +219,25 @@ Kept reference-image generation; added fixed local NSFWJS/WASM prescreen before 
 ### Status
 
 [OK] **Completed**
+
+
+## Session 11: H3 credential setup and activation
+
+**Date**: 2026-11-28
+**Task**: H3 credential setup and activation
+**Branch**: `fix/site-stability`
+
+### Summary
+
+Configured the existing H3 card through the logged-in browser and charity-site admin UI. Authenticated read-only API checks passed. Enabled the H3 channel and VIDEO_ENABLED on app and worker with backup and unchanged images. Browser verified model h3, single reference upload, global 10/day and account 1/day. No paid generation was submitted.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a7e1c40` | (see git log) |
+| `34eb6c6` | (see git log) |
+
+### Status
+
+[OK] **Completed**
