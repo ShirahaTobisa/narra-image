@@ -14,6 +14,8 @@
 - PostgreSQL advisory lock 互斥：embedded 持 exclusive、dedicated 持 shared；冲突以 `TOPOLOGY_CONFLICT` 非零退出，多个 dedicated Worker 合法。
 - 锁连接丢失：立即撤销 ready、停止 claim、有界 drain 后非零退出；禁止同进程静默重获锁继续消费。
 - SIGTERM：先令 readyz 失败、停止 claim，再按 grace drain；hard-stop 上限后强制终止，禁止无限等待。
+- Go 生成契约优先从可执行文件旁的 `contracts/generation/v1` 目录读取；只有该目录不存在时才使用源码路径供开发测试。目录存在但配置缺失/损坏必须报错，不能回退掩盖打包问题。不能把 `runtime.Caller` 的编译路径当作线上路径：镜像运行文件在 `/app/contracts`，编译目录推导的 `/contracts` 并不存在。
+- 更改共享配置读取或 Worker 打包时，回归须把测试二进制与契约复制到独立目录并从其他工作目录启动，验证 H3/Seedream 配置和损坏文件拒绝；源码目录中的测试通过不代表部署后配置可读。
 
 ## 3. Migration 安全契约
 

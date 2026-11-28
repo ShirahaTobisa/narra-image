@@ -199,6 +199,13 @@ func LoadGenerationContract(root string) (GenerationContract, error) {
 }
 
 func generationContractRoot() string {
+	// Packaged workers ship the contract beside the binary, without the build tree.
+	if executable, err := os.Executable(); err == nil {
+		root := filepath.Join(filepath.Dir(executable), "contracts", "generation", "v1")
+		if _, err := os.Stat(root); !errors.Is(err, os.ErrNotExist) {
+			return root
+		}
+	}
 	_, file, _, ok := runtime.Caller(0)
 	if ok {
 		return filepath.Clean(filepath.Join(filepath.Dir(file), "../../../contracts/generation/v1"))

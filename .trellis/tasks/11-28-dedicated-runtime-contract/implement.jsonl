@@ -1,0 +1,2 @@
+{"file":".trellis/spec/operations/release-hardening.md","reason":"容器运行时和发布验证"}
+{"file":".trellis/spec/operations/generation-inputs.md","reason":"专用模型限制不得改变"}
