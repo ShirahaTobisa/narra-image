@@ -232,7 +232,7 @@ INSERT INTO "GenerationJob" (
 						t.Fatal(err)
 					}
 				}
-				job, claimed, err := w.claimJob(ctx)
+				job, claimed, err := w.claimJob(ctx, false)
 				if err != nil || !claimed {
 					t.Fatalf("claimJob failed: claimed=%v err=%v", claimed, err)
 				}
@@ -301,12 +301,49 @@ FROM "GenerationJob" j JOIN "User" u ON u.id = j."userId" WHERE j.id = $1`, job.
 		runRollbackStorageDBTests(t, ctx, pool)
 	})
 
+	t.Run("image slot remains available behind queued videos", func(t *testing.T) {
+		for _, kind := range []string{"TEXT_TO_IMAGE", "IMAGE_TO_IMAGE"} {
+			t.Run(kind, func(t *testing.T) {
+				reset()
+				for _, suffix := range []string{"video_a", "video_b", "image"} {
+					id := kind + "_" + suffix
+					insertUser(id + "_user")
+					insertJob(id, id+"_user", 5)
+				}
+				_, err := pool.Exec(ctx, `UPDATE "GenerationJob" SET
+  "generationType" = 'TEXT_TO_VIDEO', model = 'h3', "durationSeconds" = 4,
+  "createdAt" = CURRENT_TIMESTAMP - CASE WHEN id = $1 THEN INTERVAL '3 minutes' ELSE INTERVAL '2 minutes' END
+WHERE id IN ($1, $2)`, kind+"_video_a", kind+"_video_b")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := pool.Exec(ctx, `UPDATE "GenerationJob" SET "generationType" = $2::"GenerationType" WHERE id = $1`, kind+"_image", kind); err != nil {
+					t.Fatal(err)
+				}
+				for _, step := range []struct {
+					imagesOnly bool
+					wantID     string
+				}{
+					{false, kind + "_video_a"},
+					{true, kind + "_image"},
+					{true, ""},
+					{false, kind + "_video_b"},
+				} {
+					job, claimed, err := w.claimJob(ctx, step.imagesOnly)
+					if err != nil || claimed != (step.wantID != "") || job.ID != step.wantID {
+						t.Fatalf("imagesOnly=%v got=%q claimed=%v want=%q err=%v", step.imagesOnly, job.ID, claimed, step.wantID, err)
+					}
+				}
+			})
+		}
+	})
+
 	t.Run("claim and successful image writeback uses ordinal and lease", func(t *testing.T) {
 		reset()
 		insertUser("db_success_user")
 		insertJob("db_success_job", "db_success_user", 5)
 
-		job, claimed, err := w.claimJob(ctx)
+		job, claimed, err := w.claimJob(ctx, false)
 		if err != nil || !claimed {
 			t.Fatalf("claimJob failed: claimed=%v err=%v", claimed, err)
 		}
@@ -358,7 +395,7 @@ SELECT status::text FROM "GenerationAttempt" WHERE "jobId" = $1 AND ordinal = 1
 		reset()
 		insertUser("db_ordinal_user")
 		insertJob("db_ordinal_job", "db_ordinal_user", 5)
-		job, claimed, err := w.claimJob(ctx)
+		job, claimed, err := w.claimJob(ctx, false)
 		if err != nil || !claimed {
 			t.Fatalf("claimJob failed: claimed=%v err=%v", claimed, err)
 		}
@@ -386,7 +423,7 @@ SELECT status::text FROM "GenerationAttempt" WHERE "jobId" = $1 AND ordinal = 1
 		reset()
 		insertUser("db_retry_user")
 		insertJob("db_retry_job", "db_retry_user", 5)
-		job, claimed, err := w.claimJob(ctx)
+		job, claimed, err := w.claimJob(ctx, false)
 		if err != nil || !claimed {
 			t.Fatalf("claimJob failed: claimed=%v err=%v", claimed, err)
 		}
@@ -412,7 +449,7 @@ SELECT status::text FROM "GenerationAttempt" WHERE "jobId" = $1 AND ordinal = 1
 		reset()
 		insertUser("db_unknown_user")
 		insertJob("db_unknown_job", "db_unknown_user", 7)
-		job, claimed, err := w.claimJob(ctx)
+		job, claimed, err := w.claimJob(ctx, false)
 		if err != nil || !claimed {
 			t.Fatalf("claimJob failed: claimed=%v err=%v", claimed, err)
 		}
@@ -443,7 +480,7 @@ FROM "GenerationJob" WHERE id = $1
 		reset()
 		insertUser("db_refund_user")
 		insertJob("db_refund_job", "db_refund_user", 9)
-		job, claimed, err := w.claimJob(ctx)
+		job, claimed, err := w.claimJob(ctx, false)
 		if err != nil || !claimed {
 			t.Fatalf("claimJob failed: claimed=%v err=%v", claimed, err)
 		}

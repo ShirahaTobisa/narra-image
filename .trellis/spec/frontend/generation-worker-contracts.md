@@ -34,6 +34,7 @@ pnpm verify:worker-contracts:db
 - `WORKER_MAX_ATTEMPTS`：限制总 attempt 数，不能只作为配置占位。
 - `WORKER_MAX_ACTIVE_PER_USER`：限制单用户活动任务数。
 - `WORKER_SHUTDOWN_GRACE_SECONDS`：先停止 claim，再在 grace 内 drain。
+- 并发数至少为 2 时，每个 Worker 的第一个消费位置只领取图片（文生图/图生图），其余位置保持通用领取，避免长时间排队的视频占满所有位置。总并发不增加，单用户活动上限、FIFO 与原子领取不变；并发为 1 时沿用通用领取。
 
 ### 数据库验证环境变量
 

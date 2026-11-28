@@ -409,7 +409,8 @@ func (w *Worker) runLoop(claimCtx context.Context, processingCtx context.Context
 			w.logger.Warn("清理过期任务失败", "event", "expired_job_sweep_failed", "slot", slot, "error", err)
 		}
 
-		job, ok, err := w.claimJob(claimCtx)
+		// Keep one existing slot available for images while other slots wait for videos.
+		job, ok, err := w.claimJob(claimCtx, w.cfg.Concurrency > 1 && slot == 1)
 		if err != nil {
 			w.logger.Error("领取任务失败", "event", "job_claim_failed", "slot", slot, "error", err)
 			waitForNextTick(claimCtx, ticker)
@@ -431,7 +432,7 @@ func waitForNextTick(ctx context.Context, ticker *time.Ticker) {
 	}
 }
 
-func (w *Worker) claimJob(ctx context.Context) (GenerationJob, bool, error) {
+func (w *Worker) claimJob(ctx context.Context, imagesOnly bool) (GenerationJob, bool, error) {
 	tx, err := w.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return GenerationJob{}, false, err
@@ -446,6 +447,7 @@ SELECT job.id, job."userId"
 FROM "GenerationJob" AS job
 WHERE job."workerManaged" = true
   AND job.status = 'PENDING'
+  AND (NOT $5 OR job."generationType" IN ('TEXT_TO_IMAGE', 'IMAGE_TO_IMAGE'))
   AND (job."nextAttemptAt" IS NULL OR job."nextAttemptAt" <= $1)
   AND (job."contractVersion" < 1 OR $2)
   AND (job."contractVersion" < 1 OR job."attemptCount" < $3)
@@ -470,7 +472,7 @@ WHERE job."workerManaged" = true
 ORDER BY job."createdAt" ASC, job.id ASC
 FOR UPDATE SKIP LOCKED
 LIMIT 1
-`, now, w.cfg.ContractsV1Enabled, w.cfg.MaxAttempts, w.cfg.MaxActivePerUser).Scan(
+`, now, w.cfg.ContractsV1Enabled, w.cfg.MaxAttempts, w.cfg.MaxActivePerUser, imagesOnly).Scan(
 		&candidateID,
 		&candidateUserID,
 	)
