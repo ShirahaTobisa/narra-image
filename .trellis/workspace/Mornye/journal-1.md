@@ -264,3 +264,24 @@ Configured the existing H3 card through the logged-in browser and charity-site a
 ### Status
 
 [OK] **Completed**
+
+
+## Session 13: Seedream 实测通过并预留图片处理位置
+
+**Date**: 2026-11-28
+**Task**: Seedream 实测通过并预留图片处理位置
+**Branch**: `fix/site-stability`
+
+### Summary
+
+Seedream 网页实测 17 秒生成 1024×1024 图片，加载和时间戳下载正常。修复 H3 占满处理位置，真实数据库回归通过并已部署；用户 H3 原单接回，视频实际出片仍待上游。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `79912a9` | (see git log) |
+
+### Status
+
+[OK] **Completed**

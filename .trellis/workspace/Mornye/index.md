@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 12
+- **Total Sessions**: 13
 - **Last Active**: 2026-11-28
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~266 | Active |
+| `journal-1.md` | ~287 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 13 | 2026-11-28 | Seedream 实测通过并预留图片处理位置 | `79912a9` | `fix/site-stability` |
 | 12 | 2026-11-28 | H3 运行配置、任务号和排队等待修复 | `2e20158`, `9b4aef6`, `f682c36` | `fix/site-stability` |
 | 11 | 2026-11-28 | H3 credential setup and activation | `a7e1c40`, `34eb6c6` | `fix/site-stability` |
 | 10 | 2026-11-27 | 全站账号 IP 记录与同 IP 查询上线 | `7d27a18597f9d606b00692ccf5cf6537e44d28f3` | `fix/site-stability` |
