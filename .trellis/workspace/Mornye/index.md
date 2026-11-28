@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 11
+- **Total Sessions**: 12
 - **Last Active**: 2026-11-28
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~243 | Active |
+| `journal-1.md` | ~266 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 12 | 2026-11-28 | H3 运行配置、任务号和排队等待修复 | `2e20158`, `9b4aef6`, `f682c36` | `fix/site-stability` |
 | 11 | 2026-11-28 | H3 credential setup and activation | `a7e1c40`, `34eb6c6` | `fix/site-stability` |
 | 10 | 2026-11-27 | 全站账号 IP 记录与同 IP 查询上线 | `7d27a18597f9d606b00692ccf5cf6537e44d28f3` | `fix/site-stability` |
 | 9 | 2026-11-25 | 图片下载使用可读时间 | `48fd6e91f697bd2756a02be1a0a059b6aee77377` | `fix/site-stability` |

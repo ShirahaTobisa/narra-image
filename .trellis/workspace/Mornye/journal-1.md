@@ -241,3 +241,26 @@ Configured the existing H3 card through the logged-in browser and charity-site a
 ### Status
 
 [OK] **Completed**
+
+
+## Session 12: H3 运行配置、任务号和排队等待修复
+
+**Date**: 2026-11-28
+**Task**: H3 运行配置、任务号和排队等待修复
+**Branch**: `fix/site-stability`
+
+### Summary
+
+三处修复已推送部署，保留上游原单接回两条任务；相关测试构建和线上就绪通过，等待界面已验证。H3 上游仍排队，实际成片与播放下载待验证，任务保持进行中。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2e20158` | (see git log) |
+| `9b4aef6` | (see git log) |
+| `f682c36` | (see git log) |
+
+### Status
+
+[OK] **Completed**
