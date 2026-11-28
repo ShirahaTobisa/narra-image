@@ -8,14 +8,24 @@
 - 两模型跳过本站内容审核，仍校验文件、权限、账号状态及参数。GPT、头像和广场保留原审核。
 - Seedream 图片沿用临存 1 小时；H3 视频不落地，通过本站授权接口播放及下载，不下发上游地址和卡密。
 
-## 后台配置（尚未执行）
+## 后台配置
 
-| 渠道 | Base URL | 默认模型 / 模型列表 | 凭据 |
+| 渠道 | Base URL | 默认模型 / 模型列表 | 状态 |
 | --- | --- | --- | --- |
-| Seedream | `https://api.apimart.ai/v1` | `seedream-5-5` | APIMart API Key |
-| H3 | `https://h3.coolhs.com/api/v1` | `h3` | H3 卡密 |
+| Seedream | `https://api.apimart.ai/v1` | `seedream-5-5` | 已复用 New API 现有 APIMart 密钥，已启用 |
+| H3 | `https://h3.coolhs.com/api/v1` | `h3` | 未配置，等用户回来后处理 |
 
-渠道仍使用原有后台的价格和启用设置。上线时须先应用 `20261128090000_dedicated_model_daily_quota` 迁移，再更新应用及 Worker；视频入口需要 `VIDEO_ENABLED=true`。当前均未配置、未启用、未部署，未做真实付费生成。
+Seedream 使用现有默认单价 5 积分。`20261128090000_dedicated_model_daily_quota` 已应用，应用及 Worker 已更新，Seedream 已启用；H3 无渠道且 `VIDEO_ENABLED=false`。APIMart 鉴权成功且模型列表包含 `seedream-5-5`；无密钥请求返回 401。没有进行付费出图测试。
+
+## 2026-11-28 Seedream 上线
+
+- 运行源码：`a7e1c4054d0ab2f4be74c8f2a2a383a1a7f97e38`。
+- App 镜像：`sha256:9438bd76a32f4c7433e645c2a3302552a91c92946d6499c0f44ca6de74261fa4`。
+- Worker 镜像：`sha256:213f165387945c70b78280458246f0be57217901fc95aa9d2d9241607e9c9e40`。
+- 从 New API 的 APIMart 渠道只读取得密钥；仅经 SSH 内存传递，在本站加密保存并验证解密一致，无明文文件或日志。
+- 备份：`/srv/narra-image-backups/20261128-seedream-a7e1c405/`，含数据库、源文件、原配置和部署回执。
+- 旧迁移有混合换行格式，已逐项证明内容等价且服务器原文件 checksum 与数据库完全一致；迁移时挂载保留原字节的历史目录，只应用新迁移，未重写历史记录。迁移后 Prisma schema diff 为零。
+- 候选与线上本机 healthz/readyz、登录、额度未授权拒绝检查通过；公网登录 200、额度接口未登录 401。数据库容器未替换，应用/Worker 的环境和存储挂载保持一致；候选容器已清理。
 
 ## 验证范围
 

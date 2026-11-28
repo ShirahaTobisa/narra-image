@@ -21,6 +21,6 @@
   "children": [],
   "parent": null,
   "relatedFiles": [],
-  "notes": "代码与验证已完成，保留本地；用户仍在补充开通规则，暂不推送部署，待配置新渠道凭据。",
+  "notes": "用户授权复用 New API 的 APIMart 密钥。Seedream 已按 a7e1c40 部署并启用，鉴权和上线检查通过；H3 无渠道且视频入口关闭，等用户回来后继续配置。",
   "meta": {}
 }

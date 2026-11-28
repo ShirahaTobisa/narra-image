@@ -8,4 +8,6 @@ H3 GeneratedVideo复用UPSTREAM和上游任务媒体URL，序列化换成本地v
 
 前端按模型呈现参数；后台补配置说明，密钥由管理员配置。
 
-新增 ModelDailyUsage 记录每日名额。GenerationJob INSERT触发器对模型/UTC+9日期取事务锁，核验总量10与单账号1，再原子记录；所有Node/Go入口自然共用。job删除设null保留用量；明确失败已退积分且无部分结果时UPDATE触发器释放。UNKNOWN/RESULT_PERSIST保留。API预检仅改善提示，数据库负责并发最终裁决。余额API返回聚合数据，不返回其他用户标识。暂不部署。
+新增 ModelDailyUsage 记录每日名额。GenerationJob INSERT触发器对模型/UTC+9日期取事务锁，核验总量10与单账号1，再原子记录；所有Node/Go入口自然共用。job删除设null保留用量；明确失败已退积分且无部分结果时UPDATE触发器释放。UNKNOWN/RESULT_PERSIST保留。API预检仅改善提示，数据库负责并发最终裁决。余额API返回聚合数据，不返回其他用户标识。
+
+2026-11-28 后续确认：从 New API 的 APIMart 渠道复用现有密钥，按本站 AES-GCM 格式加密保存，先保持渠道停用；备份、构建、迁移、候选检查与切换成功后只启用 Seedream。H3 没有配置渠道，VIDEO_ENABLED 保持 false。
