@@ -13,9 +13,9 @@
 | 渠道 | Base URL | 默认模型 / 模型列表 | 状态 |
 | --- | --- | --- | --- |
 | Seedream | `https://api.apimart.ai/v1` | `seedream-5-5` | 已复用 New API 现有 APIMart 密钥，已启用 |
-| H3 | `https://h3.coolhs.com/api/v1` | `h3` | 未配置，等用户回来后处理 |
+| H3 | `https://h3.coolhs.com` | `h3` | 已从用户浏览器取得现有卡密，已启用 |
 
-Seedream 使用现有默认单价 5 积分。`20261128090000_dedicated_model_daily_quota` 已应用，应用及 Worker 已更新，Seedream 已启用；H3 无渠道且 `VIDEO_ENABLED=false`。APIMart 鉴权成功且模型列表包含 `seedream-5-5`；无密钥请求返回 401。没有进行付费出图测试。
+Seedream 使用现有默认单价 5 积分，H3 视频 20 积分。`20261128090000_dedicated_model_daily_quota` 已应用，两个渠道均已启用，应用及 Worker 的 `VIDEO_ENABLED=true`。APIMart 鉴权成功且模型列表包含 `seedream-5-5`；无密钥请求返回 401。没有进行付费出图或出片测试。
 
 ## 2026-11-28 Seedream 上线
 
@@ -29,10 +29,20 @@ Seedream 使用现有默认单价 5 积分。`20261128090000_dedicated_model_dai
 
 ## 验证范围
 
+### 2026-11-28 H3 启用
+
+- 用户 Chrome 已登录 H3，页面显示剩余 98 次；通过公益站后台保存卡密，沿用渠道加密存储，未写入源码或本地文件。
+- H3 渠道 ID `cmx04zlgj000101mfza7tn88n`，slug/defaultModel 为 `h3`，模型列表为 `["h3"]`。`/v1/models` 带卡密返回 200、无卡密返回 401；`/api/v1/presets` 返回 200，`reference` 可用且支持 4/6/8 秒。
+- 备份 `/srv/narra-image-backups/20261128T081922Z-h3-enable/` 保存原配置及启用回执。排空任务后重启应用与 Worker，仅更改 `VIDEO_ENABLED`，沿用上述镜像和源码，其他环境、存储挂载和数据库容器均保持一致。
+- 两服务 healthy，本机 healthz/readyz/login 均 200；用户浏览器 `/video` 正常显示 `h3`、单参考图入口、全站剩余 10/10 和当前账号剩余 1 次。
+- 本次未下单，未消耗 H3 次数；实际出片、播放及下载尚未进行真实产物验证。
+
+### 代码与数据库验证
+
 - 网页/API/GPT 原审核与计费、Canvas、模型限制、前端交互、剩余次数、图片临存和视频投影/流式代理的相关单元测试通过。
 - Node 生成契约 6 个文件、48 项通过；Go 适配器/生成回归、构建通过。
 - TypeScript、所有受影响 TS/TSX 的 ESLint、差异格式检查通过；最终根目录 `eslint .` 通过（0 error、9 条原有 warning）。
 - 最终 `next build --webpack` 退出 0，包含类型、页面收集和静态页面生成。最初受本机目录权限与测试 APP_URL 限制；正常权限、隔离测试域名下发现并修复 6 个旧页面的 PageProps 声明不兼容，随后完整构建通过，相关 3 个测试文件 53 项通过。默认 Turbopack 那轮已停止，不计为通过。
 - 真实 PostgreSQL 全部 29 份迁移、19 组名额并发/释放/删除/回滚检查，以及完整 `TestWorkerContractsDB` 通过，详见 [数据库验证](./validation-db.md)。
 - 全范围复核修复了 H3 环境/自填凭据来源和合法地址变体导致的播放失败；修复后 3 个 Node 文件 67 项、Go H3 定向测试及类型/局部 lint 通过。
-- 本机完整 Go 测试只有两项既有 Windows 符号链接权限测试失败；没有修改系统权限或绕过测试断言。真实第三方连通性、账户额度和最终产物尚待配置后验证。
+- 本机完整 Go 测试只有两项既有 Windows 符号链接权限测试失败；没有修改系统权限或绕过测试断言。两个上游鉴权已验证，最终生成产物尚未实测。
