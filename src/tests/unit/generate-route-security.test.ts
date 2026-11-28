@@ -45,6 +45,7 @@ vi.mock("@/lib/db", () => ({
     generationImage: { findFirst: mockImageFindFirst },
     generationJob: { findFirst: mockJobFindFirst },
     savedProviderConfig: { findUnique: mockSavedProviderFindUnique },
+    modelDailyUsage: { findMany: vi.fn().mockResolvedValue([]) },
   },
 }));
 
@@ -536,6 +537,38 @@ describe("生成接口安全校验顺序", () => {
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ count: 1, creditsSpent: 5 }) }));
     expect(charge).toHaveBeenCalledWith({ where: { id: "user_1", credits: { gte: 5 } }, data: { credits: { decrement: 5 } } });
     expect(reserveManagedImageOutputs).toHaveBeenCalledWith(expect.objectContaining({ count: 1 }));
+  });
+
+  it("Seedream 第二张参考图在送审、上传及扣费前拒绝", async () => {
+    const { create, charge } = submissionTransaction();
+    mockGetGenerationChannelForModel.mockResolvedValue({ id: "seedream", baseUrl: "https://api.apimart.ai/v1", creditCost: 5, defaultModel: "seedream-5-5", models: ["seedream-5-5"] });
+    const reference = new File(["image"], "ref.png", { type: "image/png" });
+    mockParseGenerateRequest.mockResolvedValue(buildRequestBody({ model: "seedream-5-5", images: [reference, reference], imageUrls: [] }));
+    const response = await POST(new Request("https://app.unit.invalid/api/generate", { method: "POST" }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: expect.stringContaining("一张参考图") });
+    expect(mockCheckGenerationInput).not.toHaveBeenCalled();
+    expect(mockPersistGeneratedImage).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+    expect(charge).not.toHaveBeenCalled();
+  });
+
+  it("Seedream 以实际渠道跳过审核且4K请求归一为1K并按一张扣费", async () => {
+    const { create, charge } = submissionTransaction();
+    mockGetGenerationChannelForModel.mockResolvedValue({ id: "seedream", baseUrl: "https://api.apimart.ai/v1", creditCost: 5, defaultModel: "seedream-5-5", models: ["seedream-5-5"] });
+    mockParseGenerateRequest.mockResolvedValue(buildRequestBody({ model: "seedream-5-5", size: "3840x3840", generationType: "text_to_image", images: [], imageUrls: [] }));
+    const response = await POST(new Request("https://app.unit.invalid/api/generate", { method: "POST" }));
+    expect(response.status).toBe(200);
+    expect(mockCheckGenerationInput).toHaveBeenCalledWith(expect.objectContaining({ skipContentModeration: true }));
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ size: "1024x1024", count: 1, creditsSpent: 5 }) }));
+    expect(charge).toHaveBeenCalledOnce();
+  });
+
+  it("客户端伪造免审开关不能让GPT跳过审核", async () => {
+    submissionTransaction();
+    mockParseGenerateRequest.mockResolvedValue(buildRequestBody({ generationType: "text_to_image", images: [], imageUrls: [], skipContentModeration: true }));
+    expect((await POST(new Request("https://app.unit.invalid/api/generate", { method: "POST" }))).status).toBe(200);
+    expect(mockCheckGenerationInput).toHaveBeenCalledWith(expect.objectContaining({ skipContentModeration: false }));
   });
 
   it("先提交4张后拒绝2张，剩余1张仍可用且超额不验证码、送审或扣费", async () => {

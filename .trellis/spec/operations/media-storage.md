@@ -12,7 +12,7 @@
 - Node 参考图入口：`persistGeneratedImage(input: PersistImageInput): Promise<string>`，接受 buffer、base64 或远程 URL；生成结果的生产策略由 Go 执行。
 - `ENABLE_DATABASE_IMAGE_STORAGE` 为 shared runtime boolean，默认 `false`。唯一解析入口是 Node `src/lib/env.ts` 和 Go `worker/internal/worker/config.go`，配置事实源为 `contracts/runtime/v1/environment.json`；Go `LoadConfig` 与 `LoadStorageConfig` 均读取到 `Config.EnableDatabaseImageStorage`。
 - 图片在 managed 模式下可使用 LOCAL 持久卷，具体登记/预留/读取与环境契约见 [Image Storage](./image-storage.md)。此模式先于数据库存图与开发回退开关；额度、配置、写入失败都不能回退到未登记的数据库字节。
-- 生产环境为 `NODE_ENV=production` 或 `APP_URL` 非 loopback 显式值。未启用 managed 时，生产生成图片可以显式选择数据库存图，否则要求对象存储（`S3_BUCKET + S3_ENDPOINT + S3_ACCESS_KEY_ID + S3_SECRET_ACCESS_KEY`）。所有视频持久化仍要求对象存储。
+- 生产环境为 `NODE_ENV=production` 或 `APP_URL` 非 loopback 显式值。未启用 managed 时，生产生成图片可以显式选择数据库存图，否则要求对象存储（`S3_BUCKET + S3_ENDPOINT + S3_ACCESS_KEY_ID + S3_SECRET_ACCESS_KEY`）。视频持久化仍要求对象存储；H3 使用下述明确的上游保留例外，不做持久化。
 - 图片：
   - managed 启用：Node/Go 先申请统一额度、登记具体对象，再按 LOCAL/S3 写入，返回稳定媒体 token URL；`IMAGE_STORAGE_BACKEND=local` 要求 shared 卷和有效身份。两个旧回退开关都不能绕过额度或清单。
   - managed 关闭且有对象存储：`PersistImage`/`PersistImageFromURL` 存 S3，返回公开 URL；优先于数据库存图开关，上传失败不改走数据库回退。
@@ -22,6 +22,11 @@
 - 视频：
   - 有对象存储：`buildVideoResult` 下载上游视频转存 S3，返回 S3 URL。
   - 无对象存储：直接以 `RESULT_PERSIST_FAILED` 失败并给出明确错误，不得回退短期上游 URL。
+  - H3 专用渠道例外：成功结果只记录原生 `/api/v1/jobs/{numericId}/video` 和可选同任务 `/poster`，`mediaStorage=UPSTREAM`、`storageKey=NULL`；视频字节不写本站磁盘、数据库或 S3。上游保留 3 天，额度耗尽后仍用原生接口取回。
+  - H3 的生成记录、个人作品、精选、详情及后台输出统一调用 `presentGeneratedVideo` / `serializeVideo`，只下发 `/api/videos/{generatedVideoId}/content`，封面附 `?variant=poster`。H3 错误原文和媒体地址不发送到客户端。
+  - 视频代理从数据库记录核验作者/管理员；公开访问沿用 `FEATURED` 且作者未封禁规则，封禁账号无私有访问权。密钥来源沿用父任务：DB 渠道（含停用）、`__env__` 环境渠道或 CUSTOM 任务保存的密文；验证 H3 渠道与完整原生媒体路径后才解密，不使用客户端 URL 或凭据，不因渠道停用/额度耗尽拒绝历史结果。生成端统一原生地址，读取端兼容合法的主机大小写、标准 443 端口及渠道尾斜杠。
+  - 每一跳经 `fetchPublicHttpUrl` 公网地址校验和 DNS 固定，最多 5 次跳转，Bearer 仅发送给首跳，浏览器不接收重定向。支持单段 Range、取消、15 分钟总截止和有限流式传输，只输出检查过的媒体/范围/长度头，禁止透传 Location、Content-Location、Cookie、上游文件名或错误正文。上游 404/410 返回本站 410 文案，其余故障用通用 502/503。
+  - `?download=1` 返回本站下载名；`filename` 仅接受 `mm-dd-hh-mm`，缺失/非法时复用 `imageDownloadTimestamp`，视频扩展名固定 `.mp4`、封面 `.webp`。
 - 提示词库封面/预览图保持上游 URL，不转存 S3（不在媒体持久化范围内）。
 - 数据库存图沿用既有 data URL 形态，会增加数据库、接口响应与备份体积；不因选择此模式更改 `NODE_ENV` 或伪造 loopback `APP_URL`。
 - Go `/v1` 内部网关的参考图输入仍只接受 HTTP(S) URL，envelope 还有 1 MiB 请求体上限（`worker/internal/worker/gateway.go`、`contracts/gateway/v1/envelope.json`）。数据库 data URL 不能直接用于该 `/v1/images/edits` 输入；Web 文件参考图经数据库队列处理可以读取 B64。这个图片结果存储开关不扩展网关参考图传输协议，不能据 Node helper 返回成功就宣称所有参考图入口都可用。
@@ -29,7 +34,7 @@
 ## 3. 存储形态元数据
 
 - `GenerationImage`/`GeneratedVideo` 保存 `mediaStorage` 与 `storageKey`（均可空）：
-  - `mediaStorage`：`B64`（显式数据库存图或非生产 data URL fallback）| `S3`（对象存储）| `NULL`（legacy 行）；图片增加 `LOCAL`，视频保持原值域。
+  - `mediaStorage`：`B64`（显式数据库存图或非生产 data URL fallback）| `S3`（对象存储）| `NULL`（legacy 行）；图片增加 `LOCAL`，H3 视频复用既有 `UPSTREAM`。
   - `storageKey`：不可变原始写入 key；managed 图片的实际当前位置以 `mediaAssetId → ImageAsset.activeObjectId → ImageObject/ImageStorageLocation` 为准，不能由当前默认后端推导。
   - `GenerationImage.mediaAssetId` 可空且唯一，managed 写入关联逻辑图片；物理清单不随业务 cascade 消失。
   - 未受管理的 S3 图片保存 object key；数据库存图的 `storageKey` 与 `mediaAssetId` 为 NULL，不伪造已登记副本或计量。
@@ -49,13 +54,14 @@
 | managed 关闭、无 S3、两个存图开关都关闭 | `当前没有可用的图片存储配置`，不保存临时上游 URL |
 | managed 关闭、有 S3、数据库开关任意 | S3 写入；S3 失败保持错误，不转存 B64 |
 | 新开关为无效布尔值 | Node loader、Go `LoadConfig() (Config, error)` 与 `LoadStorageConfig() (Config, error)` 均拒绝配置 |
-| 无 S3 的视频 | 保持 `RESULT_PERSIST_FAILED`，数据库图片开关和 managed LOCAL 均不提供视频存储 |
+| 无 S3 的普通视频 | 保持 `RESULT_PERSIST_FAILED`，数据库图片开关和 managed LOCAL 均不提供视频存储 |
+| H3 专用渠道视频 | `UPSTREAM` + 原生媒体 URL + 空 storageKey；只经本站授权代理读取，3 天保留期后返回 410 |
 | Canvas 原图导入 | 使用 S3 或受管理 LOCAL；数据库图片开关不提供 Canvas 原图存储 |
 | `/v1/images/edits` 参考图被上传 helper 转为 data URL | 仍被现有网关 HTTP(S) 输入校验拒绝；数据库存图模式不解除该限制 |
 
 ## 5. 历史兼容与回填
 
-- 历史 `GenerationImage.url` / `GeneratedVideo.url`（data URL / S3 / 上游）保持可读，前端 URL 展示契约不变。
+- 历史 `GenerationImage.url` / `GeneratedVideo.url`（data URL / S3 / 上游）保持可读；H3 的私有上游地址必须经过本站视频投影和代理。
 - 回填工具 `worker/cmd/backfill-media`：图片扫描同时要求 `mediaStorage IS NULL` 与 `mediaAssetId IS NULL`，视频保持原 NULL 条件。下载前和 PUT 前复核当前 owner/原 URL/NULL 元数据及关联，已被历史纳管的行不得再次复制。非 managed 仍转存 S3，managed 图片遵守新对象预算/身份规则；更新用相同条件 CAS，未确定绑定结果保留已落盘清单。`--dry-run`/`--limit`/`--include-http` 保持，它不是无 PUT 的历史盘点工具。
 - `image-history --apply` 前须 drain 所有旧写者和 backfill。上述短查询不是正在进行的 unmanaged S3 IO 可被撤销的保证，不能持有长业务事务跨网络 PUT 来制造并发保证；新的 managed 写入仍由原 reservation/grant/ledger 约束。
 
@@ -69,6 +75,7 @@ pnpm verify:worker-contracts:ts
 pnpm verify:worker-contracts:go
 pnpm verify:worker-contracts:db
 pnpm exec vitest run src/tests/contracts/runtime-environment-contract.test.ts src/tests/unit/persist-generated-image.test.ts
+pnpm exec vitest run src/tests/unit/h3-video-content.test.ts src/tests/unit/h3-video-presentation.test.tsx src/tests/unit/safe-remote-url.test.ts
 ```
 
 - 仓库内验证用 disposable PostgreSQL + 模拟 S3；真实 S3/CDN 读写与生产回填演练需用户授权，验证记录单独标注。

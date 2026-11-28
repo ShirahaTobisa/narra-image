@@ -26,12 +26,12 @@ beforeEach(() => {
 describe("admin IP report page", () => {
   it("does not query IP records without administrator authorization", async () => {
     requireAdmin.mockRejectedValueOnce(new Error("没有管理员权限"));
-    await expect(AdminUserIpsPage()).rejects.toThrow("redirect:/login");
+    await expect(AdminUserIpsPage({})).rejects.toThrow("redirect:/login");
     expect(getReport).not.toHaveBeenCalled();
   });
 
   it("shows a global group with account links and dates, rather than one selected user", async () => {
-    const html = renderToStaticMarkup(await AdminUserIpsPage());
+    const html = renderToStaticMarkup(await AdminUserIpsPage({}));
     expect(getReport).toHaveBeenCalledWith({ page: 1, sharedOnly: true, ip: "" });
     expect(html).toContain("已记录 4 / 120 个账号");
     expect(html).toContain("203.0.113.10");

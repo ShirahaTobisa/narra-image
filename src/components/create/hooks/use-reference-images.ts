@@ -22,7 +22,7 @@ type UseReferenceImagesResult = {
   setImages: Dispatch<SetStateAction<ReferenceImage[]>>;
 };
 
-export function useReferenceImages(): UseReferenceImagesResult {
+export function useReferenceImages(maximum = MAX_REFERENCE_IMAGES): UseReferenceImagesResult {
   const [referenceImages, setReferenceImages] = useState<ReferenceImage[]>([]);
   // 持有当前 URL 集合用于卸载时释放，避免 ObjectURL 泄漏。
   const liveUrlsRef = useRef<Set<string>>(new Set());
@@ -47,7 +47,7 @@ export function useReferenceImages(): UseReferenceImagesResult {
     const imageFiles = Array.from(files ?? []).filter((file) => file.type.startsWith("image/"));
     if (imageFiles.length === 0) return "empty";
 
-    const remaining = Math.max(0, MAX_REFERENCE_IMAGES - liveCountRef.current);
+    const remaining = Math.max(0, maximum - liveCountRef.current);
     const acceptedFiles = imageFiles.slice(0, remaining);
     const exceeded = acceptedFiles.length < imageFiles.length;
 
@@ -67,7 +67,7 @@ export function useReferenceImages(): UseReferenceImagesResult {
     setReferenceImages((current) => [...current, ...additions]);
 
     return exceeded ? "exceeded" : "ok";
-  }, []);
+  }, [maximum]);
 
   const removeImage = useCallback((id: string) => {
     setReferenceImages((current) => {

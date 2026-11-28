@@ -9,6 +9,7 @@ import { getCurrentUserRecord } from "@/lib/server/current-user";
 import { getWorkById } from "@/lib/server/works";
 import { visibleWorkWhere } from "@/lib/server/public-work";
 import { canViewWorkDetail } from "@/lib/work-showcase";
+import { presentGeneratedVideo } from "@/lib/storage/h3-video";
 
 export const dynamic = "force-dynamic";
 
@@ -24,19 +25,20 @@ export default async function WorkDetailPage({
   if (!work) {
     const video = await db.generatedVideo.findUnique({
       where: { id, ...visibleWorkWhere(user?.id) },
-      include: { job: { select: { prompt: true, userId: true } } },
+      include: { job: { select: { model: true, prompt: true, userId: true } } },
     });
     const isVideoOwner = user?.id === video?.job.userId;
     if (!video || !canViewWorkDetail({ isOwner: isVideoOwner, showcaseStatus: video.showcaseStatus })) {
       notFound();
     }
+    const media = presentGeneratedVideo(video, video.job.model);
     return (
       <main className="pb-20">
         <SiteHeader currentUser={user ? serializeUser(user) : null} />
         <section className="mx-auto grid max-w-5xl gap-6 px-5 pb-12 pt-8 md:px-8">
           <video
-            src={video.url}
-            poster={video.posterUrl ?? undefined}
+            src={media.url}
+            poster={media.posterUrl ?? undefined}
             controls
             playsInline
             className="w-full rounded-2xl border-[6px] border-white bg-black shadow-[0_18px_40px_rgba(84,52,29,0.18)]"

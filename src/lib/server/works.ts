@@ -5,6 +5,7 @@ import { Prisma, ShowcaseStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { publicWorkWhere, visibleWorkWhere } from "@/lib/server/public-work";
 import { imageAvailabilityInclude } from "@/lib/storage/image-availability";
+import { presentGeneratedVideo } from "@/lib/storage/h3-video";
 import { galleryWorkInclude, publicGalleryWhere, reviewableGalleryWhere, serializeAdminGalleryWork, serializeFeaturedGalleryWork, serializeGalleryWork } from "@/lib/server/gallery-work-data";
 import {
   serializeAdminWork,
@@ -690,7 +691,7 @@ export async function listAdminReviewPage(options: {
         model: row.job.model,
         negativePrompt: row.job.negativePrompt,
         ownerId: row.job.userId,
-        posterUrl: row.posterUrl,
+        ...presentGeneratedVideo(row, row.job.model),
         prompt: row.job.prompt,
         publicAuthorName: row.publicAuthorName,
         reviewNote: row.reviewNote,
@@ -703,7 +704,6 @@ export async function listAdminReviewPage(options: {
         showcaseStatus: row.showcaseStatus,
         size: row.job.size,
         submittedAt: row.submittedAt?.toISOString() ?? null,
-        url: row.url,
       })),
       totalCount,
     };
@@ -767,7 +767,7 @@ export async function listAdminReviewPage(options: {
     model: row.job.model,
     negativePrompt: row.job.negativePrompt,
     ownerId: row.job.userId,
-    posterUrl: row.posterUrl,
+    ...presentGeneratedVideo(row, row.job.model),
     prompt: row.job.prompt,
     publicAuthorName: row.publicAuthorName,
     reviewNote: row.reviewNote,
@@ -780,7 +780,6 @@ export async function listAdminReviewPage(options: {
     showcaseStatus: row.showcaseStatus,
     size: row.job.size,
     submittedAt: row.submittedAt?.toISOString() ?? null,
-    url: row.url,
   }));
 
   const galleryWhere: Prisma.GalleryWorkWhereInput = {

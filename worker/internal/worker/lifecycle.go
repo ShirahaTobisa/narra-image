@@ -24,6 +24,7 @@ const (
 	errorProviderAuthFailed         = "PROVIDER_AUTH_FAILED"
 	errorProviderRequestInvalid     = "PROVIDER_REQUEST_INVALID"
 	errorProviderPolicyRejected     = "PROVIDER_POLICY_REJECTED"
+	errorProviderGenerationFailed   = "PROVIDER_GENERATION_FAILED"
 	errorSourceImageInvalid         = "SOURCE_IMAGE_INVALID"
 	errorImageQuotaExceeded         = "IMAGE_QUOTA_EXCEEDED"
 	errorImageStorageUnavailable    = "IMAGE_STORAGE_UNAVAILABLE"
@@ -74,9 +75,10 @@ func (failure ResultPersistError) Unwrap() error {
 type providerLifecycleContextKey struct{}
 
 type providerLifecycleHooks struct {
-	markSubmitting  func(context.Context) error
-	markSubmitted   func(context.Context, string) error
-	recordRequestID func(context.Context, string) error
+	checkPreparation func(context.Context) error
+	markSubmitting   func(context.Context) error
+	markSubmitted    func(context.Context, string) error
+	recordRequestID  func(context.Context, string) error
 
 	submittingErr  error
 	submittingOnce sync.Once

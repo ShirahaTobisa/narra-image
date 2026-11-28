@@ -44,6 +44,38 @@ func TestWorkerContractsDB(t *testing.T) {
 		t.Fatalf("schema probe 未就绪: %+v", report.Issues)
 	}
 
+	t.Run("daily quota readiness requires migration protections", func(t *testing.T) {
+		for _, test := range []struct{ name, change, restore string }{
+			{"ModelDailyUsage", `ALTER TABLE "ModelDailyUsage" RENAME TO "QuotaProbeUsage"`, `ALTER TABLE "QuotaProbeUsage" RENAME TO "ModelDailyUsage"`},
+			{"ModelDailyUsage.dateKey", `ALTER TABLE "ModelDailyUsage" RENAME COLUMN "dateKey" TO "quotaProbeDay"`, `ALTER TABLE "ModelDailyUsage" RENAME COLUMN "quotaProbeDay" TO "dateKey"`},
+			{"narra_enforce_model_daily_quota", `ALTER FUNCTION narra_enforce_model_daily_quota() RENAME TO quota_probe_enforce`, `ALTER FUNCTION quota_probe_enforce() RENAME TO narra_enforce_model_daily_quota`},
+			{"narra_release_model_daily_quota", `ALTER FUNCTION narra_release_model_daily_quota() RENAME TO quota_probe_release`, `ALTER FUNCTION quota_probe_release() RENAME TO narra_release_model_daily_quota`},
+			{"GenerationJob_model_daily_quota", `ALTER TABLE "GenerationJob" DISABLE TRIGGER "GenerationJob_model_daily_quota"`, `ALTER TABLE "GenerationJob" ENABLE TRIGGER "GenerationJob_model_daily_quota"`},
+			{"GenerationJob_release_model_daily_quota", `ALTER TABLE "GenerationJob" DISABLE TRIGGER "GenerationJob_release_model_daily_quota"`, `ALTER TABLE "GenerationJob" ENABLE TRIGGER "GenerationJob_release_model_daily_quota"`},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				if _, err := pool.Exec(ctx, test.change); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() {
+					if _, err := pool.Exec(ctx, test.restore); err != nil {
+						t.Fatal(err)
+					}
+				})
+				report, err := CheckSchemaContract(ctx, pool)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, issue := range report.Issues {
+					if issue.Name == test.name {
+						return
+					}
+				}
+				t.Fatalf("missing quota protection was accepted: %s", test.name)
+			})
+		}
+	})
+
 	w := New(pool, Config{
 		ContractsV1Enabled: true,
 		MaxActivePerUser:   1,

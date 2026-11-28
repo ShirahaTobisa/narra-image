@@ -3,6 +3,7 @@ package worker
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -11,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestGatewaySignatureRoundTrip(t *testing.T) {
@@ -33,6 +36,38 @@ func TestGatewaySignatureRoundTrip(t *testing.T) {
 	}
 	if err := worker.verifyGatewaySignature(body, strings.ToUpper(expected)); err == nil {
 		t.Fatal("case-mutated signature must be rejected")
+	}
+}
+
+func TestGatewayDailyQuotaErrorsAreSafeAndRefundable(t *testing.T) {
+	worker := New(nil, Config{}, nil)
+	for _, test := range []struct {
+		sqlState, message string
+		status            int
+	}{
+		{"P0001", "MODEL_DAILY_QUOTA_EXHAUSTED", http.StatusTooManyRequests},
+		{"P0001", "MODEL_DAILY_QUOTA_USED", http.StatusTooManyRequests},
+		{"23505", "MODEL_DAILY_QUOTA_USED", http.StatusServiceUnavailable},
+		{"P0001", "private SQL error", http.StatusServiceUnavailable},
+	} {
+		recorder := httptest.NewRecorder()
+		err := fmt.Errorf("insert job: %w", &pgconn.PgError{Code: test.sqlState, Message: test.message, Detail: "private database detail"})
+		worker.writeGatewayEnqueueError(recorder, gatewayEnvelope{Endpoint: "images.generations", JobID: "uncreated-job"}, err)
+		if recorder.Code != test.status || strings.Contains(recorder.Body.String(), "private") || strings.Contains(recorder.Body.String(), "insert job") {
+			t.Fatalf("unexpected error response: %d %s", recorder.Code, recorder.Body.String())
+		}
+		if test.status == http.StatusTooManyRequests {
+			var body struct {
+				Error        struct{ Code, Message, Type string }
+				GenerationID string `json:"generation_id"`
+			}
+			if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if body.Error.Code != test.message || body.Error.Type != "rate_limit_error" || body.Error.Message == "" || body.GenerationID != "uncreated-job" {
+				t.Fatalf("missing quota/reconciliation details: %+v", body)
+			}
+		}
 	}
 }
 

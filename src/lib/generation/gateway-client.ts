@@ -10,6 +10,8 @@ import { getEnv } from "@/lib/env";
 import { assertApiRateLimit } from "@/lib/api-config";
 import { assertGenerationRateLimit } from "@/lib/server/generation-rate-limit";
 import { assertExternalGenerationAllowed } from "@/lib/moderation/check";
+import { dedicatedGenerationSize } from "@/lib/providers/dedicated-provider";
+import { assertModelDailyQuotaAvailable } from "@/lib/server/model-daily-quota";
 import { persistGeneratedImage } from "@/lib/storage/persist-generated-image";
 import {
   generationChannelModelSnapshot,
@@ -244,11 +246,12 @@ export async function runExternalGenerationViaGateway(input: {
   await assertApiRateLimit(input.apiKeyId);
   const count = resolveGenerationCount(input.input);
   assertGenerationRateLimit(input.user.id, count);
-  await assertExternalGenerationAllowed(input.user.id, input.input);
-
   const env = getEnv();
   const requestedModel = input.input.model?.trim() || env.BUILTIN_PROVIDER_MODEL;
   const provider: ResolvedChannel = await getGenerationChannelForModel(requestedModel);
+  input.input = { ...input.input, model: requestedModel, size: dedicatedGenerationSize({ ...input.input, model: requestedModel, count }, input.input.sourceImages?.length ?? 0) };
+  await assertExternalGenerationAllowed(input.user.id, input.input, { baseUrl: provider.baseUrl, model: requestedModel });
+  await assertModelDailyQuotaAvailable(input.user.id, requestedModel);
   const cost = calculateGenerationCost({
     builtInCreditCost: provider.creditCost,
     providerMode: "built_in",

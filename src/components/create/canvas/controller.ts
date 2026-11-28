@@ -13,6 +13,7 @@ import {
 } from "@/lib/canvas/contracts";
 import type { CanvasInputRuntimeV1 } from "@/lib/canvas/graph";
 import { isImageAvailable, mergeImageAvailabilityState } from "@/lib/storage/image-availability";
+import { constrainImageModelParameters, getDedicatedModelLimits } from "@/lib/generation/model-limits";
 import {
   canvasClientIdSchema,
   canvasGenerationParametersSchema,
@@ -85,7 +86,7 @@ export function createCanvasController(options: CanvasControllerOptions) {
   let started = false;
   let ready = false;
   let readOnly = options.readOnly;
-  let defaults = { ...options.defaultParameters };
+  let defaults = constrainImageModelParameters({ ...options.defaultParameters });
   let activeCanvasId: string | null = null;
   let nextCursor: string | null = null;
   let loading = false;
@@ -642,6 +643,7 @@ export function createCanvasController(options: CanvasControllerOptions) {
     if (!input.files.length) throw new CanvasContractError("CANVAS_INVALID_INPUT");
     if (entry.originals.size + input.files.length > CANVAS_LIMITS.ownerAccountedImports) throw new CanvasContractError("CANVAS_LIMIT_EXCEEDED");
     if (input.attachToGenerationNodeId && !entry.envelope.scene.nodes.some((node) => node.id === input.attachToGenerationNodeId && node.kind === "generation")) throw new CanvasContractError("CANVAS_INVALID_CONNECTION");
+    if (input.attachToGenerationNodeId) assertModelReferenceCapacity(entry, input.attachToGenerationNodeId, input.files.length);
     const originals = input.files.map(originalFile);
     const occupied = entry.envelope.scene.nodes.map((node) => node.position);
     const nodes = originals.map((original) => {
@@ -657,6 +659,11 @@ export function createCanvasController(options: CanvasControllerOptions) {
     entry.error = null;
     changeScene(entry, scene);
     return { canvasId: id, referenceNodeIds: nodes.map((node) => node.id), imageEdgeIds: connections.map((edge) => edge.id) };
+  }
+  function assertModelReferenceCapacity(entry: Entry, target: string, additions = 1) {
+    const node = entry.envelope.scene.nodes.find((item) => item.id === target);
+    const maximum = node?.kind === "generation" ? getDedicatedModelLimits(node.parameters.model)?.maxReferenceImages : undefined;
+    if (maximum !== undefined && entry.envelope.scene.edges.filter((edge) => edge.kind === "image-input" && edge.target === target).length + additions > maximum) throw new CanvasCommandError("modelReferences");
   }
   async function newCanvas(title = "\u672a\u547d\u540d\u753b\u5e03"): Promise<string> {
     assertMutable();
@@ -890,7 +897,7 @@ export function createCanvasController(options: CanvasControllerOptions) {
     runNode,
     retryTransport,
     setReadOnly(value: boolean) { if (readOnly !== value) { readOnly = value; publish(); } },
-    setDefaults(parameters: CanvasGenerationParametersV1) { defaults = canvasGenerationParametersSchema.parse(parameters); },
+    setDefaults(parameters: CanvasGenerationParametersV1) { defaults = constrainImageModelParameters(canvasGenerationParametersSchema.parse(parameters)); },
     async registerCanvas(id: string) {
       const entry = getEntry(id, true);
       try { await ensureShell(entry); entry.error = null; publish(); }
@@ -921,13 +928,14 @@ export function createCanvasController(options: CanvasControllerOptions) {
       sources.forEach((source) => assertImageSource(entry, source));
       const parameters = canvasGenerationParametersSchema.safeParse({ ...defaults, ...input.parameters });
       if (!parameters.success) throw new CanvasContractError("CANVAS_INVALID_INPUT");
+      if (sources.length > (getDedicatedModelLimits(parameters.data.model)?.maxReferenceImages ?? CANVAS_LIMITS.referencesPerRun)) throw new CanvasCommandError("modelReferences");
       const generationNodeId = uuid(), promptNodeId = uuid(), promptEdgeId = uuid();
       const position = canvasInsertionPosition(entry.envelope.scene.nodes.map((node) => node.position), input.position, input.placementBounds);
       const promptPosition = canvasInsertionPosition([...entry.envelope.scene.nodes.map((node) => node.position), position], { x: position.x - CANVAS_CARD_SPACING.column, y: position.y });
       const imageEdges = sources.map((source) => ({ id: uuid(), source, target: generationNodeId }));
       const scene = applyCanvasEdit(entry.envelope.scene, { kind: "creation-group", nodes: [
         { id: promptNodeId, kind: "prompt", text: input.promptText ?? "", position: promptPosition },
-        { id: generationNodeId, kind: "generation", parameters: parameters.data, position },
+        { id: generationNodeId, kind: "generation", parameters: constrainImageModelParameters(parameters.data), position },
       ], connections: [{ id: promptEdgeId, source: promptNodeId, target: generationNodeId }, ...imageEdges] }, reservations(entry));
       entry.selectedNodeId = generationNodeId;
       entry.error = null;
@@ -970,13 +978,14 @@ export function createCanvasController(options: CanvasControllerOptions) {
       if (node?.kind !== "generation") throw new CanvasContractError("CANVAS_INVALID_CONNECTION");
       const parameters = canvasGenerationParametersSchema.safeParse({ ...node.parameters, ...patch });
       if (!parameters.success) throw new CanvasContractError("CANVAS_INVALID_INPUT");
-      edit(id, { kind: "parameters", nodeId, parameters: parameters.data });
+      edit(id, { kind: "parameters", nodeId, parameters: constrainImageModelParameters(parameters.data) });
     },
     removeNode(id: string, nodeId: string) { edit(id, { kind: "remove", nodeId }); },
     connect(id: string, source: string, target: string) {
       const entry = getEntry(id, true);
       const node = entry.envelope.scene.nodes.find((value) => value.id === source);
       if (node?.kind === "result" && entry.images.get(node.imageId)?.jobId !== node.jobId) throw new CanvasContractError("CANVAS_INPUT_UNAVAILABLE");
+      if (node?.kind === "reference" || node?.kind === "result") assertModelReferenceCapacity(entry, target);
       const edgeId = uuid();
       edit(id, { kind: "connect", id: edgeId, source, target });
       return edgeId;
@@ -984,6 +993,7 @@ export function createCanvasController(options: CanvasControllerOptions) {
     connectImage(id: string, source: string, target: string) {
       const entry = getEntry(id, true);
       assertImageSource(entry, source);
+      assertModelReferenceCapacity(entry, target);
       const edgeId = uuid();
       edit(id, { kind: "connect", id: edgeId, source, target });
       return edgeId;

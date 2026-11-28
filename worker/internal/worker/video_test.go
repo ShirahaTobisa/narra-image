@@ -225,6 +225,9 @@ func TestGenerateVideoReturnsErrorOnFailedStatus(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error on failed status, got nil")
 	}
+	if failure := classifyProviderFailure(err); failure.Code != errorProviderGenerationFailed || !failure.ResolvedAfterSubmit {
+		t.Fatalf("ordinary task failure must be refundable and not a moderation violation: %+v", failure)
+	}
 }
 
 // TestImageToVideoCreateFailureReturnsFriendlyError：图生视频在渠道 create 失败时

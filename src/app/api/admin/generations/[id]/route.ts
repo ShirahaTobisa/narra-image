@@ -3,6 +3,8 @@ import { requireAdminRecord } from "@/lib/server/current-user";
 import { getErrorMessage, jsonError, jsonOk } from "@/lib/server/http";
 import { imageAvailabilityInclude } from "@/lib/storage/image-availability";
 import { presentGenerationImage } from "@/lib/storage/image-presentation";
+import { serializeVideo } from "@/lib/prisma-mappers";
+import { h3VideoErrorMessage } from "@/lib/storage/h3-video";
 
 export const dynamic = "force-dynamic";
 
@@ -137,7 +139,7 @@ export async function GET(
           completedAt: attempt.completedAt?.toISOString() ?? null,
           createdAt: attempt.createdAt.toISOString(),
           errorCode: attempt.errorCode,
-          errorMessage: attempt.errorMessage,
+          errorMessage: h3VideoErrorMessage(record.model, attempt.errorMessage),
           id: attempt.id,
           idempotencyKey: attempt.idempotencyKey,
           model: attempt.model,
@@ -162,7 +164,7 @@ export async function GET(
         creditsSpent: record.creditsSpent,
         durationSeconds: record.durationSeconds,
         errorCode: record.errorCode,
-        errorMessage: record.errorMessage,
+        errorMessage: h3VideoErrorMessage(record.model, record.errorMessage),
         generationType: record.generationType,
         handoffState: record.handoffState,
         id: record.id,
@@ -184,7 +186,7 @@ export async function GET(
         outputCompression: record.outputCompression,
         outputFormat: record.outputFormat,
         prompt: record.prompt,
-        providerBaseUrl: record.providerBaseUrl,
+        providerBaseUrl: record.model === "h3" ? null : record.providerBaseUrl,
         providerChannelId: record.providerChannelId,
         providerLabel: record.providerLabel,
         providerMode: record.providerMode,
@@ -197,7 +199,7 @@ export async function GET(
         status: record.status,
         updatedAt: record.updatedAt.toISOString(),
         user: record.user,
-        videos: record.videos,
+        videos: record.videos.map((video) => serializeVideo(video, record.model)),
         workerId: record.workerId,
         workerManaged: record.workerManaged,
       },

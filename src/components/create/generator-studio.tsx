@@ -29,6 +29,7 @@ import { canvasCanonicalIdSchema, canvasGenerationParametersSchema } from "@/lib
 import { Alert } from "@/components/ui/alert";
 import { imageDownloadFilename, saveLink } from "@/components/works/download-image";
 import { imageDownloadTimestamp } from "@/lib/image-download";
+import { constrainImageModelParameters, filterChannelsByKind, getDedicatedModelLimits, isVideoModel } from "@/lib/generation/model-limits";
 
 import { useCanvasDocuments } from "./hooks/use-canvas-documents";
 import { useCanvasEditor } from "./hooks/use-canvas-editor";
@@ -128,11 +129,12 @@ function StudioWorkspace({
   initialGenerationPage = null,
   initialConversations = EMPTY_CONVERSATIONS,
   initialPrompt = "",
-  channels = EMPTY_CHANNELS,
+  channels: availableChannels = EMPTY_CHANNELS,
   savedProvider = null,
   turnstile = null,
 }: GeneratorStudioProps) {
   const router = useRouter();
+  const channels = useMemo(() => filterChannelsByKind(availableChannels, "image"), [availableChannels]);
   const { mode, canvasReadOnly, touchPresentation, changeMode } = useStudioMode(ownerId, canvasEnabled);
   const [isPending, setIsPending] = useState(false);
   const runtimeRef = useRef({ active: false, epoch: 0, requests: new Set<AbortController>() });
@@ -205,15 +207,19 @@ function StudioWorkspace({
   }));
   const [customProviderProbePending, setCustomProviderProbePending] = useState(false);
   const [customProviderProbeMessage, setCustomProviderProbeMessage] = useState<string | null>(null);
-  const [size, setSize] = useState<GenerationSizeToken>("auto");
+  const activeModel = providerMode === "custom" ? customProvider.model : model;
+  const modelLimits = getDedicatedModelLimits(activeModel);
+  const maxReferenceImages = modelLimits?.maxReferenceImages ?? MAX_REFERENCE_IMAGES;
+  const [requestedSize, setSize] = useState<GenerationSizeToken>("auto");
   const [customSizeMode, setCustomSizeMode] = useState(false);
   const [customWidth, setCustomWidth] = useState("2048");
   const [customHeight, setCustomHeight] = useState("2048");
   const [quality, setQuality] = useState<GenerationQuality>("auto");
-  const [outputFormat, setOutputFormat] = useState<GenerationOutputFormat>("png");
+  const [requestedOutputFormat, setOutputFormat] = useState<GenerationOutputFormat>("png");
   const [outputCompression, setOutputCompression] = useState(100);
   const [moderation, setModeration] = useState<GenerationModeration>("auto");
-  const [count, setCount] = useState(1);
+  const [requestedCount, setCount] = useState(1);
+  const { size, count, outputFormat } = constrainImageModelParameters({ model: activeModel, size: requestedSize, count: requestedCount, outputFormat: requestedOutputFormat });
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
   const [zoomedImageMeta, setZoomedImageMeta] = useState<{
     dimensionLabel?: string;
@@ -230,7 +236,7 @@ function StudioWorkspace({
     reorderImage,
     clear: clearReferenceImages,
     setImages: setReferenceImages,
-  } = useReferenceImages();
+  } = useReferenceImages(maxReferenceImages);
 
   // 会话状态：基于服务端 API 持久化（本次修复 #8 落地）。
   const {
@@ -358,7 +364,7 @@ function StudioWorkspace({
     }
   }, [activeSessionId, registerConversationJob, sessionGenerations, updateGeneration]);
 
-  const sizeSelectValue = customSizeMode ? "custom" : getSizeSelectValue(size);
+  const sizeSelectValue = modelLimits?.resolution ? size : customSizeMode ? "custom" : getSizeSelectValue(size);
   const normalizedCustomSize = normalizeGenerationSize(`${customWidth}x${customHeight}`);
 
   // 自定义尺寸的输入态校验：覆盖空值 / 超出最大边 / 像素数过大 / 极端长宽比四种典型问题。
@@ -389,16 +395,15 @@ function StudioWorkspace({
   const modelOptions = useMemo(() => {
     const channelModels = selectedChannel?.models ?? [];
     if (channelModels.includes(model)) return channelModels;
-    return [model, ...channelModels];
+    return [model, ...channelModels].filter((item) => item !== "*" && !isVideoModel(item));
   }, [selectedChannel?.models, model]);
   const customModelOptions = useMemo(() => {
-    const models = customProvider.models.filter((item) => item.trim().length > 0);
-    if (customProvider.model && !models.includes(customProvider.model)) {
+    const models = customProvider.models.filter((item) => item.trim().length > 0 && item !== "*" && !isVideoModel(item));
+    if (customProvider.model && customProvider.model !== "*" && !isVideoModel(customProvider.model) && !models.includes(customProvider.model)) {
       return [customProvider.model, ...models];
     }
     return models;
   }, [customProvider.model, customProvider.models]);
-  const activeModel = providerMode === "custom" ? customProvider.model : model;
   const savedProviderConfigured = Boolean(savedProvider);
 
   type CustomProviderSubmitPayload = {
@@ -494,7 +499,7 @@ function StudioWorkspace({
 
       const nextModels = (result.data?.models ?? [])
         .map((item) => (typeof item === "string" ? item : item.id))
-        .filter((item) => item.trim().length > 0);
+        .filter((item) => item.trim().length > 0 && item !== "*" && !isVideoModel(item));
 
       if (nextModels.length === 0) {
         setCustomProviderProbeMessage("未拉取到模型，请手动填写模型名");
@@ -624,6 +629,15 @@ function StudioWorkspace({
 
   function startChatCommand(snapshot: GenerateSnapshot, clearInput: boolean) {
     if (commandRef.current) return;
+    if (snapshot.model === "*" || isVideoModel(snapshot.model)) {
+      setError("请选择图片模型");
+      return;
+    }
+    const maximum = getDedicatedModelLimits(snapshot.model)?.maxReferenceImages ?? MAX_REFERENCE_IMAGES;
+    if (snapshot.referenceImages.length > maximum) {
+      setError(`当前模型最多使用 ${maximum} 张参考图，请移除多余图片`);
+      return;
+    }
     const request = beginRequest();
     if (!request) return;
     const draft = draftRef.current;
@@ -880,7 +894,7 @@ function StudioWorkspace({
     if (result === "empty") return;
     draftRef.current.revision += 1;
     if (result === "exceeded") {
-      setError("最多上传 16 张参考图");
+      setError(`最多上传 ${maxReferenceImages} 张参考图`);
     } else {
       setError(null);
     }
@@ -899,8 +913,8 @@ function StudioWorkspace({
   }
 
   function handleUseImageForEdit(url: string) {
-    if (referenceImages.length >= MAX_REFERENCE_IMAGES) {
-      setError("最多上传 16 张参考图");
+    if (referenceImages.length >= maxReferenceImages) {
+      setError(`最多上传 ${maxReferenceImages} 张参考图`);
       return;
     }
 
@@ -911,7 +925,7 @@ function StudioWorkspace({
       previewUrl: url,
       sourceUrl: url,
     };
-    setReferenceImages((current) => current.length >= MAX_REFERENCE_IMAGES ? current : [...current, image]);
+    setReferenceImages((current) => current.length >= maxReferenceImages ? current : [...current, image]);
     setGenerationType("image_to_image");
     setCount(1);
     setPrompt("");

@@ -15,11 +15,12 @@ import (
 // GenerationContract 是 Node 与 Go 共用的 JSON 契约在 Go 侧的强类型投影。
 // JSON 文件仍是唯一事实来源；这里不复制错误码或状态转换表。
 type GenerationContract struct {
-	Schema    ContractSchema
-	Errors    map[string]ContractError
-	Models    ContractModels
-	States    ContractStates
-	Scenarios map[string]json.RawMessage
+	Schema          ContractSchema
+	Errors          map[string]ContractError
+	Models          ContractModels
+	DedicatedModels []DedicatedModelLimits
+	States          ContractStates
+	Scenarios       map[string]json.RawMessage
 }
 
 type ContractSchema struct {
@@ -167,6 +168,17 @@ func LoadGenerationContract(root string) (GenerationContract, error) {
 	}
 	contract.Errors = errorsFile.Errors
 	contract.Models = models
+	var dedicated struct {
+		Version int                    `json:"version"`
+		Models  []DedicatedModelLimits `json:"models"`
+	}
+	if err := readJSON(filepath.Join(root, "dedicated-models.json"), &dedicated); err != nil {
+		return GenerationContract{}, err
+	}
+	if dedicated.Version != contract.Schema.Version || len(dedicated.Models) == 0 {
+		return GenerationContract{}, errors.New("专用模型契约版本或内容无效")
+	}
+	contract.DedicatedModels = dedicated.Models
 	contract.States = states
 	contract.Scenarios = make(map[string]json.RawMessage, 4)
 	for _, name := range []string{"channels", "lifecycle", "media", "secret"} {

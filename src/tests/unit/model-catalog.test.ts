@@ -3,8 +3,15 @@ import {
   prioritizeModelIds,
   supportsResponsesImageGeneration,
 } from "@/lib/providers/model-catalog";
+import { filterChannelsByKind } from "@/lib/generation/model-limits";
 
 describe("模型列表整理", () => {
+  it("separates public image/video models and keeps wildcard channels out of the catalog", () => {
+    const channels = [{ id: "mixed", defaultModel: "gpt-image-2", models: ["seedream-5-5", "h3", "sora-2", " * "] }, { id: "wildcard", defaultModel: "*", models: ["*"] }];
+    expect(filterChannelsByKind(channels, "image")).toEqual([{ id: "mixed", defaultModel: "gpt-image-2", models: ["gpt-image-2", "seedream-5-5"] }]);
+    expect(filterChannelsByKind(channels, "video")).toEqual([{ id: "mixed", defaultModel: "h3", models: ["h3", "sora-2"] }]);
+  });
+
   it("会优先把更像生图模型的 id 排到前面", () => {
     expect(
       prioritizeModelIds([
@@ -25,6 +32,9 @@ describe("模型列表整理", () => {
     expect(looksLikeImageModel("gpt-image-1")).toBe(true);
     expect(looksLikeImageModel("gemini-3-pro-image-preview")).toBe(true);
     expect(looksLikeImageModel("gpt-5.5")).toBe(true);
+    expect(looksLikeImageModel("seedream-5-5")).toBe(true);
+    expect(looksLikeImageModel("h3")).toBe(false);
+    expect(looksLikeImageModel("sora-2")).toBe(false);
     expect(looksLikeImageModel("gpt-4.1-mini")).toBe(false);
     expect(looksLikeImageModel("gemini-2.5-flash")).toBe(false);
   });

@@ -75,4 +75,11 @@ describe("视频代理接口", () => {
 
     expect(response.status).toBe(413);
   });
+
+  it("不向浏览器返回上游地址或错误详情", async () => {
+    mockFetchPublicHttpUrl.mockRejectedValue(new Error("https://h3.coolhs.com/api/v1/jobs/42/video private-key"));
+    const response = await GET(proxyRequest());
+    expect(response.status).toBe(502);
+    expect(await response.text()).not.toMatch(/coolhs|private-key/);
+  });
 });

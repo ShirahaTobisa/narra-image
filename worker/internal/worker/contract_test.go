@@ -70,6 +70,9 @@ func TestGenerationContractConsumesChannelAndLifecycleScenarios(t *testing.T) {
 		if supported != (scenario.Result.ErrorCode == nil) {
 			t.Errorf("channel scenario model %q produced supported=%v", scenario.RequestedModel, supported)
 		}
+		if runtimeSupported := providerSupportsModel(scenario.Channel.DefaultModel, scenario.RequestedModel, scenario.Channel.Models); runtimeSupported != supported {
+			t.Errorf("runtime channel matching differs from shared fixture for %q", scenario.RequestedModel)
+		}
 	}
 
 	var lifecycle struct {

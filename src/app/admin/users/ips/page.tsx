@@ -15,7 +15,7 @@ const timeFormat = new Intl.DateTimeFormat("zh-CN", {
 
 export default async function AdminUserIpsPage({ searchParams }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
-} = {}) {
+}) {
   try {
     await requireAdminRecord();
   } catch {

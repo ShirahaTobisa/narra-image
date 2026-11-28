@@ -159,7 +159,10 @@ func (w *Worker) validateGatewayEnvelope(env *gatewayEnvelope) error {
 	if env.Payload.GenerationType == "IMAGE_TO_IMAGE" && env.Payload.Count != 1 {
 		return errors.New("图生图的 payload.count 必须为 1")
 	}
-	return nil
+	return validateDedicatedJob(GenerationJob{
+		Model: env.Payload.Model, Count: env.Payload.Count, GenerationType: env.Payload.GenerationType,
+		Size: env.Payload.Size, OutputFormat: env.Payload.OutputFormat, SourceImageURLs: env.SourceImageURLs,
+	})
 }
 
 // gatewayEndpointHandler 绑定单个内部网关端点；envelope.endpoint 必须与路径一致。
@@ -201,18 +204,7 @@ func (w *Worker) gatewayEndpointHandler(expected string) http.HandlerFunc {
 
 		job, err := w.ensureGatewayJob(ctx, env)
 		if err != nil {
-			var imageError ImageStorageError
-			if errors.As(err, &imageError) {
-				failure := imageAdmissionFailure(err)
-				status := http.StatusServiceUnavailable
-				if failure.Code == errorImageQuotaExceeded {
-					status = http.StatusInsufficientStorage
-				}
-				w.writeGatewayOpenAiError(writer, status, failure.Code, failure.Message, env.JobID)
-				return
-			}
-			w.logger.Error("网关创建任务失败", "event", "gateway_enqueue_failed", "endpoint", env.Endpoint, "jobId", env.JobID, "error", err)
-			w.writeGatewayOpenAiError(writer, http.StatusServiceUnavailable, "GATEWAY_UNAVAILABLE", "生成网关暂不可用", env.JobID)
+			w.writeGatewayEnqueueError(writer, env, err)
 			return
 		}
 

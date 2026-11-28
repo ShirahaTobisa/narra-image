@@ -5,6 +5,7 @@ import {
 } from "@/lib/generation/sizes";
 import { QUALITY_OPTIONS, SIZE_DOWNGRADE_TOLERANCE, SIZE_OPTIONS } from "./constants";
 import { isImageExpired } from "@/lib/storage/image-availability";
+import { constrainImageModelParameters } from "@/lib/generation/model-limits";
 import type {
   GenerationImage,
   GenerationItem,
@@ -141,7 +142,7 @@ export function toReusableGenerationConfig(
     ? generation.providerChannelId
     : null;
 
-  return {
+  return constrainImageModelParameters({
     channelId,
     count: Math.min(4, Math.max(1, generation.count || 1)),
     generationType:
@@ -160,7 +161,7 @@ export function toReusableGenerationConfig(
     quality: isGenerationQuality(generation.quality) ? generation.quality : "auto",
     size: normalizedSize as GenerationSizeToken,
     sourceImageUrls: getGenerationSourceImageUrls(generation),
-  };
+  });
 }
 
 export function genSessionId() {

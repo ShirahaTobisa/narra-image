@@ -1,5 +1,6 @@
 import { fetchPublicHttpUrl } from "@/lib/server/safe-remote-url";
 import { supportsResponsesImageGeneration } from "@/lib/generation/contracts";
+import { getDedicatedModelLimits, isVideoModel } from "@/lib/generation/model-limits";
 
 export { supportsResponsesImageGeneration } from "@/lib/generation/contracts";
 
@@ -44,7 +45,8 @@ const PRIORITY_HINTS = ["image", "imagen", "dall-e", "grok"];
 
 export function looksLikeImageModel(modelId: string) {
   const id = modelId.toLowerCase();
-  return supportsResponsesImageGeneration(id) ||
+  if (isVideoModel(id)) return false;
+  return getDedicatedModelLimits(id)?.kind === "image" || supportsResponsesImageGeneration(id) ||
     IMAGE_HINTS.some((hint) => id.includes(hint));
 }
 

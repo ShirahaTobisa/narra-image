@@ -24,6 +24,8 @@ import {
   normalizeProviderModels,
 } from "@/lib/generation/contracts";
 import { gifOutputProblem } from "@/lib/generation/gif-output";
+import { dedicatedGenerationSize, usesDedicatedProvider } from "@/lib/providers/dedicated-provider";
+import { assertModelDailyQuotaAvailable, modelDailyQuotaError } from "@/lib/server/model-daily-quota";
 import { parseGenerateRequest } from "@/lib/generation/parse-generate-request";
 import { calculateGenerationCost, hasEnoughCredits, resolveCreditCost, resolveGenerationCount } from "@/lib/credits";
 import {
@@ -143,27 +145,31 @@ export async function POST(request: Request) {
         return image;
       })) : [];
 
-    // 内容审核：敏感词 / AI 命中则阻断本次生成（不扣积分、不建 job）；上传的和引用的参考图一起审
-    const moderation = await checkGenerationInput({
-      builtIn: body.providerMode === "built_in",
-      images: [...fileSourceImages, ...siteReferenceImages],
-      negativePrompt: body.negativePrompt,
-      precheck: true,
-      prompt: body.prompt,
-      userId: user.id,
-    });
-    if (!moderation.allowed) {
-      return rejectPreparationResponse(jsonError(moderation.message, 400));
-    }
-    const env = getEnv();
-
-    // 用户看不到渠道，走哪条由服务器按后台排序定；只有管理员能指定渠道（防止有人专挑兜底渠道用）
+    // 先以服务端选中的实际渠道确定规则；只有管理员可以指定渠道。
     const channelId = user.role === "ADMIN" ? (body.channelId as string | undefined) : undefined;
     const builtInProvider = body.providerMode === "built_in"
       ? channelId
         ? await getGenerationChannelById(channelId, body.model)
         : await getGenerationChannelForModel(body.model)
       : null;
+    body.size = dedicatedGenerationSize({ ...body, count }, fileSourceImages.length + referenceUrls.length);
+    if (body.model === "h3") body.durationSeconds ??= 8;
+
+    // 审核在上传、扣费及建任务之前；专用渠道仍检查账号暂停和图片文件格式。
+    const moderation = await checkGenerationInput({
+      builtIn: body.providerMode === "built_in",
+      images: [...fileSourceImages, ...siteReferenceImages],
+      negativePrompt: body.negativePrompt,
+      precheck: true,
+      skipContentModeration: builtInProvider ? usesDedicatedProvider(builtInProvider, body.model) : false,
+      prompt: body.prompt,
+      userId: user.id,
+    });
+    if (!moderation.allowed) {
+      return rejectPreparationResponse(jsonError(moderation.message, 400));
+    }
+    if (builtInProvider) await assertModelDailyQuotaAvailable(user.id, body.model);
+    const env = getEnv();
 
     const builtInCreditCost = resolveCreditCost({
       generationType: body.generationType,
@@ -424,9 +430,11 @@ export async function POST(request: Request) {
       generation: serializeGeneration(readyJob),
     });
   } catch (error) {
+    const quotaError = modelDailyQuotaError(error);
+    error = quotaError ?? error;
     if (!jobId) await closeManagedImageReservation(outputReservation).catch(() => undefined);
     if (canvasAttempt) {
-      const knownRollback = error instanceof CanvasContractError || error instanceof GenerationCreditError || error instanceof ApiRateLimitError || error instanceof ImageStorageError || error instanceof SiteImageError || isCanvasTransactionRetryable(error);
+      const knownRollback = Boolean(quotaError) || error instanceof CanvasContractError || error instanceof GenerationCreditError || error instanceof ApiRateLimitError || error instanceof ImageStorageError || error instanceof SiteImageError || isCanvasTransactionRetryable(error);
       if (canvasCommitted || (canvasCommitAttempted && !knownRollback)
         || (!canvasPreparation && !(error instanceof CanvasContractError))) {
         return recoverCanvasRunResponse(canvasAttempt);

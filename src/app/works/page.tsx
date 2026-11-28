@@ -8,6 +8,7 @@ import { VideoWorksSection } from "@/components/works/video-works-section";
 import { serializeUser } from "@/lib/prisma-mappers";
 import { getCurrentUserRecord } from "@/lib/server/current-user";
 import { getUserWorksCounts, listUserWorksPage } from "@/lib/server/works";
+import { presentGeneratedVideo } from "@/lib/storage/h3-video";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,7 @@ export default async function WorksPage() {
     getUserWorksCounts(user.id),
     db.generatedVideo.findMany({
       where: { job: { userId: user.id } },
-      select: { id: true, posterUrl: true, showcaseStatus: true, url: true },
+      select: { id: true, posterUrl: true, showcaseStatus: true, url: true, job: { select: { model: true } } },
       orderBy: { createdAt: "desc" },
       take: 48,
     }),
@@ -83,7 +84,7 @@ export default async function WorksPage() {
 
         <div className="mt-10">
           <h2 className="mb-4 text-2xl font-semibold text-[var(--ink)]">我的视频</h2>
-          <VideoWorksSection initialVideos={myVideos} />
+          <VideoWorksSection initialVideos={myVideos.map((video) => ({ id: video.id, showcaseStatus: video.showcaseStatus, ...presentGeneratedVideo(video, video.job.model) }))} />
         </div>
       </section>
     </main>

@@ -10,10 +10,37 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var errB64ResponseTooLarge = errors.New("生成图片超过 b64_json 响应大小限制")
 var errGatewayManagedImageUnavailable = errors.New("图片暂不可用，无法返回 b64_json")
+
+func (w *Worker) writeGatewayEnqueueError(writer http.ResponseWriter, env gatewayEnvelope, err error) {
+	var databaseError *pgconn.PgError
+	if errors.As(err, &databaseError) && databaseError.Code == "P0001" &&
+		(databaseError.Message == "MODEL_DAILY_QUOTA_EXHAUSTED" || databaseError.Message == "MODEL_DAILY_QUOTA_USED") {
+		if contract, loadErr := sharedContract(); loadErr == nil {
+			if definition, ok := contract.Errors[databaseError.Message]; ok {
+				w.writeGatewayOpenAiError(writer, http.StatusTooManyRequests, databaseError.Message, definition.UserMessage, env.JobID)
+				return
+			}
+		}
+	}
+	var imageError ImageStorageError
+	if errors.As(err, &imageError) {
+		failure := imageAdmissionFailure(err)
+		status := http.StatusServiceUnavailable
+		if failure.Code == errorImageQuotaExceeded {
+			status = http.StatusInsufficientStorage
+		}
+		w.writeGatewayOpenAiError(writer, status, failure.Code, failure.Message, env.JobID)
+		return
+	}
+	w.logger.Error("网关创建任务失败", "event", "gateway_enqueue_failed", "endpoint", env.Endpoint, "jobId", env.JobID, "error", err)
+	w.writeGatewayOpenAiError(writer, http.StatusServiceUnavailable, "GATEWAY_UNAVAILABLE", "生成网关暂不可用", env.JobID)
+}
 
 func gatewayImageAvailability(image gatewayImage) string {
 	if image.Availability == "cleaned" || image.Availability == "unavailable" {

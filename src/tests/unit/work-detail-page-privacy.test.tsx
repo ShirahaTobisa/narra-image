@@ -188,7 +188,7 @@ describe("owner and administration compatibility", () => {
     const work = createPrivacyWork();
     mocks.findMany.mockResolvedValue([work]);
 
-    render(await AdminWorksPage());
+    render(await AdminWorksPage({}));
 
     const props = mocks.adminBoard.mock.calls.at(-1)![0] as ComponentProps<typeof AdminWorksBoard>;
     expect(props.works).toEqual([serializeAdminWork(work)]);
@@ -200,7 +200,7 @@ describe("owner and administration compatibility", () => {
   it("still redirects unauthorized admin visitors before querying works", async () => {
     mocks.requireAdmin.mockRejectedValue(new Error("not an admin"));
 
-    await expect(AdminWorksPage()).rejects.toThrow("NEXT_REDIRECT");
+    await expect(AdminWorksPage({})).rejects.toThrow("NEXT_REDIRECT");
     expect(mocks.redirect).toHaveBeenCalledWith("/login");
     expect(mocks.findMany).not.toHaveBeenCalled();
     expect(mocks.adminBoard).not.toHaveBeenCalled();

@@ -7,6 +7,7 @@ import { useId } from "react";
 
 import { SecretInput } from "@/components/ui/secret-input";
 import { imageSizeLimits } from "@/lib/generation/sizes";
+import { getDedicatedModelLimits } from "@/lib/generation/model-limits";
 import type {
   GenerationModeration,
   GenerationOutputFormat,
@@ -101,6 +102,7 @@ export function AdvancedSettings({
   onChangeNegativePrompt,
 }: AdvancedSettingsProps) {
   const customModelDatalistId = useId();
+  const modelLimits = getDedicatedModelLimits(providerMode === "custom" ? customProvider.model : model);
 
   return (
     <AnimatePresence>
@@ -294,9 +296,9 @@ export function AdvancedSettings({
 
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-[var(--ink-soft)]">生成张数</label>
-                {generationType === "image_to_image" ? (
+                {generationType === "image_to_image" || modelLimits?.maxOutputs === 1 ? (
                   <p className="rounded-lg border border-[var(--line)] bg-[var(--surface-strong)]/40 px-3 py-2 text-xs text-[var(--ink-soft)]">
-                    图生图当前固定每次生成 1 张
+                    当前模型每次生成 1 张
                   </p>
                 ) : (
                   <div className="flex gap-2">
@@ -339,7 +341,7 @@ export function AdvancedSettings({
                     onChange={(event) => onChangeOutputFormat(event.target.value as GenerationOutputFormat)}
                     className="w-full rounded-xl border border-[var(--line)] bg-[var(--surface-strong)]/50 px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
                   >
-                    {CHAT_OUTPUT_FORMAT_OPTIONS.map((option) => (
+                    {CHAT_OUTPUT_FORMAT_OPTIONS.filter((option) => !modelLimits?.formats || modelLimits.formats.includes(option.value)).map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
@@ -396,7 +398,7 @@ export function AdvancedSettings({
             </div>
           </div>
           <p className="mt-5 text-[11px] leading-relaxed text-[var(--ink-soft)]">
-            2K/4K 属于高分辨率请求，真实生效情况由当前渠道和模型决定；超大尺寸会更慢，失败时可切回 1K 或自动。
+            {modelLimits?.resolution === "1K" ? "固定 1K，最多使用 1 张参考图，每次生成 1 张。" : "2K/4K 属于高分辨率请求，真实生效情况由当前渠道和模型决定；超大尺寸会更慢，失败时可切回 1K 或自动。"}
           </p>
 
           {/* 移动端：渠道/模型选择（桌面端在 Composer 底部栏，故只在 md 以下显示） */}

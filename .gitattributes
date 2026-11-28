@@ -33,3 +33,4 @@ prisma/migrations/20261119130000_user_uid/migration.sql text eol=lf
 prisma/migrations/20261121000000_public_author_name/migration.sql text eol=lf
 prisma/migrations/20261121160000_transient_images/migration.sql text eol=lf
 prisma/migrations/20261127060000_user_ip_addresses/migration.sql text eol=lf
+prisma/migrations/20261128090000_dedicated_model_daily_quota/migration.sql text eol=lf

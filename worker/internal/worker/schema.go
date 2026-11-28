@@ -48,7 +48,7 @@ func (report RollbackSafetyReport) Safe() bool {
 
 func CheckSchemaContract(ctx context.Context, pool *pgxpool.Pool) (SchemaContractReport, error) {
 	report := SchemaContractReport{ContractVersion: 1}
-	for _, table := range []string{"GenerationJob", "GenerationAttempt", "GenerationImage", "GeneratedVideo"} {
+	for _, table := range []string{"GenerationJob", "GenerationAttempt", "GenerationImage", "GeneratedVideo", "ModelDailyUsage"} {
 		var exists bool
 		err := pool.QueryRow(ctx, `
 SELECT EXISTS (
@@ -86,6 +86,7 @@ SELECT EXISTS (
 		"GeneratedVideo": {
 			"id", "jobId", "url", "mediaStorage", "storageKey",
 		},
+		"ModelDailyUsage": {"model", "dateKey", "userId", "jobId", "createdAt"},
 	}
 	for table, expected := range requiredColumns {
 		rows, err := pool.Query(ctx, `
@@ -180,6 +181,10 @@ WHERE pg_type.typname = $1
 		{"missing_unique_constraint", "GenerationAttempt_jobId_ordinal_key", `SELECT to_regclass('"GenerationAttempt_jobId_ordinal_key"') IS NOT NULL`},
 		{"missing_trigger", "GenerationJob_unresolved_refund_guard", `SELECT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'GenerationJob_unresolved_refund_guard' AND NOT tgisinternal)`},
 		{"missing_check_constraint", "GenerationJob_contract_handoff_state_check", `SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'GenerationJob_contract_handoff_state_check')`},
+		{"missing_function", "narra_enforce_model_daily_quota", `SELECT to_regprocedure('narra_enforce_model_daily_quota()') IS NOT NULL`},
+		{"missing_function", "narra_release_model_daily_quota", `SELECT to_regprocedure('narra_release_model_daily_quota()') IS NOT NULL`},
+		{"missing_trigger", "GenerationJob_model_daily_quota", `SELECT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'GenerationJob_model_daily_quota' AND tgrelid = to_regclass('"GenerationJob"') AND tgfoid = to_regprocedure('narra_enforce_model_daily_quota()') AND tgenabled <> 'D' AND NOT tgisinternal)`},
+		{"missing_trigger", "GenerationJob_release_model_daily_quota", `SELECT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'GenerationJob_release_model_daily_quota' AND tgrelid = to_regclass('"GenerationJob"') AND tgfoid = to_regprocedure('narra_release_model_daily_quota()') AND tgenabled <> 'D' AND NOT tgisinternal)`},
 	}
 	for _, object := range objects {
 		var exists bool

@@ -619,6 +619,13 @@ INSERT INTO "GenerationAttempt" (
 }
 
 func generationOperation(job GenerationJob) string {
+	job.Model = strings.TrimSpace(job.Model)
+	if job.Model == h3Model {
+		return "h3-jobs"
+	}
+	if job.Model == seedreamModel {
+		return "images-generations"
+	}
 	if job.GenerationType == "TEXT_TO_VIDEO" || job.GenerationType == "IMAGE_TO_VIDEO" {
 		return "videos"
 	}
@@ -834,7 +841,12 @@ WHERE id = $2
 	}
 }
 
-func (w *Worker) resolveProvider(ctx context.Context, job GenerationJob) (ProviderConfig, error) {
+func (w *Worker) resolveProvider(ctx context.Context, job GenerationJob) (provider ProviderConfig, err error) {
+	defer func() {
+		if err == nil {
+			err = validateDedicatedProvider(job.Model, provider)
+		}
+	}()
 	if job.ProviderMode == "CUSTOM" {
 		if !job.ProviderBaseURL.Valid || strings.TrimSpace(job.ProviderBaseURL.String) == "" ||
 			!job.ProviderAPIKeyEncrypted.Valid || strings.TrimSpace(job.ProviderAPIKeyEncrypted.String) == "" {
@@ -908,10 +920,10 @@ func (w *Worker) channelByModel(ctx context.Context, model string) (ProviderConf
 SELECT id, "baseUrl", "apiKeyEncrypted", "defaultModel", models, "isActive"
 FROM "ProviderChannel"
 WHERE "isActive" = true
-  AND ("defaultModel" = $1 OR $1 = ANY(models) OR '*' = ANY(models))
+  AND ("defaultModel" = $1 OR $1 = ANY(models) OR ($2 AND '*' = ANY(models)))
 ORDER BY "sortOrder" ASC, "createdAt" ASC, id ASC
 LIMIT 1
-`, model)
+`, model, !isDedicatedModel(model))
 	return w.scanChannel(row, model)
 }
 
@@ -963,6 +975,10 @@ const wildcardModel = "*"
 
 // upstreamModel 决定实际发给渠道的模型：兜底渠道接到它没单独列出的模型时，改用它的默认模型
 func upstreamModel(defaultModel string, requestedModel string, models []string) string {
+	defaultModel, requestedModel = strings.TrimSpace(defaultModel), strings.TrimSpace(requestedModel)
+	if isDedicatedModel(requestedModel) {
+		return requestedModel
+	}
 	listed := normalizedProviderModels(defaultModel, models)
 	if requestedModel == "" || !slices.Contains(listed, requestedModel) && slices.Contains(listed, wildcardModel) {
 		return defaultModel
@@ -1008,7 +1024,7 @@ func modelInSnapshot(model string, models []string) bool {
 	model = strings.TrimSpace(model)
 	for _, candidate := range models {
 		candidate = strings.TrimSpace(candidate)
-		if model == candidate || candidate == wildcardModel {
+		if model == candidate || candidate == wildcardModel && !isDedicatedModel(model) {
 			return true
 		}
 	}

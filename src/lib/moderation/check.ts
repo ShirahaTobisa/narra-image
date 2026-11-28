@@ -5,6 +5,7 @@ import { revalidateTag } from "next/cache";
 
 import { db } from "@/lib/db";
 import { resolveModerationConfig } from "@/lib/moderation/config";
+import { usesDedicatedProvider } from "@/lib/providers/dedicated-provider";
 import { ModerationFailure } from "@/lib/moderation/failure";
 import { assertModerationImages } from "@/lib/moderation/images";
 import { checkLocalImages } from "@/lib/moderation/local-images";
@@ -65,6 +66,8 @@ type ModerationCheckInput = {
   builtIn?: boolean;
   /** 生成请求：现有审核都过了以后再跑预审（会不会被出图渠道拒）；管理员的生成请求不审 */
   precheck?: boolean;
+  /** Server-resolved vendor policy; never copy a flag from browser input. */
+  skipContentModeration?: boolean;
 };
 
 export type ModerationCheckResult =
@@ -92,8 +95,15 @@ export async function checkGenerationInput(
     if (paused) {
       return { allowed: false, message: paused };
     }
+    if (input.builtIn && input.precheck && input.skipContentModeration) {
+      await assertModerationImages(input.images ?? []);
+      return { allowed: true };
+    }
     cfg = await resolveModerationConfig();
-  } catch {
+  } catch (error) {
+    if (error instanceof ModerationFailure) {
+      return { allowed: false, message: IMAGE_INPUT_MESSAGES.get(error.code) ?? MODERATION_UNAVAILABLE_MESSAGE };
+    }
     console.error("[moderation] 无法读取审核配置或违规记录，拒绝本次提交");
     return { allowed: false, message: MODERATION_UNAVAILABLE_MESSAGE };
   }
@@ -207,11 +217,13 @@ export class ModerationBlockedError extends Error {
 export async function assertExternalGenerationAllowed(
   userId: string,
   input: { prompt: string; negativePrompt?: string | null; sourceImages?: ModerationImage[] },
+  channel?: { baseUrl: string; model: string },
 ) {
   const result = await checkGenerationInput({
     builtIn: true,
     images: input.sourceImages,
     precheck: true,
+    skipContentModeration: channel ? usesDedicatedProvider(channel, channel.model) : false,
     negativePrompt: input.negativePrompt,
     prompt: input.prompt,
     userId,

@@ -28,6 +28,19 @@ describe("ChannelManager", () => {
     );
   });
 
+  it("starts new channels disabled and shows the exact dedicated model setup", async () => {
+    render(<ChannelManager initialChannels={[]} />);
+    await userEvent.click(screen.getByRole("button", { name: "新增渠道" }));
+    const active = screen.getByRole("switch", { name: "启用此渠道" });
+    expect(active).toHaveAttribute("aria-checked", "false");
+    expect(active).toBeDisabled();
+    expect(screen.getByRole("button", { name: "创建渠道" })).toBeDisabled();
+    await userEvent.click(screen.getByText("Seedream 5.5 / H3 配置说明"));
+    expect(screen.getByText(/https:\/\/api\.apimart\.ai\/v1/)).toHaveTextContent("seedream-5-5");
+    expect(screen.getByText(/https:\/\/h3\.coolhs\.com\/api\/v1/)).toHaveTextContent("API Key 填 H3 卡密");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("编辑渠道时用弹窗展示，并用已保存渠道 id 拉取模型", async () => {
     const user = userEvent.setup();
 

@@ -1,4 +1,5 @@
 import type { VideoAspectRatio, VideoResolution } from "./types";
+import { getDedicatedModelLimits } from "@/lib/generation/model-limits";
 
 export const VIDEO_DURATION_OPTIONS: Array<{ label: string; value: number }> = [
   { label: "4 秒", value: 4 },
@@ -24,6 +25,19 @@ const VIDEO_SIZE_MAP: Record<VideoAspectRatio, Record<VideoResolution, string>> 
   "1:1": { "720p": "720x720", "1080p": "1080x1080" },
 };
 
-export function resolveVideoSize(aspectRatio: VideoAspectRatio, resolution: VideoResolution): string {
-  return VIDEO_SIZE_MAP[aspectRatio]?.[resolution] ?? "1280x720";
+export function getVideoDurationOptions(model: string) {
+  return getDedicatedModelLimits(model)?.durations?.map((value) => ({ label: `${value} 秒`, value })) ?? VIDEO_DURATION_OPTIONS;
+}
+
+export function getVideoResolutionOptions(model: string) {
+  return getDedicatedModelLimits(model)?.maxEdge
+    ? VIDEO_RESOLUTION_OPTIONS.filter((option) => option.value === "720p")
+    : VIDEO_RESOLUTION_OPTIONS;
+}
+
+export function resolveVideoSize(aspectRatio: VideoAspectRatio, resolution: VideoResolution, model = ""): string {
+  const size = VIDEO_SIZE_MAP[aspectRatio]?.[resolution] ?? "1280x720";
+  return getDedicatedModelLimits(model)?.maxEdge
+    ? size.split("x").map((edge) => Math.round(Number(edge) / 32) * 32).join("x")
+    : size;
 }

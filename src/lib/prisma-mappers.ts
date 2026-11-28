@@ -17,6 +17,7 @@ import { canShowWorkPrompt, type WorkShowcaseStatus } from "@/lib/work-showcase"
 import { isImageAvailable, type ImageAvailabilitySource } from "@/lib/storage/image-availability";
 import { presentGenerationImage } from "@/lib/storage/image-presentation";
 import { projectGenerationSourceUrls, type ImageSourceUrlReader } from "@/lib/storage/image-source-presentation";
+import { h3VideoErrorMessage, presentGeneratedVideo } from "@/lib/storage/h3-video";
 
 export type SerializedGeneration = {
   cancelRequestedAt: string | null;
@@ -375,6 +376,7 @@ export type FeaturedVideoRecord = GeneratedVideo & {
 };
 
 export function serializeFeaturedVideo(video: FeaturedVideoRecord): SerializedFeaturedVideo {
+  const media = presentGeneratedVideo(video, video.job.model);
   return {
     authorAvatar: null, // 公开作品不展示头像，避免带出第三方账号身份。
     authorName: video.publicAuthorName || "匿名创作者",
@@ -383,16 +385,27 @@ export function serializeFeaturedVideo(video: FeaturedVideoRecord): SerializedFe
     id: video.id,
     likeCount: video._count?.likes ?? 0,
     likedByMe: Boolean(video.likes?.length),
-    posterUrl: typeof video.posterUrl === "string" ? video.posterUrl : null,
+    posterUrl: media.posterUrl,
     prompt: video.showPromptPublic ? video.job.prompt : "作者未公开提示词",
     size: video.job.size,
     title: video.job.model,
-    videoUrl: video.url,
+    videoUrl: media.url,
+  };
+}
+
+export function serializeVideo(video: Pick<GeneratedVideo, "id" | "durationSeconds" | "width" | "height" | "url" | "posterUrl">, model?: string) {
+  return {
+    durationSeconds: typeof video.durationSeconds === "number" ? video.durationSeconds : null,
+    height: typeof video.height === "number" ? video.height : null,
+    id: video.id,
+    ...presentGeneratedVideo(video, model),
+    width: typeof video.width === "number" ? video.width : null,
   };
 }
 
 // 站内渠道失败时，上游报错原文可能带渠道地址、OpenAI 组织 ID，给用户只看一句话；原文留在库里给后台排查
-function userFacingErrorMessage(job: Pick<GenerationJob, "errorMessage" | "providerMode">) {
+function userFacingErrorMessage(job: Pick<GenerationJob, "errorMessage" | "providerMode" | "model">) {
+  if (job.model === "h3") return h3VideoErrorMessage(job.model, job.errorMessage);
   if (!job.errorMessage || job.providerMode !== ProviderMode.BUILT_IN) return job.errorMessage;
   return /moderation_blocked|safety system/i.test(job.errorMessage)
     ? "OpenAI 拦截：提示词或参考图被上游 OpenAI 的安全系统拒绝"
@@ -482,15 +495,7 @@ export function serializeGeneration(
     }),
     videos:
       "videos" in job && Array.isArray(job.videos)
-        ? job.videos.map((video) => ({
-            durationSeconds:
-              typeof video.durationSeconds === "number" ? video.durationSeconds : null,
-            height: typeof video.height === "number" ? video.height : null,
-            id: video.id,
-            posterUrl: typeof video.posterUrl === "string" ? video.posterUrl : null,
-            url: video.url,
-            width: typeof video.width === "number" ? video.width : null,
-          }))
+        ? job.videos.map((video) => serializeVideo(video, job.model))
         : [],
     model: job.model,
     moderation:

@@ -4,6 +4,7 @@ import { AlertTriangle, Download, RotateCcw, Video } from "lucide-react";
 
 import type { GenerationItem } from "@/components/create/types";
 import { VideoGeneratingProgress } from "@/components/video/parts/video-generating-progress";
+import { getDedicatedModelLimits } from "@/lib/generation/model-limits";
 
 type VideoStageProps = {
   generation: GenerationItem | null;
@@ -41,7 +42,7 @@ export function VideoStage({ generation, onDownload, onRetry }: VideoStageProps)
               onClick={onRetry}
               className="flex items-center gap-1.5 rounded-full border border-rose-300 bg-white px-4 py-2 text-xs font-semibold text-rose-600 transition hover:bg-rose-100"
             >
-              <RotateCcw className="size-3.5" /> 用当前参数重试
+              <RotateCcw className="size-3.5" /> 重试
             </button>
           </div>
         )}
@@ -65,6 +66,7 @@ export function VideoStage({ generation, onDownload, onRetry }: VideoStageProps)
                 <Download className="size-3.5" /> 下载
               </button>
             </div>
+            {getDedicatedModelLimits(generation.model)?.kind === "video" && <p className="mt-3 text-xs text-[var(--ink-soft)]">视频可用 3 天，请及时下载保存。</p>}
           </>
         )}
 

@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "dailyQuota": { "limit": 10, "perUser": 1, "timeZone": "Asia/Tokyo" },
+  "models": [
+    { "model": "seedream-5-5", "kind": "image", "resolution": "1K", "maxReferenceImages": 1, "maxOutputs": 1, "formats": ["png", "jpeg"] },
+    { "model": "h3", "kind": "video", "maxReferenceImages": 1, "maxOutputs": 1, "durations": [4, 6, 8], "maxEdge": 1440 }
+  ]
+}

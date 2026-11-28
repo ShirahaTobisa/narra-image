@@ -489,6 +489,7 @@ model ApiKey {
 }
 
 model GenerationJob {
+  dailyUsage              ModelDailyUsage?
   id                      String                  @id @default(cuid())
   userId                  String
   apiKeyId                String?
@@ -623,6 +624,17 @@ model GenerationImage {
   @@index([showcaseStatus, featuredAt(sort: Desc), id(sort: Desc)])
   @@index([jobId, createdAt])
   @@index([createdAt(sort: Desc), id(sort: Desc)])
+}
+
+model ModelDailyUsage {
+  model     String
+  dateKey   String
+  userId    String
+  jobId     String?       @unique
+  createdAt DateTime      @default(now())
+  job       GenerationJob? @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@id([model, dateKey, userId])
 }
 
 model GeneratedVideo {

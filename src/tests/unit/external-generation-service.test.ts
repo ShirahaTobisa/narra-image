@@ -484,6 +484,7 @@ describe("外部 API 生成服务", () => {
     expect(mockAssertModeration).toHaveBeenCalledWith(
       "user_1",
       expect.objectContaining({ prompt: "违规描述", sourceImages }),
+      { baseUrl: "https://first.example/v1", model: "gpt-image-2" },
     );
     expect(mockTransaction).not.toHaveBeenCalled();
     expect(mockCreateGenerationJob).not.toHaveBeenCalled();

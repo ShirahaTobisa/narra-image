@@ -1,6 +1,14 @@
 {
   "version": 1,
   "errors": {
+    "MODEL_DAILY_QUOTA_EXHAUSTED": {
+      "category": "quota", "retryable": false, "refundable": true,
+      "userMessage": "这个模型今天的 10 次名额已用完，请明天再来"
+    },
+    "MODEL_DAILY_QUOTA_USED": {
+      "category": "quota", "retryable": false, "refundable": true,
+      "userMessage": "你今天已使用这个模型的名额，每个账号每个模型每天限 1 次"
+    },
     "CHANNEL_NOT_FOUND": {
       "category": "validation",
       "retryable": false,
@@ -63,6 +71,12 @@
       "retryable": false,
       "refundable": true,
       "userMessage": "渠道拒绝了生成参数"
+    },
+    "PROVIDER_GENERATION_FAILED": {
+      "category": "upstream_final",
+      "retryable": false,
+      "refundable": true,
+      "userMessage": "渠道生成失败，请稍后重试"
     },
     "PROVIDER_POLICY_REJECTED": {
       "category": "upstream_final",

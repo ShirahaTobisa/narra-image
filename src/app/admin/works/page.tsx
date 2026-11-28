@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 20;
 
-export default async function AdminWorksPage(props?: {
+export default async function AdminWorksPage(props: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   try {
@@ -28,7 +28,7 @@ export default async function AdminWorksPage(props?: {
     redirect("/login");
   }
 
-  const params = props?.searchParams ? await props.searchParams : {};
+  const params = await props.searchParams ?? {};
   const page = Math.max(1, Number(params.page) || 1);
   const q = typeof params.q === "string" ? params.q.trim() : "";
   const mediaType: AdminReviewMediaFilter =

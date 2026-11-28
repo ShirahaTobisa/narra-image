@@ -51,6 +51,27 @@
       "requestedModel": "m1",
       "fallbackChannelId": "c2",
       "result": { "channelId": null, "errorCode": "CHANNEL_NOT_FOUND" }
+    },
+    {
+      "id": "WC-dedicated-seedream-no-gpt-fallback",
+      "explicit": true,
+      "channel": { "id": "gpt", "active": true, "defaultModel": "gpt-image-2", "models": ["*"] },
+      "requestedModel": "seedream-5-5",
+      "result": { "channelId": null, "errorCode": "MODEL_NOT_SUPPORTED_BY_CHANNEL" }
+    },
+    {
+      "id": "WC-dedicated-h3-no-gpt-fallback",
+      "explicit": true,
+      "channel": { "id": "gpt", "active": true, "defaultModel": "gpt-image-2", "models": ["*"] },
+      "requestedModel": "h3",
+      "result": { "channelId": null, "errorCode": "MODEL_NOT_SUPPORTED_BY_CHANNEL" }
+    },
+    {
+      "id": "WC-dedicated-explicit-channel",
+      "explicit": true,
+      "channel": { "id": "seedream", "active": true, "defaultModel": "seedream-5-5", "models": [] },
+      "requestedModel": "seedream-5-5",
+      "result": { "channelId": "seedream", "errorCode": null }
     }
   ]
 }

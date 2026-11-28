@@ -5,6 +5,8 @@ import type {
   GenerationQuality,
 } from "@/lib/types";
 import type { SizeOption } from "./types";
+import { calculateImageSize } from "@/lib/generation/sizes";
+import { getDedicatedModelLimits } from "@/lib/generation/model-limits";
 
 export const SIZE_OPTIONS: SizeOption[] = [
   { detail: "模型决定", label: "自动", value: "auto" },
@@ -18,6 +20,17 @@ export const SIZE_OPTIONS: SizeOption[] = [
   { detail: "9:16", label: "4K 竖屏", value: "2160x3840" },
   { detail: "高级设置", label: "自定义", value: "custom" },
 ];
+
+const ONE_K_SIZE_OPTIONS: SizeOption[] = ["1:1", "3:2", "2:3", "16:9", "9:16", "4:3", "3:4"].map((ratio) => ({
+  label: "1K", detail: ratio, value: calculateImageSize("1K", ratio)!,
+}));
+
+export function getImageSizeOptions(model: string, size: SizeOption["value"]) {
+  if (getDedicatedModelLimits(model)?.resolution !== "1K") return SIZE_OPTIONS;
+  return ONE_K_SIZE_OPTIONS.some((option) => option.value === size)
+    ? ONE_K_SIZE_OPTIONS
+    : [...ONE_K_SIZE_OPTIONS, { label: "1K · 当前比例", value: size }];
+}
 
 export const QUALITY_OPTIONS: Array<{ label: string; value: GenerationQuality }> = [
   { label: "自动", value: "auto" },

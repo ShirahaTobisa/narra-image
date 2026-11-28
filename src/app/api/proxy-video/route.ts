@@ -1,6 +1,5 @@
 import { db } from "@/lib/db";
 import { getCurrentUserRecord } from "@/lib/server/current-user";
-import { getErrorMessage } from "@/lib/server/http";
 import { fetchPublicHttpUrl } from "@/lib/server/safe-remote-url";
 
 const PROXY_FETCH_TIMEOUT_MS = 15 * 60 * 1000;
@@ -126,7 +125,7 @@ export async function GET(request: Request) {
     }
 
     return new Response(restoreLimitedStream(reader, chunks, total), { headers });
-  } catch (error) {
-    return new Response(getErrorMessage(error), { status: 403 });
+  } catch {
+    return new Response("视频暂时无法读取，请稍后再试", { status: 502 });
   }
 }

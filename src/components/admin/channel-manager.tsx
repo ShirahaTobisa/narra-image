@@ -82,7 +82,7 @@ export function ChannelManager({ initialChannels }: ChannelManagerProps) {
   >([]);
   const [formCreditCost, setFormCreditCost] = useState(5);
   const [formVideoCreditCost, setFormVideoCreditCost] = useState(20);
-  const [formIsActive, setFormIsActive] = useState(true);
+  const [formIsActive, setFormIsActive] = useState(false);
   const [formSortOrder, setFormSortOrder] = useState(0);
   const [isFormDirty, setIsFormDirty] = useState(false);
 
@@ -111,7 +111,7 @@ export function ChannelManager({ initialChannels }: ChannelManagerProps) {
     setModelQuery("");
     setFormCreditCost(5);
     setFormVideoCreditCost(20);
-    setFormIsActive(true);
+    setFormIsActive(false);
     setFormSortOrder(0);
     setIsFormDirty(false);
     setError(null);
@@ -173,6 +173,10 @@ export function ChannelManager({ initialChannels }: ChannelManagerProps) {
 
   async function handleSave() {
     setError(null);
+    if (formIsActive && !formApiKey.trim() && !editingChannel?.apiKeyConfigured) {
+      setError("请先配置 API Key 再启用渠道");
+      return;
+    }
 
     if (editingChannel) {
       const response = await fetch(`/api/admin/channels/${editingChannel.id}`, {
@@ -516,6 +520,7 @@ export function ChannelManager({ initialChannels }: ChannelManagerProps) {
                       size="sm"
                       ariaLabel={`${ch.isActive ? "停用" : "启用"}渠道 ${ch.name}`}
                       checked={ch.isActive}
+                      disabled={!ch.isActive && !ch.apiKeyConfigured}
                       onCheckedChange={(next) => void handleToggle(ch, next)}
                     />
                   </div>
@@ -666,8 +671,8 @@ export function ChannelManager({ initialChannels }: ChannelManagerProps) {
         preventOutsideClose={isFormDirty}
         size="lg"
         eyebrow="PROVIDER CHANNEL"
-        title={editingChannel ? `编辑渠道: ${editingChannel.name}` : "新增生图 API 渠道"}
-        description="支持 OpenAI 兼容协议端点，拉取后可按关键词筛选并勾选向用户开放的模型。"
+        title={editingChannel ? `编辑渠道: ${editingChannel.name}` : "新增图片或视频渠道"}
+        description="配置地址、密钥和对外开放的模型，图片与视频分别设置积分。"
         footer={
           <>
             <button
@@ -685,7 +690,8 @@ export function ChannelManager({ initialChannels }: ChannelManagerProps) {
                 !formName ||
                 !formBaseUrl ||
                 !formDefaultModel ||
-                (!editingChannel && !formApiKey)
+                (!editingChannel && !formApiKey.trim()) ||
+                (formIsActive && !formApiKey.trim() && !editingChannel?.apiKeyConfigured)
               }
               className="inline-flex items-center gap-2 rounded-full bg-[#c25934] px-6 py-2 text-sm font-semibold text-white shadow-2xs transition hover:bg-[#ad4c2a] disabled:opacity-50"
             >
@@ -695,6 +701,12 @@ export function ChannelManager({ initialChannels }: ChannelManagerProps) {
           </>
         }
       >
+        <details className="mb-4 rounded-xl border border-[var(--line)] bg-[#faf7f1] px-4 py-3 text-xs leading-6 text-[var(--ink-soft)]">
+          <summary className="cursor-pointer font-semibold text-[var(--ink)]">Seedream 5.5 / H3 配置说明</summary>
+          <p>Seedream 5.5：Base URL 填 https://api.apimart.ai/v1，默认模型填 seedream-5-5，API Key 填 APImart 密钥。固定 1K，最多 1 张参考图，每次生成 1 张。</p>
+          <p>H3：Base URL 填 https://h3.coolhs.com/api/v1，默认模型填 h3，API Key 填 H3 卡密。支持 4 / 6 / 8 秒，最多 1 张参考图，视频可用 3 天。</p>
+          <p>专用模型可以手动填写，无需拉取模型目录。保存真实密钥、设置积分后再启用；视频入口还需开启站点的视频功能。</p>
+        </details>
         <div className="grid gap-4 md:grid-cols-2">
           <label className="grid gap-1.5">
             <span className="text-xs font-medium text-[var(--ink-soft)]">渠道名称</span>
@@ -943,12 +955,13 @@ export function ChannelManager({ initialChannels }: ChannelManagerProps) {
               <AdminSwitch
                 ariaLabel="启用此渠道"
                 checked={formIsActive}
+                disabled={!formIsActive && !formApiKey.trim() && !editingChannel?.apiKeyConfigured}
                 onCheckedChange={(next) => {
                   setIsFormDirty(true);
                   setFormIsActive(next);
                 }}
               />
-              <span className="text-sm font-medium text-[var(--ink)]">启用此生图渠道</span>
+              <span className="text-sm font-medium text-[var(--ink)]">启用此渠道</span>
             </div>
 
             <label className="flex items-center gap-2 text-xs font-medium text-[var(--ink-soft)]">

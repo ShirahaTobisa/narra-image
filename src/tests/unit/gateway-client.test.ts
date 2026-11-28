@@ -176,6 +176,7 @@ describe("gateway-client", () => {
     expect(mockAssertModeration).toHaveBeenCalledWith(
       "usr_1",
       expect.objectContaining({ prompt: "违规描述" }),
+      { baseUrl: "https://provider.test", model: "gpt-image-2" },
     );
     expect(mockUpdateMany).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();

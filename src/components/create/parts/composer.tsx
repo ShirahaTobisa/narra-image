@@ -19,8 +19,9 @@ import { Alert } from "@/components/ui/alert";
 import { GENERATION_PROMPT_MAX_LENGTH } from "@/lib/generation/limits";
 import type { GenerationSizeToken, GenerationType } from "@/lib/types";
 
-import { HISTORY_IMAGE_DRAG_MIME, SIZE_OPTIONS } from "../constants";
+import { getImageSizeOptions, HISTORY_IMAGE_DRAG_MIME } from "../constants";
 import type { ChannelInfo, ProviderSelectionMode, ReferenceImage } from "../types";
+import { ModelQuotaNotice } from "./model-quota-notice";
 
 type ComposerProps = {
   prompt: string;
@@ -400,7 +401,7 @@ export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(function 
                   onChange={(event) => onSizeSelect(event.target.value)}
                   className="min-w-0 max-w-[9.5rem] bg-transparent text-xs font-medium text-[var(--ink)] outline-none sm:max-w-none"
                 >
-                  {SIZE_OPTIONS.map((option) => (
+                  {getImageSizeOptions(activeModel, props.size as GenerationSizeToken).map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.detail ? `${option.label} · ${option.detail}` : option.label}
                     </option>
@@ -435,6 +436,7 @@ export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(function 
                     </select>
                   )}
                   <select
+                    aria-label="模型"
                     value={model}
                     onChange={(e) => onChangeModel(e.target.value)}
                     className="cursor-pointer rounded-xl border border-[var(--line)] bg-[#fffaf2]/72 px-4 py-2 text-sm font-medium text-[var(--ink)] shadow-sm outline-none"
@@ -457,6 +459,7 @@ export const Composer = forwardRef<HTMLTextAreaElement, ComposerProps>(function 
             </div>
           </div>
 
+          {providerMode === "built_in" && <ModelQuotaNotice model={activeModel} className="px-4 pb-3 sm:px-6" />}
           {/* 高级设置面板由父组件渲染并传入，避免在此处反向耦合所有设置字段。 */}
           <div className="hidden md:block w-full">
             {props.children}

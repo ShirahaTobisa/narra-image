@@ -22,7 +22,7 @@ type lockedJobLifecycle struct {
 }
 
 func (w *Worker) withJobProviderLifecycle(ctx context.Context, job GenerationJob) context.Context {
-	markSubmitting := func(markCtx context.Context) error {
+	checkAccount := func(markCtx context.Context) error {
 		var banned bool
 		if err := w.pool.QueryRow(markCtx, `SELECT "bannedAt" IS NOT NULL FROM "User" WHERE id = $1`, job.UserID).Scan(&banned); err != nil {
 			return preHandoffRetryableFailure(err)
@@ -30,24 +30,33 @@ func (w *Worker) withJobProviderLifecycle(ctx context.Context, job GenerationJob
 		if banned {
 			return ContractFailure{Code: errorGenerationCancelled, Message: "账号已封禁，生成任务已取消"}
 		}
+		return nil
+	}
+	markSubmitting := func(markCtx context.Context) error {
+		if err := checkAccount(markCtx); err != nil {
+			return err
+		}
 		if job.ContractVersion < 1 {
 			return nil
 		}
 		return w.markJobSubmitting(markCtx, job)
 	}
 	if job.ContractVersion < 1 {
-		return withProviderLifecycle(ctx, markSubmitting, nil, nil)
+		ctx = withProviderLifecycle(ctx, markSubmitting, nil, nil)
+	} else {
+		ctx = withProviderLifecycle(
+			ctx,
+			markSubmitting,
+			func(markCtx context.Context, requestID string) error {
+				return w.markJobSubmitted(markCtx, job, requestID)
+			},
+			func(markCtx context.Context, requestID string) error {
+				return w.recordJobProviderRequestID(markCtx, job, requestID)
+			},
+		)
 	}
-	return withProviderLifecycle(
-		ctx,
-		markSubmitting,
-		func(markCtx context.Context, requestID string) error {
-			return w.markJobSubmitted(markCtx, job, requestID)
-		},
-		func(markCtx context.Context, requestID string) error {
-			return w.recordJobProviderRequestID(markCtx, job, requestID)
-		},
-	)
+	providerLifecycleFromContext(ctx).checkPreparation = checkAccount
+	return ctx
 }
 
 func (w *Worker) markJobSubmitting(ctx context.Context, job GenerationJob) error {

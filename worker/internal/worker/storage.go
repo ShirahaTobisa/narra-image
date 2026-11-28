@@ -30,8 +30,8 @@ const referenceImageMaxRedirects = 5
 
 // MediaStorage 标识生成结果的持久化形态，随 GenerationImage/GeneratedVideo 落库。
 // B64 用于非 managed 模式的显式数据库存图或开发/测试 data URL fallback；
-// 受管理图片使用 LOCAL 或 S3；视频仍只使用 S3；
-// UPSTREAM 表示上游直连，仅历史数据，新写入不会产生。
+// 受管理图片使用 LOCAL 或 S3；H3 视频使用 UPSTREAM，其余视频使用 S3；
+// UPSTREAM 表示上游媒体，H3 由本站鉴权后流式代理，其余仅为历史数据。
 type MediaStorage string
 
 const (

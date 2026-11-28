@@ -34,7 +34,7 @@
 - 普通网页在保存新参考图和输出预留前，短事务按 reference epoch→User 顺序取得队列名额、复核账号/归属/余额，并创建 `workerManaged:false` 的预备任务；上传在事务外。最终更新必须匹配 PENDING、未退款、未取消及 workerManaged=false，再绑定输出预留并交给 Worker。Canvas 沿用原 run 提交，不套第二层预备流程。
 - 预备失败使用 `failGenerationJobAndRefund({ onlyUnmanagedPending:true })`；占位回执丢失按预分配 jobId 检查，启用回执丢失不得退款或关闭已交付任务的预留。部分上传失败不等于能立即删除未知或仍有引用的图片对象。
 - Worker 首次上游发送前检查账号封禁，确定未发送时按 `GENERATION_CANCELLED` 收尾和一次补偿。批次首张已发送后不再以新封禁错误退整个任务；取消和参考图输入错误不计入渠道失败连续次数。
-- 站内渠道必须启用总开关和 AI，且配置、密钥、模型、阈值有效；关闭审核表示暂停站内生成，不能降级成只查词库。自定义渠道保留原有可选开关语义。
+- GPT 等原有站内渠道必须启用总开关和 AI，且配置、密钥、模型、阈值有效；关闭审核表示暂停这些渠道的站内生成，不能降级成只查词库。Seedream/H3 的明确例外见下节；自定义渠道保留原有可选开关语义。
 - 同一用户最近24小时的 `ContentReview` 明确违规（仅 `sensitive_word` / `ai_moderation`）与内置渠道 FAILED `GenerationJob` 的明确安全拒绝合计达到3次后，后续站内审核入口直接暂停；不再调用审核或新增违规记录。两个查询共用时间边界，按各记录 `createdAt` 计算；任何计数查询故障均返回审核不可用，不透传异常。
 - `ContentReview` 没有渠道字段，不能假称只计内置来源：该用户的头像、公开署名和可选自填渠道审核产生的明确违规也计入。头像与署名使用同一强制审核入口；自填生成仍保持原有开关语义。预审拒绝立即返回、不创建生成任务，每次仅写一条审核记录，因此不会与上游拒绝重复计次。
 - 后台「内容风控与拦截中心」与上面的计数同源：拦截明细把 `ContentReview` 和上游明确安全拒绝的任务按时间合成一个列表（类型 `provider`），违规榜两者按人合计，最近24小时满3次的标为暂停中并排在最前。上游拒绝的查询条件只在 `check.ts` 的 `PROVIDER_REFUSAL_WHERE` 定义一处，暂停计数和后台页面共用；页面搜索词必须放进 `AND`，不能覆盖该条件自带的 `OR`。
@@ -126,8 +126,8 @@ const sources = body.imageInputOrder.map((kind) =>
 // Wrong：关掉总开关后，仍用站长账号生成。
 if (!cfg.isEnabled) return { allowed: true };
 
-// Correct：先维护站内强制审核，再处理其他渠道的可选行为。
-if (builtIn && (!cfg.isEnabled || !cfg.aiEnabled)) return unavailable;
+// Correct：仅服务端确认的 Seedream/H3 有明确例外，其他站内模型仍强制审核。
+if (builtIn && !skipContentModeration && (!cfg.isEnabled || !cfg.aiEnabled)) return unavailable;
 
 // Wrong：同一主进程 require 大模型，或本机放行后跳过远程检查。
 // Correct：独立、未被打包改写的 Worker 原生导入；结果仅作为前置门禁。
@@ -135,4 +135,59 @@ await assertModerationImages(images);
 const local = images.length ? await checkLocalImages(images) : { blocked: false };
 if (local.blocked) return local;
 // 然后才构造和发送完整远程审核请求。
+```
+
+## 8. Seedream / H3 专用准入与每日名额
+
+### 范围
+
+修改专用渠道选择、参数、审核例外、每日名额或任务失败退款时使用；视频交付同时遵循 [Media Storage](./media-storage.md)。
+
+### 签名
+
+- `usesDedicatedProvider({ baseUrl }, model)` 只接受 HTTPS `api.apimart.ai/v1 + seedream-5-5` 或 `h3.coolhs.com` 的根路径、`/v1`、`/api/v1 + h3`；禁止凭据、查询参数、fragment 和非标准端口。
+- `dedicatedGenerationSize(input, referenceCount)` 在上传和扣费前限制参数。`contracts/generation/v1/dedicated-models.json` 是 Node/Go/UI 共享限制；专用模型不得使用 GPT wildcard 渠道。
+- `GET /api/me/model-quotas` 要求登录，返回 `{ dateKey, resetAt, models: [{ model, limit, used, remaining, userUsed, userRemaining }] }`，`private, no-store`，不返回其他用户 ID。
+- `ModelDailyUsage` 主键 `(model,dateKey,userId)`；`jobId` 唯一且 `ON DELETE SET NULL`。`GenerationJob_model_daily_quota` 插入触发器预占，`GenerationJob_release_model_daily_quota` 更新触发器释放；Worker readiness 必须验证表、函数和启用的正确触发器绑定。
+
+### 契约
+
+- Seedream 固定 1K、PNG/JPEG、最多一张参考图和一个输出；H3 单参考/单结果、4/6/8 秒、最长边不超过 1440。超大 Seedream 尺寸按原比例收敛到 1K，Worker 请求显式带 1K，不能采用供应商默认 2K。
+- 只由服务端已选定的可信渠道决定跳过词库、本机 NSFW、远程审核和预审；仍校验参考图格式/大小，保留封禁、人工暂停、账户处罚和计费。客户端同名字段无效，头像及广场审核不变。
+- 两模型分别每天全站 10 次、每账号每模型 1 次，UTC+9 零点重置；排队即占名额。Node 网页、Canvas、API 与 Go gateway 共用数据库裁决，预查询仅改善提示。
+- 写任务事务使用 `READ COMMITTED`，触发器在 `(model,dateKey)` 的事务级 advisory lock 后检查最新用量；不能改为保留旧快照的 `REPEATABLE READ`。任务和扣款回滚时用量同回滚。
+- 明确 `FAILED`、`creditsSpent=0`、handoff 为 NULL/NOT_STARTED/RESOLVED 且无图片/视频结果才退名额。`HANDOFF_UNKNOWN`、`RESULT_PERSIST_FAILED` 和部分结果保留；删除历史、换 API Key、进程重启均不重置。
+
+### 错误
+
+| 条件 | 结果 |
+| --- | --- |
+| 模型/渠道不匹配 | `MODEL_NOT_SUPPORTED_BY_CHANNEL`，不跳过审核、不送上游 |
+| 同账号当天已用该模型 | `MODEL_DAILY_QUOTA_USED`，HTTP 429，不扣费 |
+| 该模型全站当天已满 10 次 | `MODEL_DAILY_QUOTA_EXHAUSTED`，HTTP 429，不扣费 |
+| 无会话访问余额接口 | HTTP 401 |
+| 供应商明确失败，非内容拒绝 | `PROVIDER_GENERATION_FAILED`，不能误记违规 |
+
+Prisma 7 的真实触发器标记在 `error.meta.driverAdapterError.cause.originalCode/originalMessage`（P0001 + 固定码）；外层 raw 为 P2010、model create 为 P2039，不能只按外层码识别。
+
+### Good / Base / Bad
+
+- Good：20 人同时抢 Seedream，最多接收 10 人；这些人各自仍可申请 H3 名额。
+- Base：某人今天已用 H3，Seedream 仍可用；明日恢复各一次。
+- Bad：仅前端禁用按钮、仅按 API Key 计数，或删除任务时连带删除已用名额。
+
+### 验证
+
+- `dedicated-provider.test.ts`、`moderation-check.test.ts`、`generate-route-security.test.ts`：可信渠道例外、参数边界、伪造绕过字段无效和 GPT 原审核保留。
+- `model-daily-quota.test.ts`、`model-quota-notice.test.tsx`：UTC+9 跨日、分模型/分账号、429 安全提示、会话及私有缓存、前端剩余次数。
+- 隔离 PostgreSQL 完整迁移后，以独立连接检查 20 人并发最多 10、同账号并发最多 1、失败/取消释放、未知及部分交付保留、历史删除、事务回滚和昨日用量。Worker DB 契约测试覆盖缺失/禁用/错绑 quota guard 不可 ready。
+
+### Wrong / Correct
+
+```ts
+// Wrong：浏览器选择 model 或传 skipContentModeration 就免审。
+// Correct：使用服务端选出的实际渠道，固定供应商和模型成对匹配。
+const skipContentModeration = usesDedicatedProvider(resolvedChannel, model);
+// 预检不是抢到名额；GenerationJob 插入与扣费须在同一事务，由触发器最终裁决。
+await assertModelDailyQuotaAvailable(userId, model);
 ```

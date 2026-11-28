@@ -7,8 +7,10 @@ import { forwardRef, useRef, type ReactNode } from "react";
 import { Alert } from "@/components/ui/alert";
 import { GENERATION_PROMPT_MAX_LENGTH } from "@/lib/generation/limits";
 import type { ViewerUser } from "@/components/create/types";
+import { ModelQuotaNotice } from "@/components/create/parts/model-quota-notice";
 
-import { VIDEO_ASPECT_OPTIONS, VIDEO_DURATION_OPTIONS, VIDEO_RESOLUTION_OPTIONS } from "../constants";
+import { getVideoDurationOptions, getVideoResolutionOptions, VIDEO_ASPECT_OPTIONS } from "../constants";
+import { getDedicatedModelLimits } from "@/lib/generation/model-limits";
 import type { VideoAspectRatio, VideoChannelInfo, VideoReferenceImage, VideoResolution } from "../types";
 
 type VideoComposerProps = {
@@ -109,7 +111,8 @@ export const VideoComposer = forwardRef<HTMLTextAreaElement, VideoComposerProps>
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              aria-label="上传视频参考图"
               className="hidden"
               onChange={(e) => {
                 onPickReference(e.target.files?.[0] ?? null);
@@ -157,7 +160,7 @@ export const VideoComposer = forwardRef<HTMLTextAreaElement, VideoComposerProps>
           label="时长"
           value={String(durationSeconds)}
           onChange={(v) => onChangeDuration(Number(v))}
-          options={VIDEO_DURATION_OPTIONS.map((o) => ({ label: o.label, value: String(o.value) }))}
+          options={getVideoDurationOptions(model).map((o) => ({ label: o.label, value: String(o.value) }))}
         />
         {/* 画面比例 */}
         <ParamSelect
@@ -171,7 +174,7 @@ export const VideoComposer = forwardRef<HTMLTextAreaElement, VideoComposerProps>
           label="分辨率"
           value={resolution}
           onChange={(v) => onChangeResolution(v as VideoResolution)}
-          options={VIDEO_RESOLUTION_OPTIONS}
+          options={getVideoResolutionOptions(model)}
         />
 
         {/* 渠道 + 模型 */}
@@ -189,6 +192,11 @@ export const VideoComposer = forwardRef<HTMLTextAreaElement, VideoComposerProps>
           onChange={onChangeModel}
           options={modelOptions.map((m) => ({ label: m, value: m }))}
         />
+
+        {getDedicatedModelLimits(model)?.kind === "video" && (
+          <p className="text-xs leading-relaxed text-[var(--ink-soft)]">最多 1 张参考图，最长边不超过 1440 像素。视频可用 3 天，请及时下载保存。</p>
+        )}
+        <ModelQuotaNotice model={model} />
 
         {turnstileSlot && <div className="mt-3">{turnstileSlot}</div>}
 

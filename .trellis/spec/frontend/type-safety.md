@@ -57,6 +57,7 @@ export function serializeGeneration(job: GenerationJob & {...}): SerializedGener
 ```
 
 - client 组件 props 一律使用 Serialized 类型，不用 Prisma 生成类型。
+- Next 页面入口的整个 props 参数必须必填，`searchParams` 可选但类型只能为 `Promise<Record<string, string | string[] | undefined>>`。不要写 `props?`、参数默认 `= {}` 或同步对象联合；这些写法会被生成的 `PageProps` 拒绝。单测调用传 `{}` 或 `Promise.resolve(...)`，不能为测试方便放宽页面签名。修改后须执行完整构建，旧 `.next/types` 下单独 `tsc` 通过不代表路由类型通过。
 
 ## 5. API 返回类型
 

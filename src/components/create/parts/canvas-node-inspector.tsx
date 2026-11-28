@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, Link2, Replace, Unplug } from "lucide-react";
 import { useState } from "react";
 
 import { CANVAS_LIMITS, type CanvasEdgeV1, type CanvasGenerationNodeV1, type CanvasGenerationParametersV1, type CanvasLocalNodeV1 } from "@/lib/canvas/contracts";
+import { getDedicatedModelLimits } from "@/lib/generation/model-limits";
 
 import type { CanvasActiveView } from "../canvas/controller-types";
 import { type CanvasEditorPort, type CanvasEditorTarget } from "../canvas/editor-state";
@@ -44,6 +45,7 @@ function ConnectionPicker({ label, candidates, active, actions, onConnect, disab
 
 export function CanvasNodeInspector({ contextual = false, active, node, actions, onConnect, onReplace, onDisconnect, onReorder }: CanvasNodeInspectorProps) {
   const pickerProps = { active, actions };
+  const maximum = getDedicatedModelLimits(node.parameters.model)?.maxReferenceImages ?? CANVAS_LIMITS.referencesPerRun;
   const inputs = active.scene.edges.filter((edge): edge is Extract<CanvasEdgeV1, { kind: "image-input" }> => edge.target === node.id && edge.kind === "image-input").sort((a, b) => a.ordinal - b.ordinal);
   const promptEdge = active.scene.edges.find((edge) => edge.target === node.id && edge.kind === "prompt-input");
   const prompt = active.scene.nodes.find((source) => source.id === promptEdge?.source);
@@ -56,7 +58,7 @@ export function CanvasNodeInspector({ contextual = false, active, node, actions,
           {prompt && promptEdge ? <><div className={styles.connectedPrompt}><span>{canvasNodeLabel(prompt)}</span><button type="button" className={styles.iconButton} aria-label="断开提示词输入" onClick={() => onDisconnect(promptEdge.id)}><Unplug aria-hidden className="size-3.5" /></button></div>
             <ConnectionPicker {...pickerProps} replacing label="替换提示词来源" candidates={active.scene.nodes.filter((source) => source.kind === "prompt" && source.id !== prompt.id)} onConnect={(sourceId) => onReplace(promptEdge.id, sourceId)} /></>
             : <ConnectionPicker {...pickerProps} label="选择提示词" candidates={active.scene.nodes.filter((source) => source.kind === "prompt")} onConnect={onConnect} />}
-          <div className={styles.inputListHeading}><span>参考顺序</span><span>{inputs.length} / {CANVAS_LIMITS.referencesPerRun}</span></div>
+          <div className={styles.inputListHeading}><span>参考顺序</span><span>{inputs.length} / {maximum}</span></div>
           <ol className={styles.orderedInputs} aria-label="有序参考图输入">
             {inputs.map((edge, index) => {
               const source = active.scene.nodes.find((item) => item.id === edge.source);
@@ -75,7 +77,7 @@ export function CanvasNodeInspector({ contextual = false, active, node, actions,
               </li>;
             })}
           </ol>
-          <ConnectionPicker {...pickerProps} label="选择参考图或结果" candidates={active.scene.nodes.filter((source) => (source.kind === "reference" || source.kind === "result") && !inputs.some((edge) => edge.source === source.id))} onConnect={onConnect} disabled={inputs.length >= CANVAS_LIMITS.referencesPerRun} />
+          <ConnectionPicker {...pickerProps} label="选择参考图或结果" candidates={active.scene.nodes.filter((source) => (source.kind === "reference" || source.kind === "result") && !inputs.some((edge) => edge.source === source.id))} onConnect={onConnect} disabled={inputs.length >= maximum} />
           <p className={styles.helpText}>序号决定输入顺序。旧结果可以连回原生成节点。</p>
         </details>
   );

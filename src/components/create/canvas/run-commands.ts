@@ -5,6 +5,7 @@ import {
 } from "@/lib/canvas/contracts";
 import { assertCanvasOutputCapacityV1, resolveCanvasRunProjectionV1, type CanvasInputRuntimeV1 } from "@/lib/canvas/graph";
 import { canvasLocalRunProjectionSchema } from "@/lib/validators";
+import { constrainImageModelParameters, getDedicatedModelLimits, isVideoModel } from "@/lib/generation/model-limits";
 
 import type { GenerationItem } from "../types";
 import type { CanvasClientApi, CanvasSubmissionResult } from "./client-api";
@@ -108,6 +109,9 @@ export function createCanvasRunCommands(context: CanvasRunCommandContext) {
     // Capture the coherent direct-input scene and original identities before
     // shell creation, upload, challenge acquisition, or any asynchronous work.
     const projection = resolveCanvasRunProjectionV1(scene, { canvasId, nodeId, runId: origin.runId }, inputRuntime(entry)).projection;
+    if (isVideoModel(projection.params.model) || projection.params.model === "*") throw new CanvasCommandError("imageModel");
+    if (projection.references.length > (getDedicatedModelLimits(projection.params.model)?.maxReferenceImages ?? CANVAS_LIMITS.referencesPerRun)) throw new CanvasCommandError("modelReferences");
+    projection.params = constrainImageModelParameters(projection.params);
     const originals = captures(entry, scene);
     const count = normalizeCanvasRunParametersV1(projection.params, projection.references.length).count;
     assertCanvasOutputCapacityV1(entry.envelope.scene, held, { nodes: count, edges: count });

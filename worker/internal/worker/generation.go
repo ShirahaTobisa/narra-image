@@ -17,6 +17,7 @@ import (
 	"net/textproto"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type ProviderConfig struct {
@@ -29,10 +30,18 @@ type ProviderConfig struct {
 }
 
 func (provider ProviderConfig) httpClient() *http.Client {
+	var client *http.Client
 	if provider.AllowPrivateNetwork {
-		return http.DefaultClient
+		client = http.DefaultClient
+	} else {
+		client = newReferenceImageHTTPClient()
 	}
-	return newReferenceImageHTTPClient()
+	if isDedicatedModel(provider.Model) {
+		cloned := *client
+		cloned.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+		return &cloned
+	}
+	return client
 }
 
 type GeneratedImage struct {
@@ -54,6 +63,13 @@ const providerErrorBodyMaxBytes = 8 * 1024
 const generationErrorMessageMaxBytes = 2 * 1024
 
 func generateImages(ctx context.Context, storage *Storage, job GenerationJob, provider ProviderConfig) ([]GeneratedImage, error) {
+	job.Model, provider.Model = strings.TrimSpace(job.Model), strings.TrimSpace(provider.Model)
+	if err := validateDedicatedProvider(job.Model, provider); err != nil {
+		return nil, err
+	}
+	if err := validateDedicatedJob(job); err != nil {
+		return nil, err
+	}
 	if job.Count < 1 || job.Count > ImageMaxOutputCount {
 		return nil, ContractFailure{Code: errorProviderRequestInvalid, Message: "图片生成数量必须为 1 到 4 张"}
 	}
@@ -75,7 +91,12 @@ func generateImages(ctx context.Context, storage *Storage, job GenerationJob, pr
 	}
 
 	var payload imagePayload
-	if supportsResponsesImageGeneration(job.Model) {
+	if job.Model == seedreamModel {
+		if err := validateDedicatedSources(sourceImages); err != nil {
+			return nil, err
+		}
+		payload, err = generateSeedream(ctx, job, provider, sourceImages, 5*time.Second)
+	} else if supportsResponsesImageGeneration(job.Model) {
 		payload, err = generateWithResponsesImageTool(ctx, job, provider, sourceImages)
 	} else if job.GenerationType == "IMAGE_TO_IMAGE" {
 		payload, err = generateWithImageEdit(ctx, job, provider, sourceImages)

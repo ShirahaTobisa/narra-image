@@ -28,6 +28,7 @@ import { exactUserWhere } from "@/lib/server/user-lookup";
 import { imageAvailabilityInclude } from "@/lib/storage/image-availability";
 import { presentGenerationImage } from "@/lib/storage/image-presentation";
 import { projectGenerationSourceUrls } from "@/lib/storage/image-source-presentation";
+import { h3VideoErrorMessage, presentGeneratedVideo } from "@/lib/storage/h3-video";
 
 export const dynamic = "force-dynamic";
 
@@ -320,6 +321,10 @@ export default async function AdminGenerationsPage({
   const jobs = await projectGenerationSourceUrls(
     storedJobs.map((job) => ({
       ...job,
+      providerApiKeyEncrypted: null,
+      errorMessage: h3VideoErrorMessage(job.model, job.errorMessage),
+      providerBaseUrl: job.model === "h3" ? null : job.providerBaseUrl,
+      videos: job.videos.map((video) => ({ ...video, ...presentGeneratedVideo(video, job.model) })),
       images: job.images.map(({ mediaAsset, ...image }) => ({
         ...image,
         ...presentGenerationImage({ ...image, mediaAsset }),

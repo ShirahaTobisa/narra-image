@@ -14,6 +14,8 @@ import { ApiTimeoutError } from "@/lib/api-errors";
 import { persistGeneratedImage } from "@/lib/storage/persist-generated-image";
 import { failGenerationJobAndRefund } from "@/lib/generation/job-refund";
 import { assertExternalGenerationAllowed } from "@/lib/moderation/check";
+import { dedicatedGenerationSize } from "@/lib/providers/dedicated-provider";
+import { assertModelDailyQuotaAvailable, modelDailyQuotaError } from "@/lib/server/model-daily-quota";
 import type { ImageReservation } from "@/lib/storage/image-contract";
 import { bindManagedImageOutputs, closeManagedImageReservation, reserveManagedImageOutputs } from "@/lib/storage/managed-image-storage";
 import {
@@ -194,11 +196,12 @@ async function runAcceptedExternalGeneration({
   let handedToWorker = false;
   let outputReservation: ImageReservation | null = null;
   const reservedJobId = randomUUID();
-  await assertExternalGenerationAllowed(user.id, input);
-
   const env = getEnv();
   const requestedModel = input.model?.trim() || env.BUILTIN_PROVIDER_MODEL;
   const builtInProvider = await getGenerationChannelForModel(requestedModel);
+  input = { ...input, model: requestedModel, size: dedicatedGenerationSize({ ...input, model: requestedModel, count }, input.sourceImages?.length ?? 0) };
+  await assertExternalGenerationAllowed(user.id, input, { baseUrl: builtInProvider.baseUrl, model: requestedModel });
+  await assertModelDailyQuotaAvailable(user.id, requestedModel);
   const cost = calculateGenerationCost({
     builtInCreditCost: builtInProvider.creditCost,
     providerMode: "built_in",
@@ -312,6 +315,6 @@ async function runAcceptedExternalGeneration({
       });
     }
     await closeManagedImageReservation(outputReservation).catch(() => undefined);
-    throw error;
+    throw modelDailyQuotaError(error) ?? error;
   }
 }

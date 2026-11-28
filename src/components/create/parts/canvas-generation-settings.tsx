@@ -4,13 +4,15 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 
 import { CANVAS_LIMITS } from "@/lib/canvas/contracts";
 import { imageSizeLimits } from "@/lib/generation/sizes";
+import { constrainImageModelParameters, getDedicatedModelLimits, isVideoModel } from "@/lib/generation/model-limits";
 
 import { CANVAS_PARAMETER_LABELS, canvasEditorKey, type CanvasEditorPort, type CanvasEditorTarget, type CanvasParameterField } from "../canvas/editor-state";
 import { isCanvasSaveShortcut } from "../canvas/renderer-adapter";
-import { MODERATION_OPTIONS, OUTPUT_FORMAT_OPTIONS, QUALITY_OPTIONS, SIZE_OPTIONS } from "../constants";
+import { getImageSizeOptions, MODERATION_OPTIONS, OUTPUT_FORMAT_OPTIONS, QUALITY_OPTIONS } from "../constants";
 import { getSizeSelectValue } from "../utils";
 import type { CanvasNodeInspectorProps } from "./canvas-node-inspector";
 import styles from "./canvas-stage.module.css";
+import { ModelQuotaNotice } from "./model-quota-notice";
 
 type CommitFieldProps = {
   field: CanvasParameterField;
@@ -64,12 +66,14 @@ function CommitField({ field, editor, target, value, placeholder, inputMode, mul
 type CanvasGenerationSettingsProps = Pick<CanvasNodeInspectorProps, "active" | "node" | "channels" | "editor" | "target" | "onParameters" | "onOpenProviderSettings"> & { children: ReactNode };
 
 export function CanvasGenerationSettings({ active, node, channels, editor, target, onParameters, onOpenProviderSettings, children }: CanvasGenerationSettingsProps) {
-  const parameters = node.parameters;
+  const parameters = constrainImageModelParameters(node.parameters);
+  const limits = getDedicatedModelLimits(parameters.model);
+  const sizeOptions = getImageSizeOptions(parameters.model, parameters.size);
   const draft = editor.readDraft(target);
-  const customSize = draft?.customSize ?? getSizeSelectValue(parameters.size) === "custom";
+  const customSize = !limits?.resolution && (draft?.customSize ?? getSizeSelectValue(parameters.size) === "custom");
   const fieldProps = { editor, target };
   const channel = channels.find((item) => item.id === parameters.channelId);
-  const models = channel?.models ?? [...new Set(channels.flatMap((item) => item.models))];
+  const models = (channel?.models ?? [...new Set(channels.flatMap((item) => item.models))]).filter((model) => model !== "*" && !isVideoModel(model));
   const imageMode = active.scene.edges.some((edge) => edge.kind === "image-input" && edge.target === node.id);
   const advanced = useRef<HTMLDetailsElement>(null);
   const focus = editor.state.focus;
@@ -82,10 +86,10 @@ export function CanvasGenerationSettings({ active, node, channels, editor, targe
     <div className={styles.compactParameters}>
       {parameters.providerMode === "custom" ? <CommitField {...fieldProps} field="model" value={parameters.model} /> :
         <label className={styles.field}><span>模型</span><select aria-label="节点模型" value={parameters.model} onChange={(event) => { if (models.includes(event.target.value)) onParameters({ model: event.target.value }); }}>
-          {!models.includes(parameters.model) && <option value={parameters.model}>{parameters.model}</option>}{models.map((model) => <option key={model} value={model}>{model}</option>)}
+          {!models.includes(parameters.model) && parameters.model !== "*" && !isVideoModel(parameters.model) && <option value={parameters.model}>{parameters.model}</option>}{models.map((model) => <option key={model} value={model}>{model}</option>)}
         </select></label>}
-      <label className={styles.field}><span>输出尺寸</span><select aria-label="节点输出尺寸" value={customSize ? "custom" : getSizeSelectValue(parameters.size)} onChange={(event) => {
-        const option = SIZE_OPTIONS.find((item) => item.value === event.target.value);
+      <label className={styles.field}><span>输出尺寸</span><select aria-label="节点输出尺寸" value={limits?.resolution ? parameters.size : customSize ? "custom" : getSizeSelectValue(parameters.size)} onChange={(event) => {
+        const option = sizeOptions.find((item) => item.value === event.target.value);
         if (!option) return;
         if (option.value === "custom") {
           editor.setCustomSize(target, true);
@@ -93,10 +97,12 @@ export function CanvasGenerationSettings({ active, node, channels, editor, targe
           return;
         }
         if (onParameters({ size: option.value })) { editor.clearField(target, "size"); editor.setCustomSize(target, false); }
-      }}>{SIZE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}{option.detail ? ` · ${option.detail}` : ""}</option>)}</select></label>
+      }}>{sizeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}{option.detail ? ` · ${option.detail}` : ""}</option>)}</select></label>
     </div>
     {parameters.providerMode !== "custom" && draft?.fields.model && <CommitField {...fieldProps} field="model" value={parameters.model} />}
-    {(customSize || draft?.fields.size) && <><CommitField {...fieldProps} field="size" value={parameters.size} placeholder="例如 1536x1024" /><p className={styles.helpText}>宽高按 {imageSizeLimits.multiple}px 规整，最大边 {imageSizeLimits.maxEdge}px。</p></>}
+    {(customSize || draft?.fields.size) && <><CommitField {...fieldProps} field="size" value={parameters.size} placeholder="例如 1536x1024" /><p className={styles.helpText}>{limits?.resolution ? "尺寸将按原比例规整为 1K。" : `宽高按 ${imageSizeLimits.multiple}px 规整，最大边 ${imageSizeLimits.maxEdge}px。`}</p></>}
+    {limits?.resolution && <p className={styles.helpText}>固定 1K，最多使用 1 张参考图，每次生成 1 张。</p>}
+    {parameters.providerMode === "built_in" && <ModelQuotaNotice model={parameters.model} />}
     <details ref={advanced} className={styles.advancedSettings}>
       <summary>更多设置与连接</summary>
       <div className={styles.providerToggle} role="group" aria-label="节点渠道来源">
@@ -109,10 +115,10 @@ export function CanvasGenerationSettings({ active, node, channels, editor, targe
           onParameters(next ? { channelId: next.id, model: next.defaultModel } : { channelId: null });
         }}><option value="">自动选择渠道</option>{parameters.channelId && !channel && <option value={parameters.channelId}>已保存的渠道（当前不可用）</option>}{channels.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label> :
         <><button type="button" className={styles.smallButton} onClick={onOpenProviderSettings}>配置此节点的 API 凭据</button><p className={styles.helpText}>凭据只在运行时提供，不保存在节点或画布中。</p></>}
-      {imageMode ? <p className={styles.effectiveMode}>已连接图片：图生图每次固定输出 {CANVAS_LIMITS.imageOutputCount} 张。</p> : <label className={styles.field}><span>生成张数</span><select aria-label="节点生成张数" value={parameters.count} onChange={(event) => onParameters({ count: Number(event.target.value) })}>{Array.from({ length: CANVAS_LIMITS.textOutputCount }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1} 张</option>)}</select></label>}
+      {imageMode ? <p className={styles.effectiveMode}>已连接图片：图生图每次固定输出 {CANVAS_LIMITS.imageOutputCount} 张。</p> : <label className={styles.field}><span>生成张数</span><select aria-label="节点生成张数" value={parameters.count} onChange={(event) => onParameters({ count: Number(event.target.value) })}>{Array.from({ length: limits?.maxOutputs ?? CANVAS_LIMITS.textOutputCount }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1} 张</option>)}</select></label>}
       <div className={styles.fieldPair}>
         <label className={styles.field}><span>质量</span><select aria-label="节点质量" value={parameters.quality} onChange={(event) => { const option = QUALITY_OPTIONS.find((item) => item.value === event.target.value); if (option) onParameters({ quality: option.value }); }}>{QUALITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-        <label className={styles.field}><span>格式</span><select aria-label="节点输出格式" value={parameters.outputFormat} onChange={(event) => { const option = OUTPUT_FORMAT_OPTIONS.find((item) => item.value === event.target.value); if (option) onParameters({ outputFormat: option.value }); }}>{OUTPUT_FORMAT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+        <label className={styles.field}><span>格式</span><select aria-label="节点输出格式" value={parameters.outputFormat} onChange={(event) => { const option = OUTPUT_FORMAT_OPTIONS.find((item) => item.value === event.target.value); if (option) onParameters({ outputFormat: option.value }); }}>{OUTPUT_FORMAT_OPTIONS.filter((option) => !limits?.formats || limits.formats.includes(option.value)).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
       </div>
       {(parameters.outputFormat !== "png" || draft?.fields.outputCompression) && <CommitField {...fieldProps} field="outputCompression" value={String(parameters.outputCompression ?? 100)} inputMode="numeric" />}
       <label className={styles.field}><span>审核模式</span><select aria-label="节点审核模式" value={parameters.moderation} onChange={(event) => { const option = MODERATION_OPTIONS.find((item) => item.value === event.target.value); if (option) onParameters({ moderation: option.value }); }}>{MODERATION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>

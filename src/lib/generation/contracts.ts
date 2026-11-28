@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isDedicatedModel } from "@/lib/generation/model-limits";
 
 import errorsFixture from "../../../contracts/generation/v1/errors.json";
 import modelsFixture from "../../../contracts/generation/v1/models.json";
@@ -188,7 +189,7 @@ export function normalizeProviderModels(
   return [...new Set(normalized)];
 }
 
-/** 渠道模型里填 "*" 的是兜底渠道：什么模型都接，出图时统一用它的默认模型 */
+/** 普通模型可走默认兜底；专用模型必须显式列出，避免跨供应商改投。 */
 export const WILDCARD_MODEL = "*";
 
 export function channelSupportsModel(input: {
@@ -198,7 +199,7 @@ export function channelSupportsModel(input: {
 }) {
   const requestedModel = input.model.trim();
   const models = normalizeProviderModels(input.defaultModel, input.models);
-  return models.includes(requestedModel) || models.includes(WILDCARD_MODEL);
+  return models.includes(requestedModel) || (!isDedicatedModel(requestedModel) && models.includes(WILDCARD_MODEL));
 }
 
 export function resolveGenerationModelOperation(

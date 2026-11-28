@@ -45,7 +45,7 @@ function studioProps() {
 
 describe("create page scoped bootstrap", () => {
   it("loads bounded summaries and only the selected conversation's first page", async () => {
-    render(await CreatePage({ searchParams: { prompt: "Seed chat only" } }));
+    render(await CreatePage({ searchParams: Promise.resolve({ prompt: "Seed chat only" }) }));
     expect(mocks.conversations).toHaveBeenCalledWith(ownerId);
     expect(mocks.content).toHaveBeenCalledExactlyOnceWith({ ownerId, conversationId: "conversation_a" });
     const props = studioProps();

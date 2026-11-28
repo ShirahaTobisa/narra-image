@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, ImagePlus, Replace, Unplug } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { CANVAS_IMPORT_IMAGE_TYPES, CANVAS_LIMITS, type CanvasGenerationNodeV1 } from "@/lib/canvas/contracts";
+import { getDedicatedModelLimits } from "@/lib/generation/model-limits";
 
 import type { CanvasController } from "../canvas/controller";
 import { canvasGenerationPrompt, canvasSourceStatus } from "../canvas/renderer-adapter";
@@ -36,6 +37,7 @@ export function CanvasGenerationComposer({ active, node, target, actions, contro
     return () => { input?.removeEventListener("cancel", cancel); cancel(); };
   }, [controller, target.ownerId, target.canvasId, target.nodeId, readOnly]);
   const inputs = active.scene.edges.filter((item) => item.kind === "image-input" && item.target === node.id).sort((a, b) => (a.kind === "image-input" ? a.ordinal : 0) - (b.kind === "image-input" ? b.ordinal : 0));
+  const maximum = getDedicatedModelLimits(node.parameters.model)?.maxReferenceImages ?? CANVAS_LIMITS.referencesPerRun;
   const sources = active.scene.nodes.filter((item) => item.kind === "reference" || item.kind === "result");
   return <section className={styles.composerPrimary} aria-label="图片创作">
     {shared > 1 && <p className={styles.sharedPrompt} role="status">共享提示词 · {shared} 个生成节点使用此来源。编辑会同步影响它们的下一次运行。</p>}
@@ -48,7 +50,8 @@ export function CanvasGenerationComposer({ active, node, target, actions, contro
         return true;
       } catch (error) { actions.reportError(error); return false; }
     }} />}
-    <div className={styles.referenceHeading}><span>参考图 {inputs.length ? `${inputs.length} / ${CANVAS_LIMITS.referencesPerRun}` : "· 可选"}</span><span>Enter 换行</span></div>
+    <div className={styles.referenceHeading}><span>参考图 {inputs.length ? `${inputs.length} / ${maximum}` : "· 可选"}</span><span>Enter 换行</span></div>
+    {inputs.length > maximum && <p role="alert" className={styles.problemText}>当前模型最多使用 {maximum} 张参考图，请移除多余图片。</p>}
     <ol className={styles.referenceThumbnails} aria-label="参考图缩略图与顺序">
       {inputs.map((input, index) => {
         const source = sources.find((item) => item.id === input.source);
@@ -64,9 +67,9 @@ export function CanvasGenerationComposer({ active, node, target, actions, contro
       })}
     </ol>
     {!readOnly && <div className={styles.nodeActions}>
-      <button type="button" className={styles.smallButton} disabled={inputs.length >= CANVAS_LIMITS.referencesPerRun} onClick={() => setPicker({})}>从画布选择</button>
-      <button type="button" className={styles.smallButton} disabled={inputs.length >= CANVAS_LIMITS.referencesPerRun} onClick={() => { chooser.current = onCaptureImport(); fileInput.current?.click(); }}><ImagePlus aria-hidden className="size-4" />导入并连接</button>
-      <input ref={fileInput} type="file" multiple accept={CANVAS_IMPORT_IMAGE_TYPES.join(",")} className="hidden" aria-label="导入生成节点参考图文件" onChange={(event) => {
+      <button type="button" className={styles.smallButton} disabled={inputs.length >= maximum} onClick={() => setPicker({})}>从画布选择</button>
+      <button type="button" className={styles.smallButton} disabled={inputs.length >= maximum} onClick={() => { chooser.current = onCaptureImport(); fileInput.current?.click(); }}><ImagePlus aria-hidden className="size-4" />导入并连接</button>
+      <input ref={fileInput} type="file" multiple={maximum > 1} accept={CANVAS_IMPORT_IMAGE_TYPES.join(",")} className="hidden" aria-label="导入生成节点参考图文件" onChange={(event) => {
         const files = Array.from(event.currentTarget.files ?? []), captured = chooser.current;
         event.currentTarget.value = ""; chooser.current = null;
         if (files.length) captured?.(files);
@@ -76,7 +79,7 @@ export function CanvasGenerationComposer({ active, node, target, actions, contro
       {sources.length ? sources.map((source) => {
         const available = source.kind === "reference" ? ["ready", "local"].includes(active.references[source.id]?.state ?? "missing") : source.kind === "result" && Boolean(active.images[source.imageId]?.url) && active.images[source.imageId]?.id === source.imageId && active.images[source.imageId]?.jobId === source.jobId;
         const used = inputs.some((input) => input.source === source.id);
-        return <button key={source.id} type="button" className={styles.thumbnailChoice} disabled={!available || used} aria-label={`选择参考 ${source.id.slice(-6)} · ${canvasSourceStatus(active, source)}`} onClick={() => {
+        return <button key={source.id} type="button" className={styles.thumbnailChoice} disabled={!available || used || (!picker.edgeId && inputs.length >= maximum)} aria-label={`选择参考 ${source.id.slice(-6)} · ${canvasSourceStatus(active, source)}`} onClick={() => {
           const ok = picker.edgeId ? onReplaceSource(picker.edgeId, source.id, picker.expectedSource) : onConnect(source.id);
           if (ok) setPicker(null);
         }}><CanvasSourceSummary active={active} node={source} actions={actions} /></button>;

@@ -18,6 +18,36 @@ function file(name = "reference.png", content = "png") { return new File([conten
 afterEach(() => { for (const controller of controllers.splice(0)) controller.dispose(); vi.useRealTimers(); });
 
 describe("canvas direct Run and recovery", () => {
+  it("keeps Seedream output parameters within its capabilities on edits and Run", async () => {
+    const f = fixture();
+    const { canvasId, nodeId } = await f.newGraph();
+    f.controller.updateParameters(canvasId, nodeId, { model: "seedream-5-5", count: 4, size: "3840x2160", outputFormat: "webp" });
+    expect(f.controller.getSnapshot().active?.scene.nodes.find((node) => node.id === nodeId)).toMatchObject({ parameters: { count: 1, size: "1824x1024", outputFormat: "png" } });
+    await f.controller.runNode(canvasId, nodeId);
+    expect(vi.mocked(f.api.port.submit).mock.calls[0][0].params).toMatchObject({ model: "seedream-5-5", count: 1, size: "1824x1024", outputFormat: "png" });
+  });
+
+  it("blocks Seedream excess references before upload and preserves existing connections", async () => {
+    const f = fixture();
+    const { canvasId, nodeId } = await f.newGraph();
+    const first = f.controller.importReference(canvasId, file("first.png"), { x: 0, y: 0 });
+    const second = f.controller.importReference(canvasId, file("second.png"), { x: 0, y: 400 });
+    f.controller.connectImage(canvasId, first, nodeId);
+    const extra = f.controller.connectImage(canvasId, second, nodeId);
+    f.controller.updateParameters(canvasId, nodeId, { model: "seedream-5-5" });
+    await expect(f.controller.runNode(canvasId, nodeId)).rejects.toMatchObject({ code: "modelReferences" });
+    expect(f.controller.getSnapshot().active?.scene.edges.filter((edge) => edge.kind === "image-input")).toHaveLength(2);
+    expect(f.api.port.upload).not.toHaveBeenCalled();
+    expect(f.api.port.submit).not.toHaveBeenCalled();
+    f.controller.disconnect(canvasId, extra);
+    expect(() => f.controller.connectImage(canvasId, second, nodeId)).toThrow("当前模型最多使用 1 张参考图");
+    const before = f.controller.getSnapshot().active?.scene;
+    expect(() => f.controller.importReferences(canvasId, { files: [file("third.png")], position: { x: 0, y: 800 }, attachToGenerationNodeId: nodeId })).toThrow("当前模型最多使用 1 张参考图");
+    expect(f.controller.getSnapshot().active?.scene).toBe(before);
+    await f.controller.runNode(canvasId, nodeId);
+    expect(vi.mocked(f.api.port.submit).mock.calls[0][0].references).toHaveLength(1);
+  });
+
   it("graph edits/connect/reorder/reuse never submit anything and keep direct input order", async () => {
     const f = fixture();
     const { canvasId, promptId, nodeId } = await f.newGraph();

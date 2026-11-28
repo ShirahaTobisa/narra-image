@@ -24,7 +24,7 @@ export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 20;
 
-export default async function AdminInvitesPage(props?: {
+export default async function AdminInvitesPage(props: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   try {
@@ -33,7 +33,7 @@ export default async function AdminInvitesPage(props?: {
     redirect("/login");
   }
 
-  const params = props?.searchParams ? await props.searchParams : {};
+  const params = await props.searchParams ?? {};
   const page = Math.max(1, Number(params.page) || 1);
   const q = typeof params.q === "string" ? params.q.trim() : "";
   const status =

@@ -89,6 +89,59 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("studio captured chat command ownership", () => {
+  const modelChannels = [{ id: "", name: "平台渠道", creditCost: 5, defaultModel: "gpt-image-2", models: ["gpt-image-2", "seedream-5-5", "h3", "*"] }];
+
+  it("applies Seedream limits after switching from a larger multi-output draft", async () => {
+    render(<GeneratorStudio {...baseProps} channels={modelChannels} />);
+    expect(screen.queryByRole("option", { name: "h3" })).toBeNull();
+    expect(screen.queryByRole("option", { name: "*" })).toBeNull();
+    fireEvent.change(screen.getByRole("combobox", { name: "尺寸" }), { target: { value: "3840x2160" } });
+    await userEvent.click(screen.getByRole("button", { name: "高级设置" }));
+    fireEvent.click((await screen.findAllByRole("button", { name: "4" }))[0]);
+    fireEvent.change(screen.getAllByRole("combobox", { name: "格式" })[0], { target: { value: "webp" } });
+    fireEvent.change(screen.getAllByRole("combobox", { name: "模型" })[0], { target: { value: "seedream-5-5" } });
+    expect(screen.getByRole("combobox", { name: "尺寸" })).toHaveValue("1824x1024");
+    expect(screen.queryByRole("option", { name: /4K/ })).toBeNull();
+    expect(screen.queryByRole("option", { name: "WebP" })).toBeNull();
+    expect(screen.queryByRole("option", { name: "GIF 动图" })).toBeNull();
+    writePrompt("A wide image"); send();
+    expect(JSON.parse(String(findRequest("/api/generate").options?.body))).toMatchObject({ model: "seedream-5-5", size: "1824x1024", count: 1, outputFormat: "png" });
+  });
+
+  it("limits Seedream uploads and rejects excess references when switching or retrying", () => {
+    const failed = generation("seedream_failed", "conversation_a", { status: "failed", model: "seedream-5-5", generationType: "image_to_image", sourceImageUrls: ["/first.png", "/second.png"] });
+    render(<GeneratorStudio {...baseProps} channels={modelChannels} initialGenerationPage={page([failed])} />);
+    dropFiles("first.png", "second.png");
+    fireEvent.change(screen.getByRole("combobox", { name: "模型" }), { target: { value: "seedream-5-5" } });
+    writePrompt("Use these images"); send();
+    expect(screen.getByRole("alert")).toHaveTextContent("当前模型最多使用 1 张参考图");
+    expect(generates()).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    expect(generates()).toHaveLength(0);
+    expect(within(composer().closest(".composer-silk") as HTMLElement).getAllByAltText("Reference")).toHaveLength(2);
+  });
+
+  it("normalizes an old Seedream task on retry without changing the current draft", () => {
+    const failed = generation("seedream_failed", "conversation_a", { status: "failed", model: "seedream-5-5", size: "3840x2160", count: 4, outputFormat: "webp" });
+    render(<GeneratorStudio {...baseProps} channels={modelChannels} initialGenerationPage={page([failed])} />);
+    writePrompt("Keep current draft");
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    expect(JSON.parse(String(findRequest("/api/generate").options?.body))).toMatchObject({ model: "seedream-5-5", size: "1824x1024", count: 1, outputFormat: "png" });
+    expect(composer()).toHaveValue("Keep current draft");
+  });
+
+  it("accepts only one uploaded Seedream reference", () => {
+    render(<GeneratorStudio {...baseProps} channels={modelChannels} />);
+    fireEvent.change(screen.getByRole("combobox", { name: "模型" }), { target: { value: "seedream-5-5" } });
+    dropFiles("first.png", "second.png");
+    expect(screen.getByRole("alert")).toHaveTextContent("最多上传 1 张参考图");
+    expect(screen.getAllByAltText("Reference")).toHaveLength(1);
+    writePrompt("Use this reference"); send();
+    const body = findRequest("/api/generate").options?.body as FormData;
+    expect(body.getAll("referenceImages")).toHaveLength(1);
+    expect(body.get("model")).toBe("seedream-5-5");
+  });
+
   it.each(["text_to_image", "image_to_image"] as const)("retries the original request parameters and references for %s", (generationType) => {
     const failed = generation("failed", "conversation_a", {
       status: "failed", generationType, model: "gpt-image-1", size: "3840x2160",
@@ -503,7 +556,10 @@ describe("studio captured chat command ownership", () => {
     const image = generation("image", "conversation_a", { images: [{ id: "image", url: "https://example.test/owned.png", actualWidth: 1, actualHeight: 1, actualSize: "1x1" }] });
     const { rerender } = render(<GeneratorStudio {...baseProps} initialGenerationPage={page([image])} />);
     fireEvent.click(screen.getByTitle("下载保存"));
-    expect((click.mock.contexts[0] as HTMLAnchorElement).getAttribute("href")).toBe(`/api/proxy-image?url=${encodeURIComponent("https://example.test/owned.png")}`);
+    const download = new URL((click.mock.contexts[0] as HTMLAnchorElement).href);
+    expect(download.pathname).toBe("/api/proxy-image");
+    expect(download.searchParams.get("url")).toBe("https://example.test/owned.png");
+    expect(download.searchParams.get("download")).toMatch(/^\d{2}-\d{2}-\d{2}-\d{2}$/);
     expect(requests).toEqual([]);
     rerender(<GeneratorStudio {...baseProps} ownerId="owner_b" />);
     expect(click).toHaveBeenCalledTimes(1);

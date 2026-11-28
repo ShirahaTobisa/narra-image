@@ -33,6 +33,7 @@ vi.mock("@/lib/moderation/sensitive-words", () => ({
 
 import {
   checkGenerationInput,
+  assertExternalGenerationAllowed,
   CONSECUTIVE_REFUSAL_BAN_LIMIT,
   listModerationOffenders,
   PRECHECK_BLOCK_MESSAGE,
@@ -94,6 +95,39 @@ describe("内容审核 checkGenerationInput", () => {
     mockDb.generationJob.count.mockResolvedValue(0);
     mockDb.contentReview.count.mockReset().mockResolvedValue(0);
     mockDb.contentReview.create.mockReset().mockResolvedValue({});
+  });
+
+  it.each([
+    { baseUrl: "https://api.apimart.ai/v1", model: "seedream-5-5" },
+    { baseUrl: "https://h3.coolhs.com/api/v1", model: "h3" },
+  ])("专用渠道 %j 不调用关键词、模型审核或预审", async (channel) => {
+    mockDb.user.findUnique.mockResolvedValue({ role: "USER" });
+    mockDb.generationJob.findFirst.mockResolvedValue(null);
+    await expect(assertExternalGenerationAllowed("u1", { prompt: "a cat", sourceImages: [pngImage()] }, channel)).resolves.toBeUndefined();
+    expect(mockResolveConfig).not.toHaveBeenCalled();
+    expect(mockMatchWords).not.toHaveBeenCalled();
+    expect(mockCheckLocalImages).not.toHaveBeenCalled();
+    expect(mockPrecheck).not.toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(mockDb.contentReview.create).not.toHaveBeenCalled();
+  });
+
+  it("专用渠道仍执行人工暂停和参考图文件检查", async () => {
+    const channel = { baseUrl: "https://api.apimart.ai/v1", model: "seedream-5-5" };
+    mockDb.user.findUnique.mockResolvedValue({ role: "USER", generationPausedAt: new Date() });
+    await expect(assertExternalGenerationAllowed("u1", { prompt: "a cat" }, channel)).rejects.toThrow(MANUAL_PAUSE_MESSAGE);
+    mockDb.user.findUnique.mockResolvedValue({ role: "USER" });
+    await expect(assertExternalGenerationAllowed("u1", { prompt: "a cat", sourceImages: [{ data: Buffer.from("bad"), mimeType: "image/png" }] }, channel)).rejects.toThrow("参考图无法读取");
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(mockDb.contentReview.create).not.toHaveBeenCalled();
+  });
+
+  it("专用模型配到 GPT 渠道时拒绝，GPT 本身仍执行原审核", async () => {
+    mockDb.user.findUnique.mockResolvedValue({ role: "USER" });
+    await expect(assertExternalGenerationAllowed("u1", { prompt: "a cat" }, { baseUrl: "https://api.openai.com/v1", model: "seedream-5-5" })).rejects.toThrow("不支持该模型");
+    mockResolveConfig.mockResolvedValue(baseConfig({ isEnabled: false }));
+    await expect(assertExternalGenerationAllowed("u1", { prompt: "a cat" }, { baseUrl: "https://api.openai.com/v1", model: "gpt-image-2" })).rejects.toThrow(MODERATION_UNAVAILABLE_MESSAGE);
+    expect(mockResolveConfig).toHaveBeenCalledOnce();
   });
 
   it("审核未启用时直接放行", async () => {

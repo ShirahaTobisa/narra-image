@@ -77,6 +77,8 @@ export type CanvasControllerOptions = {
 };
 
 const COMMAND_MESSAGES = {
+  modelReferences: "当前模型最多使用 1 张参考图，请移除多余图片",
+  imageModel: "请选择图片模型",
   readOnly: "\u5f53\u524d\u753b\u5e03\u4ec5\u652f\u6301\u67e5\u770b\uff0c\u6682\u65f6\u65e0\u6cd5\u7f16\u8f91\u548c\u751f\u6210",
   inactive: "\u753b\u5e03\u5c1a\u672a\u5c31\u7eea\u6216\u8d26\u6237\u5df2\u5207\u6362",
   loading: "\u6b63\u5728\u8bfb\u53d6\u6b64\u753b\u5e03\uff0c\u8bf7\u7a0d\u540e",

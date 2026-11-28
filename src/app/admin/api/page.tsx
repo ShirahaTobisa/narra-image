@@ -19,7 +19,7 @@ export const metadata = {
   title: "API 管理 — Narra Image",
 };
 
-export default async function AdminApiPage(props?: {
+export default async function AdminApiPage(props: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   try {
@@ -28,7 +28,7 @@ export default async function AdminApiPage(props?: {
     redirect("/login");
   }
 
-  const params = props?.searchParams ? await props.searchParams : {};
+  const params = await props.searchParams ?? {};
   const page = Math.max(1, Number(params.page) || 1);
   const q = typeof params.q === "string" ? params.q.trim() : "";
   const status =

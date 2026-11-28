@@ -5,6 +5,7 @@ export type VideoChannelInfo = {
   defaultModel: string;
   models: string[];
   videoCreditCost: number;
+  videoCreditCosts?: Record<string, number>;
 };
 
 export type VideoReferenceImage = {

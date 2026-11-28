@@ -15,7 +15,7 @@ import (
 const remoteVideoMaxBytes = 128 * 1024 * 1024
 
 // VideoResult 是一次视频生成的产物，写入 GeneratedVideo。
-// MediaStorage/StorageKey 标识持久化形态（生产强制 S3）。
+// H3 仅保存外部任务媒体地址，其余视频沿用对象存储。
 type VideoResult struct {
 	URL             string
 	PosterURL       string
@@ -58,6 +58,16 @@ type videoGenerationItem struct {
 // generateVideo 在单次任务内完成「提交→轮询→取结果」。pollInterval 由调用方传入
 // （生产取 cfg.VideoPollInterval，测试取极小值）。整体受 ctx 的 JobTimeout 约束。
 func generateVideo(ctx context.Context, storage *Storage, job GenerationJob, provider ProviderConfig, pollInterval time.Duration) (VideoResult, error) {
+	job.Model, provider.Model = strings.TrimSpace(job.Model), strings.TrimSpace(provider.Model)
+	if err := validateDedicatedProvider(job.Model, provider); err != nil {
+		return VideoResult{}, err
+	}
+	if err := validateDedicatedJob(job); err != nil {
+		return VideoResult{}, err
+	}
+	if job.Model == h3Model {
+		return generateH3Video(ctx, storage, job, provider, pollInterval)
+	}
 	model := job.Model
 	if strings.TrimSpace(model) == "" {
 		model = provider.Model
@@ -184,11 +194,7 @@ func pollVideo(ctx context.Context, provider ProviderConfig, videoID string, pol
 		case "completed", "succeeded":
 			return status, nil
 		case "failed", "error", "cancelled", "canceled":
-			return videoStatusResponse{}, ContractFailure{
-				Code:                errorProviderPolicyRejected,
-				Message:             fmt.Sprintf("视频生成失败：渠道返回状态 %s", status.Status),
-				ResolvedAfterSubmit: true,
-			}
+			return videoStatusResponse{}, providerTaskFailed("视频")
 		}
 
 		select {
