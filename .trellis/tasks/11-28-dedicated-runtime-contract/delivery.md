@@ -24,3 +24,5 @@
 - 20:00 JST，网页使用 UID 1 提交 Seedream 测试 `ac2f038f-1160-4b84-bad0-cfb59092d067`，耗时 16.5 秒成功出图：`c84c396b83e94225aac21ed21`，1024×1024、LOCAL，扣 5 积分、占一次每日名额。
 - 浏览器验证图片完整加载（naturalWidth/naturalHeight 1024×1024），点击下载成功保存 `C:/Users/aphrissa/Downloads/11-28-20-01.png`。
 - Go 定向测试、vet/build、TypeScript 和差异检查通过。新增真实数据库回归覆盖文生图/图生图在多个视频排队时仍可领取；原 TypeScript 6 项与 Go 数据库契约全通过。首次测试因 Docker 未启动及桌面内置 pnpm 版本不匹配退出，启动本机已安装 Docker、固定已缓存 pnpm 10.32.1 后完成原检查，无生产测试库或依赖重装。
+- 排队修复 `79912a9` 已推送并部署，Worker `sha256:d32ec01c397955ff48b109d6713a33fbc2fb46ce49dff98b60ac8300493f51bd`，备份 `/srv/narra-image-backups/20261128-image-slot-79912a9b/`。应用镜像/容器、数据库容器、配置和挂载保持不变，线上 readyz 通过。首次切换因队列尚未排空而自动恢复旧服务；部署时持续核对活动任务后安全切换。
+- 用户 H3 原单 `j33acrxfba6t` 已接回并恢复渠道开放，上游仍 pending，不重复下单。仅取消本轮自建 H3 测试单；Seedream 实测只提交一次，不额外生成第二张测试图。
