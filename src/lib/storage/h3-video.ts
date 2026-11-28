@@ -30,7 +30,7 @@ export function h3VideoErrorMessage(model: string, message: string | null) {
 
 function canonicalH3MediaUrl(raw: string) {
   const url = new URL(raw);
-  const path = /^https:\/\/[^/]+(\/api\/v1\/jobs\/[1-9]\d*\/(?:video|poster))$/.exec(raw)?.[1];
+  const path = /^https:\/\/[^/]+(\/api\/v1\/jobs\/[A-Za-z0-9][A-Za-z0-9_-]{0,127}\/(?:video|poster))$/.exec(raw)?.[1];
   return path && url.origin === H3_ORIGIN && !url.username && !url.password && url.pathname === path
     ? `${H3_ORIGIN}${path}` : null;
 }
@@ -39,7 +39,7 @@ function canonicalH3MediaUrl(raw: string) {
 export function h3MediaSource(baseUrl: string, video: VideoMedia, variant: "video" | "poster") {
   try {
     usesDedicatedProvider({ baseUrl }, "h3");
-    const match = /\/jobs\/([1-9]\d*)\/video$/.exec(canonicalH3MediaUrl(video.url) ?? "");
+    const match = /\/jobs\/([^/]+)\/video$/.exec(canonicalH3MediaUrl(video.url) ?? "");
     if (!match) return null;
     const source = `${H3_ORIGIN}/api/v1/jobs/${match[1]}/${variant}`;
     return variant === "video" || canonicalH3MediaUrl(video.posterUrl ?? "") === source ? source : null;

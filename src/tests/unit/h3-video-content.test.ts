@@ -143,6 +143,29 @@ describe("H3 video authorization", () => {
     expect((await get("?variant=poster")).status).toBe(503);
     expect(mocks.decrypt).not.toHaveBeenCalled();
   });
+
+  it.each(["js70cdn18yza", "Job_42-a", "42", "a".repeat(128)])("reads video and poster for the exact opaque task ID %s", async (taskId) => {
+    const url = `https://h3.coolhs.com/api/v1/jobs/${taskId}/video`;
+    mocks.video.mockResolvedValue({ ...record(), url, posterUrl: url.replace(/video$/, "poster") });
+    for (const variant of ["video", "poster"]) {
+      mocks.fetch.mockResolvedValue(new Response(new Uint8Array([1]), { headers: { "content-type": variant === "video" ? "video/mp4" : "image/webp" } }));
+      const response = await get(`?variant=${variant}`);
+      expect(response.status).toBe(200);
+      expect(mocks.fetch.mock.lastCall?.[0]).toBe(url.replace(/video$/, variant));
+      await response.body?.cancel();
+    }
+    mocks.video.mockResolvedValue({ ...record(), url, posterUrl: "https://h3.coolhs.com/api/v1/jobs/different-task/poster" });
+    mocks.decrypt.mockClear();
+    expect((await get("?variant=poster")).status).toBe(503);
+    expect(mocks.decrypt).not.toHaveBeenCalled();
+  });
+
+  it.each(["", ".", "..", "a/../b", "a/b", "a\\b", "%2e%2e", "a%2fb", "a?b", "a#b", " a", "a ", "任务", "_a", "-a", "a".repeat(129)])("rejects unsafe opaque task IDs before credentials are used: %s", async (taskId) => {
+    mocks.video.mockResolvedValue({ ...record(), url: `https://h3.coolhs.com/api/v1/jobs/${taskId}/video` });
+    expect((await get()).status).toBe(503);
+    expect(mocks.decrypt).not.toHaveBeenCalled();
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
 });
 
 describe("H3 streaming and privacy", () => {

@@ -22,7 +22,7 @@
 - 视频：
   - 有对象存储：`buildVideoResult` 下载上游视频转存 S3，返回 S3 URL。
   - 无对象存储：直接以 `RESULT_PERSIST_FAILED` 失败并给出明确错误，不得回退短期上游 URL。
-  - H3 专用渠道例外：成功结果只记录原生 `/api/v1/jobs/{numericId}/video` 和可选同任务 `/poster`，`mediaStorage=UPSTREAM`、`storageKey=NULL`；视频字节不写本站磁盘、数据库或 S3。上游保留 3 天，额度耗尽后仍用原生接口取回。
+  - H3 专用渠道例外：成功结果只记录原生 `/api/v1/jobs/{taskId}/video` 和可选同任务 `/poster`，`mediaStorage=UPSTREAM`、`storageKey=NULL`。真实任务号为字符串（例如 `js70cdn18yza`），同时兼容历史数字号；必须校验长度和安全路径字符，不能仅按文档数字示例解析。视频字节不写本站磁盘、数据库或 S3。上游保留 3 天，额度耗尽后仍用原生接口取回。
   - H3 的生成记录、个人作品、精选、详情及后台输出统一调用 `presentGeneratedVideo` / `serializeVideo`，只下发 `/api/videos/{generatedVideoId}/content`，封面附 `?variant=poster`。H3 错误原文和媒体地址不发送到客户端。
   - 视频代理从数据库记录核验作者/管理员；公开访问沿用 `FEATURED` 且作者未封禁规则，封禁账号无私有访问权。密钥来源沿用父任务：DB 渠道（含停用）、`__env__` 环境渠道或 CUSTOM 任务保存的密文；验证 H3 渠道与完整原生媒体路径后才解密，不使用客户端 URL 或凭据，不因渠道停用/额度耗尽拒绝历史结果。生成端统一原生地址，读取端兼容合法的主机大小写、标准 443 端口及渠道尾斜杠。
   - 每一跳经 `fetchPublicHttpUrl` 公网地址校验和 DNS 固定，最多 5 次跳转，Bearer 仅发送给首跳，浏览器不接收重定向。支持单段 Range、取消、15 分钟总截止和有限流式传输，只输出检查过的媒体/范围/长度头，禁止透传 Location、Content-Location、Cookie、上游文件名或错误正文。上游 404/410 返回本站 410 文案，其余故障用通用 502/503。

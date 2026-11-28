@@ -7,25 +7,46 @@ import (
 	"errors"
 	"mime/multipart"
 	"net/http"
+	"regexp"
 	"strconv"
 	"time"
 )
 
+var h3TaskIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
+
+type h3TaskID string
+
+func (id *h3TaskID) UnmarshalJSON(data []byte) error {
+	var value string
+	if err := json.Unmarshal(data, &value); err != nil {
+		var number int64
+		if err := json.Unmarshal(data, &number); err != nil || number <= 0 {
+			return errors.New("视频渠道任务号无效")
+		}
+		value = strconv.FormatInt(number, 10)
+	}
+	if !h3TaskIDPattern.MatchString(value) {
+		return errors.New("视频渠道任务号无效")
+	}
+	*id = h3TaskID(value)
+	return nil
+}
+
 type h3Job struct {
-	ID        int64   `json:"id"`
-	Status    string  `json:"status"`
-	Width     int     `json:"width"`
-	Height    int     `json:"height"`
-	Seconds   float64 `json:"seconds"`
-	HasVideo  bool    `json:"has_video"`
-	HasPoster bool    `json:"has_poster"`
+	ID        h3TaskID `json:"id"`
+	Status    string   `json:"status"`
+	Width     int      `json:"width"`
+	Height    int      `json:"height"`
+	Seconds   float64  `json:"seconds"`
+	HasVideo  bool     `json:"has_video"`
+	HasPoster bool     `json:"has_poster"`
 }
 
 func parseH3Job(body []byte) (h3Job, error) {
 	var response struct {
 		Job h3Job `json:"job"`
 	}
-	if json.Unmarshal(body, &response) != nil || response.Job.ID <= 0 || response.Job.Status == "" {
+	if json.Unmarshal(body, &response) != nil || response.Job.ID == "" || response.Job.Status == "" {
 		return h3Job{}, ResultPersistError{Cause: errors.New("视频渠道未返回有效任务状态")}
 	}
 	return response.Job, nil
@@ -64,7 +85,7 @@ func generateH3Video(ctx context.Context, storage *Storage, job GenerationJob, p
 	if err != nil {
 		return VideoResult{}, err
 	}
-	taskID := strconv.FormatInt(current.ID, 10)
+	taskID := string(current.ID)
 	if err := recordProviderRequestID(ctx, taskID); err != nil {
 		return VideoResult{}, err
 	}
@@ -104,7 +125,7 @@ func generateH3Video(ctx context.Context, storage *Storage, job GenerationJob, p
 		if err != nil {
 			return VideoResult{}, err
 		}
-		if strconv.FormatInt(current.ID, 10) != taskID {
+		if string(current.ID) != taskID {
 			return VideoResult{}, ResultPersistError{Cause: errors.New("视频渠道返回了不同任务")}
 		}
 	}

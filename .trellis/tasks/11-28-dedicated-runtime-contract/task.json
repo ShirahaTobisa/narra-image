@@ -1,7 +1,7 @@
 {
   "id": "dedicated-runtime-contract",
   "name": "dedicated-runtime-contract",
-  "title": "修复专用模型运行时配置路径",
+  "title": "修复 H3 运行配置与真实任务号兼容",
   "description": "",
   "status": "in_progress",
   "dev_type": null,

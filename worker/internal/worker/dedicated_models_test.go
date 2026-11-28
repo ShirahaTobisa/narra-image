@@ -333,3 +333,66 @@ func TestH3TextVideoAndTerminalFailures(t *testing.T) {
 		})
 	}
 }
+
+func TestH3StringTaskIDSurvivesSubmissionAndPolling(t *testing.T) {
+	for _, returnedID := range []string{"js70cdn18yza", "different-task"} {
+		t.Run(returnedID, func(t *testing.T) {
+			const taskID = "js70cdn18yza"
+			requests := 0
+			dedicatedTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				requests++
+				switch r.URL.Path {
+				case "/api/v1/jobs":
+					fmt.Fprintf(w, `{"job":{"id":%q,"status":"pending"}}`, taskID)
+				case "/api/v1/jobs/" + taskID:
+					fmt.Fprintf(w, `{"job":{"id":%q,"status":"done","has_video":true,"has_poster":true}}`, returnedID)
+				default:
+					t.Fatalf("task ID changed in request: %s", r.URL)
+				}
+			})
+			requestID := ""
+			ctx := withProviderLifecycle(context.Background(), nil, nil, func(_ context.Context, id string) error { requestID = id; return nil })
+			job := GenerationJob{ID: "opaque-video", Model: h3Model, Count: 1, GenerationType: "TEXT_TO_VIDEO", Size: "1280x736", DurationSeconds: sql.NullInt32{Int32: 4, Valid: true}}
+			result, err := generateVideo(ctx, nil, job, ProviderConfig{Model: h3Model, BaseURL: "https://h3.coolhs.com", AllowPrivateNetwork: true}, time.Millisecond)
+			if requestID != taskID || requests != 2 {
+				t.Fatalf("lost task identity: %q, %d requests", requestID, requests)
+			}
+			if returnedID != taskID {
+				if failure := classifyProviderFailure(err); failure.Code != errorResultPersistFailed {
+					t.Fatalf("accepted a different polled task: %+v", failure)
+				}
+				return
+			}
+			if err != nil || result.URL != "https://h3.coolhs.com/api/v1/jobs/"+taskID+"/video" || result.PosterURL != "https://h3.coolhs.com/api/v1/jobs/"+taskID+"/poster" {
+				t.Fatalf("task ID changed in result: %+v, %v", result, err)
+			}
+		})
+	}
+}
+
+func TestH3TaskIDValidation(t *testing.T) {
+	for _, id := range []string{"js70cdn18yza", "Job_42-a", "42", strings.Repeat("a", 128)} {
+		body, _ := json.Marshal(map[string]any{"job": map[string]any{"id": id, "status": "pending"}})
+		job, err := parseH3Job(body)
+		if err != nil || string(job.ID) != id {
+			t.Errorf("valid task ID changed: %q => %q, %v", id, job.ID, err)
+		}
+	}
+	for _, id := range []string{"42", "9223372036854775807"} {
+		job, err := parseH3Job([]byte(`{"job":{"id":` + id + `,"status":"pending"}}`))
+		if err != nil || string(job.ID) != id {
+			t.Errorf("numeric task ID changed: %s => %q, %v", id, job.ID, err)
+		}
+	}
+	for _, id := range []string{"", ".", "..", "a/../b", "a/b", `a\b`, "%2e%2e", "a%2fb", "a?b", "a#b", " a", "a ", "任务", "_a", "-a", strings.Repeat("a", 129)} {
+		body, _ := json.Marshal(map[string]any{"job": map[string]any{"id": id, "status": "pending"}})
+		if _, err := parseH3Job(body); err == nil {
+			t.Errorf("unsafe task ID accepted: %q", id)
+		}
+	}
+	for _, id := range []string{"null", "true", "{}", "[]", "0", "-1", "1.5", "1e3", "9223372036854775808"} {
+		if _, err := parseH3Job([]byte(`{"job":{"id":` + id + `,"status":"pending"}}`)); err == nil {
+			t.Errorf("invalid numeric task ID accepted: %s", id)
+		}
+	}
+}
